@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify tag matches Cargo version
+        run: |
+          crate_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "quality-cli") | .version')
+          test "v$crate_version" = "$GITHUB_REF_NAME"
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+
+  binaries:
+    name: ${{ matrix.target }}
+    needs: release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and upload native binary
+        uses: step-security/upload-rust-binary-action@v1
+        with:
+          bin: quality
+          target: ${{ matrix.target }}
+          archive: quality-$target
+          checksum: sha256
+          include: LICENSE,README.md
+          locked: true

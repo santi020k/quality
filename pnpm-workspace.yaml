@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - crates/*
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true

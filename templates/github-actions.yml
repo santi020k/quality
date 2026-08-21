@@ -1,0 +1,47 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  quality:
+    name: Code quality
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # macOS lets Swift and Android checks coexist in a mobile monorepo.
+      # Add project-specific tool installation steps before the check.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install quality
+        run: |
+          __QUALITY_INSTALL_COMMAND__
+
+      - name: Verify toolchain
+        run: quality doctor
+
+      - name: Run quality checks
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ -n "$BASE_REF" ]]; then
+            quality check --changed "origin/$BASE_REF" --format github --report quality.sarif
+          else
+            quality check --format github --report quality.sarif
+          fi
+
+      - name: Upload code-scanning results
+        if: always() && hashFiles('quality.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: quality.sarif

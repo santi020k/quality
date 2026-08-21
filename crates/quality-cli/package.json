@@ -1,0 +1,9 @@
+{
+  "name": "@quality/cli",
+  "private": true,
+  "scripts": {
+    "build": "cargo build --release --package quality-cli",
+    "check": "cargo fmt --check && cargo clippy --all-targets --all-features --package quality-cli -- -D warnings",
+    "test": "cargo test --all-targets --all-features --package quality-cli"
+  }
+}
