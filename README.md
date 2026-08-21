@@ -4,6 +4,8 @@
 contain Swift, Android/Kotlin, and JavaScript projects. It does not replace the
 ecosystem's best analyzers. It detects, runs, and explains them through one CLI.
 
+Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
+
 > Status: early working prototype. The configuration format may change before
 > the first stable release.
 
