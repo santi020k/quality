@@ -262,7 +262,7 @@ pnpm dev    # Start the documentation site
 pnpm check  # Rust and web checks
 pnpm test   # Rust test suite
 pnpm build  # Release CLI and production site
-pnpm ci     # Affected-only pipeline used by GitHub Actions
+pnpm run ci # Affected-only pipeline used by GitHub Actions
 ```
 
 Cargo remains available directly for Rust-only work. Turborepo coordinates
