@@ -144,7 +144,11 @@ fn init_dry_run_previews_without_writing_or_replacing_configuration() {
     let output = quality(temp.path(), &["init", "--dry-run"]);
 
     assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("eslint:"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("eslint:"));
+    assert!(
+        stdout.contains("$schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json")
+    );
     assert_eq!(
         fs::read_to_string(temp.path().join("quality.yml")).unwrap(),
         "existing: true\n"

@@ -1,5 +1,6 @@
 ---
 import { ButtonLink, SkipLink, ThemeToggle, UIPrimitives } from '@santi020k/lumen-astro';
+import { getSocialImagePath } from '../lib/social-image';
 import '../styles/global.css';
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 	description?: string;
 	pageType?: 'article' | 'website';
 	sectionName?: string;
+	socialImageAlt?: string;
 }
 
 const {
@@ -14,9 +16,10 @@ const {
 	description = 'Run trusted code-quality tools for Rust, Swift, Android, Kotlin, JavaScript, TypeScript, Astro, and more through one deterministic workflow.',
 	pageType = 'website',
 	sectionName,
+	socialImageAlt = `${sectionName ?? title} — quality code-quality CLI`,
 } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const socialImage = new URL('/og.png', Astro.site);
+const socialImage = new URL(getSocialImagePath(Astro.url.pathname), Astro.site);
 const isDocs = Astro.url.pathname !== '/';
 const websiteId = new URL('/#website', Astro.site).href;
 const softwareId = new URL('/#software', Astro.site).href;
@@ -70,8 +73,8 @@ if (pageType === 'article') {
 				{
 					'@type': 'ListItem',
 					position: 1,
-					name: 'Documentation',
-					item: new URL('/getting-started/', Astro.site).href,
+					name: 'quality',
+					item: new URL('/', Astro.site).href,
 				},
 				{
 					'@type': 'ListItem',
@@ -93,9 +96,13 @@ const structuredData = { '@context': 'https://schema.org', '@graph': graph };
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
+		<meta name="title" content={title} />
 		<meta name="description" content={description} />
+		<meta name="author" content="quality contributors" />
+		<meta name="color-scheme" content="light dark" />
 		<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 		<link rel="canonical" href={canonical} />
+		<link rel="sitemap" href="/sitemap.xml" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<meta name="theme-color" content="#2563eb" />
@@ -106,11 +113,20 @@ const structuredData = { '@context': 'https://schema.org', '@graph': graph };
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
 		<meta property="og:image" content={socialImage} />
-		<meta property="og:image:alt" content="quality — one quality command for every project" />
+		<meta property="og:image:secure_url" content={socialImage} />
+		<meta property="og:image:type" content="image/webp" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content={socialImageAlt} />
 		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:url" content={canonical} />
 		<meta name="twitter:title" content={title} />
 		<meta name="twitter:description" content={description} />
 		<meta name="twitter:image" content={socialImage} />
+		<meta name="twitter:image:alt" content={socialImageAlt} />
+		<meta name="twitter:site" content="@santi020k" />
+		<meta name="twitter:creator" content="@santi020k" />
+		{pageType === 'article' && <meta property="article:section" content="Documentation" />}
 		<script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 		<title>{title}</title>
 		<script is:inline>
