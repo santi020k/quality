@@ -1,5 +1,11 @@
 # @quality/action
 
+## 0.2.1
+
+### Patch Changes
+
+- [#17](https://github.com/santi020k/quality/pull/17) [`7057458`](https://github.com/santi020k/quality/commit/70574589eed1aa1624263f419573816374b8321d) Thanks [@santi020k](https://github.com/santi020k)! - Improve rollout reliability by ignoring diagnostic-looking output from successful generic tasks, distinguishing disabled checks in doctor output, validating the Android Java runtime, generating spellcheck-safe configuration, warning when no checks run, and classifying environment and toolchain failures separately from code findings.
+
 ## 0.2.0
 
 ## 0.1.2
