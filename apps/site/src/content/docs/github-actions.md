@@ -29,13 +29,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: santi020k/quality@v0.3.0
+      - uses: santi020k/quality@v0.3.1
         id: quality
         with:
-          version: v0.3.0
+          version: v0.3.1
           changed-only: true
           report-level: warning
           fail-level: warning
+          require-checks: true
+          jobs: 4
+          timeout-seconds: 120
 
       - name: Upload code-scanning results
         if: always() && steps.quality.outputs.sarif != ''
@@ -48,13 +51,18 @@ Pin `version` to a release for reproducible checks. Warnings fail by default; se
 
 The Action exposes `sarif`, `findings`, `tools`, and `duration-ms` outputs. On pull requests it compares against `origin/$GITHUB_BASE_REF`; on pushes without a base it safely checks the complete project.
 
+It distinguishes policy findings from configuration or runtime failures so an
+operational problem is not mislabeled as a diagnostic failure. `require-checks`
+defaults to true; `jobs`, `timeout-seconds`, and `max-output-bytes` expose the
+CLI's execution limits.
+
 ## Generate a standalone workflow
 
 Generate a workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.3.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.3.1 --locked'
 ```
 
 The generated workflow:

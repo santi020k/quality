@@ -24,6 +24,10 @@ Acceptance criteria:
 - Strict mode returns a non-zero exit code for the selected conditions.
 - Each condition has an integration test.
 
+Status: implemented for `invalid`, `missing-configuration`, and
+`missing-toolchain`. Audits remain report-only by default, while `--fail-on`
+accepts repeatable or comma-separated conditions for CI and scheduled jobs.
+
 ### 2. Separate configuration readiness from machine readiness
 
 The adoption report currently assigns one status to each repository. A valid
@@ -187,3 +191,101 @@ without adding network access or AI to the checking path.
 All of these improvements should preserve the core constraint: checks remain
 deterministic and AI-free, while normalized reports may be consumed by optional
 AI-assisted tooling outside the checking path.
+
+## Findings from the v0.3.1 native-hook rollout
+
+The parent-folder migration on 2026-08-22 configured all 24 discovered Git
+repositories with native quality hooks, removed Husky package configuration,
+and installed Commitprompt validation. The audit reports 23 repositories ready
+and the existing `ContracTrack` Android toolchain warning. The rollout exposed
+the following additional opportunities.
+
+### 20. Make hook migration a first-class command
+
+Moving from Husky currently requires manually removing the dependency and
+prepare script, transferring every tracked hook command into `quality.yml`,
+unsetting `core.hooksPath`, and then installing quality hooks. Add a conflict-safe
+`quality hooks migrate` command with `--dry-run` support. It should recognize
+Husky, preserve every non-generated command and argument, update only the
+managed package metadata, and stop before any ambiguous rewrite.
+
+### 21. Model shared hook directories for Git worktrees
+
+`lumen-production-cleanup` is a worktree whose `.git` entry is a file. Git
+correctly resolves its hook directory to the main `lumen` repository, so one
+managed launcher is shared while `quality.yml` remains worktree-specific.
+Installation and status work, but uninstalling a configured event from either
+worktree can remove the launcher needed by the other. Hook lifecycle commands
+should identify the common Git directory, list affected worktrees, and avoid
+removing a shared launcher while another worktree still configures the event.
+
+### 22. Verify the executable used by installed launchers
+
+The machine had `quality 0.3.0` in `~/.local/bin` ahead of the newly installed
+`0.3.1` Cargo binary. The generated launchers correctly use `quality` from
+`PATH`, but they could not run the new `hooks` command until the higher-priority
+binary was replaced. `quality hooks status` should report the launcher command,
+resolved executable, and version, and diagnose an incompatible or shadowed
+binary before the next Git operation.
+
+### 23. Include hook-step readiness in doctor and fleet audits
+
+`doctor` validates the hook schema but does not check whether configured step
+commands such as `pnpm`, `commitprompt`, or a repository script are available.
+Add a hook-readiness section that resolves executables without running hooks,
+understands package-manager `exec` commands, and reports failures separately
+from analyzer toolchain readiness.
+
+### 24. Define installation onboarding without package lifecycle scripts
+
+Removing Husky also removes its automatic `prepare` lifecycle. Calling a native
+CLI unconditionally from `prepare` would break dependency installation on
+machines and CI jobs where quality is not installed, so the rollout uses an
+explicit `hooks:install` script and documents `quality hooks install` after
+cloning. Add a safe onboarding mechanism—potentially an opt-in bootstrap check
+or shell completion notice—that remains explicit and never makes package
+installation depend on a global native binary.
+
+### 25. Test the Commitprompt-to-quality contract across package managers
+
+Commitprompt now writes its validation step into `quality.yml` and selects
+`npx --no-install`, `pnpm exec`, or `yarn exec` from repository metadata. Add an
+end-to-end compatibility suite shared by both projects that generates each
+variant, installs the quality launcher, accepts a valid commit, rejects an
+invalid commit, preserves unrelated hook steps, and verifies idempotency.
+
+## Additional execution reliability findings
+
+### 26. Keep fail-fast aligned with optional-tool semantics
+
+Status: implemented. Fail-fast continues after an unavailable optional adapter
+and stops only for a result that would fail the run.
+
+### 27. Preserve operational failures in the GitHub Action
+
+Status: implemented. Exit code 1 is reported as a policy finding, while other
+non-zero exits retain the CLI's configuration or runtime error.
+
+### 28. Guard CI against empty policies
+
+Status: implemented. `check --require-checks` rejects a project with no
+configured checks without rejecting a valid changed-file run that has no
+relevant work. The GitHub Action enables the guard by default.
+
+### 29. Bound analyzer execution resources
+
+Status: implemented. `--jobs` limits concurrency, configured or command-line
+timeouts stop long-running analyzers, and retained output is capped with
+explicit truncation metadata.
+
+### 30. Make project discovery complete and error-aware
+
+Status: implemented. Project discovery no longer stops at six levels or
+silently discards traversal errors, while generated and dependency directories
+remain excluded.
+
+### 31. Write generated artifacts atomically
+
+Status: implemented. Configuration, baselines, SARIF reports, generated
+workflows, and hook launchers use temporary sibling files and atomic replacement.
+Multi-hook installation rolls back earlier launcher writes after a failure.

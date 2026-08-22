@@ -1,5 +1,5 @@
 {
-  "name": "quality-monorepo",
+  "name": "@quality-preset-e2e/quality-monorepo",
   "version": "0.0.0",
   "private": true,
   "description": "One deterministic code-quality workflow for multi-platform repositories.",
@@ -26,13 +26,25 @@
     "validate": "pnpm run check && pnpm run test && pnpm run build && pnpm run check:security && pnpm run check:versions && pnpm run check:action-dist",
     "version-packages": "changeset version && node scripts/sync-release-version.mjs && cargo check --quiet --package quality-cli && pnpm install --lockfile-only",
     "pre-push": "pnpm run validate",
-    "prepare": "husky"
+    "hooks:install": "cargo run --quiet --package quality-cli -- hooks install"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.0",
     "@changesets/cli": "3.0.1",
     "@santi020k/commitprompt": "1.0.0",
-    "husky": "9.1.7",
-    "turbo": "2.10.11"
-  }
+    "cspell": "10.1.0",
+    "turbo": "2.10.11",
+    "wrangler": "4.125.0"
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/santi020k/quality.git"
+  },
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/santi020k/quality/issues"
+  },
+  "homepage": "https://github.com/santi020k/quality#readme"
 }

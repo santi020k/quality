@@ -86,7 +86,7 @@ pub fn create(report: &RunReport, path: &Path, force: bool) -> Result<BaselineSu
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create baseline directory {}", parent.display()))?;
     }
-    fs::write(path, serde_json::to_vec_pretty(&baseline)?)
+    crate::atomic::write(path, &serde_json::to_vec_pretty(&baseline)?)
         .with_context(|| format!("could not write baseline to {}", path.display()))?;
     Ok(BaselineSummary {
         findings: baseline.findings.len(),
@@ -219,6 +219,7 @@ mod tests {
             command: "swiftlint".to_owned(),
             diagnostics,
             output: String::new(),
+            output_truncated: false,
             guidance: None,
             baseline_safe: true,
         }

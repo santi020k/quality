@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quality-cli.santi020k.chatgpt.site/quality.schema.json",
+  "$id": "https://quality.santi020k.com/quality.schema.json",
   "title": "quality.yml",
   "description": "Configuration for the quality code-quality orchestrator.",
   "type": "object",
@@ -37,6 +37,8 @@
         "astro-check": { "$ref": "#/$defs/builtInTool" },
         "prettier": { "$ref": "#/$defs/builtInTool" },
         "cspell": { "$ref": "#/$defs/builtInTool" },
+        "codespell": { "$ref": "#/$defs/builtInTool" },
+        "typos": { "$ref": "#/$defs/builtInTool" },
         "knip": { "$ref": "#/$defs/builtInTool" },
         "actionlint": { "$ref": "#/$defs/builtInTool" }
       },
@@ -47,6 +49,13 @@
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/adapterId" },
       "additionalProperties": { "$ref": "#/$defs/task" },
+      "default": {}
+    },
+    "hooks": {
+      "description": "Version-controlled steps for package-manager-independent Git hooks.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/hookEvent" },
+      "additionalProperties": { "$ref": "#/$defs/hook" },
       "default": {}
     },
     "custom": {
@@ -74,8 +83,66 @@
         "pattern": "^[A-Za-z0-9]+$"
       }
     },
+    "hookEvent": {
+      "enum": [
+        "applypatch-msg",
+        "commit-msg",
+        "fsmonitor-watchman",
+        "post-applypatch",
+        "post-checkout",
+        "post-commit",
+        "post-merge",
+        "post-receive",
+        "post-rewrite",
+        "post-update",
+        "pre-applypatch",
+        "pre-auto-gc",
+        "pre-commit",
+        "pre-merge-commit",
+        "pre-push",
+        "pre-rebase",
+        "pre-receive",
+        "prepare-commit-msg",
+        "proc-receive",
+        "push-to-checkout",
+        "reference-transaction",
+        "sendemail-validate",
+        "update"
+      ]
+    },
+    "hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/hookStep" }
+        }
+      }
+    },
+    "hookStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "name": { "type": "string" },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "$ref": "#/$defs/stringArray" },
+        "working_directory": { "type": "string" },
+        "pass_hook_args": { "type": "boolean", "default": false }
+      }
+    },
     "parser": {
-      "enum": ["generic", "eslint-json", "swiftlint-json", "ktlint-json"],
+      "enum": [
+        "generic",
+        "codespell",
+        "eslint-json",
+        "swiftlint-json",
+        "ktlint-json",
+        "typos-json"
+      ],
       "default": "generic"
     },
     "builtInTool": {
@@ -89,7 +156,8 @@
         "working_directory": { "type": "string" },
         "check_args": { "$ref": "#/$defs/stringArray" },
         "format_args": { "$ref": "#/$defs/stringArray" },
-        "fix_args": { "$ref": "#/$defs/stringArray" }
+        "fix_args": { "$ref": "#/$defs/stringArray" },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
       }
     },
     "task": {
@@ -104,7 +172,8 @@
         "required": { "type": "boolean", "default": true },
         "extensions": { "$ref": "#/$defs/extensions" },
         "config_files": { "$ref": "#/$defs/stringArray" },
-        "parser": { "$ref": "#/$defs/parser" }
+        "parser": { "$ref": "#/$defs/parser" },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
       }
     },
     "customTool": {
@@ -128,7 +197,8 @@
         "format_check_args": { "$ref": "#/$defs/stringArray" },
         "format_args": { "$ref": "#/$defs/stringArray" },
         "fix_args": { "$ref": "#/$defs/stringArray" },
-        "install_hint": { "type": "string" }
+        "install_hint": { "type": "string" },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
       }
     }
   }

@@ -98,7 +98,7 @@ const createCard = ({ description, pathname, title, type }) => {
 	<rect x="26" y="26" width="1148" height="578" rx="34" fill="none" stroke="#dbeafe" stroke-opacity=".12"/>
 	<image href="${logoDataUri}" x="72" y="62" width="70" height="70" filter="url(#shadow)"/>
 	<text x="164" y="99" fill="#f8fafc" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="28" font-weight="750">quality</text>
-	<text x="164" y="127" fill="#93a4bf" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15">quality-cli.santi020k.chatgpt.site</text>
+	<text x="164" y="127" fill="#93a4bf" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="15">quality.santi020k.com</text>
 	<g transform="translate(72 178)"><rect width="${Math.min(390, type.length * 10 + 54)}" height="38" rx="19" fill="#132b50" stroke="#3b82f6" stroke-opacity=".72"/><circle cx="21" cy="19" r="5" fill="#38bdf8"/><text x="38" y="25" fill="#dbeafe" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="750" letter-spacing="1.2">${escapeXml(type.toUpperCase())}</text></g>
 	${textLines(titleLines, { fill: '#f8fafc', fontSize: titleSize, fontWeight: 780, lineHeight: 76, x: 72, y: 306 })}
 	${textLines(descriptionLines, { fill: '#b8c6dc', fontSize: 20, fontWeight: 450, lineHeight: 30, x: 74, y: 494 })}

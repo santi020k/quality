@@ -58,6 +58,31 @@ pub fn print_doctor(report: &DoctorReport, format: OutputFormat) -> Result<()> {
                     println!("  ! {:<14} missing (optional)", entry.name);
                 }
             }
+            if let Some(preset) = &report.preset {
+                println!();
+                match preset.state.as_str() {
+                    "current" => println!(
+                        "Preset:  {} (catalog {}, current)",
+                        preset.profile, preset.catalog_version
+                    ),
+                    "update-available" => {
+                        println!(
+                            "Preset:  {} (catalog {} → {}, update available)",
+                            preset.profile, preset.catalog_version, preset.current_catalog_version
+                        );
+                        for issue in &preset.issues {
+                            println!("  ! {issue}");
+                        }
+                        println!("    Run `quality preset update --dry-run` to review changes.");
+                    }
+                    _ => {
+                        println!("Preset:  incompatible");
+                        for issue in &preset.issues {
+                            println!("  ✗ {issue}");
+                        }
+                    }
+                }
+            }
         }
         OutputFormat::Json | OutputFormat::Sarif => {
             println!("{}", serde_json::to_string_pretty(report)?)
@@ -73,7 +98,7 @@ pub fn write_sarif(report: &RunReport, path: &Path, report_level: Severity) -> R
             .with_context(|| format!("could not create report directory {}", parent.display()))?;
     }
     let serialized = serde_json::to_vec_pretty(&to_sarif(report, report_level))?;
-    fs::write(path, serialized)
+    crate::atomic::write(path, &serialized)
         .with_context(|| format!("could not write SARIF report to {}", path.display()))?;
     Ok(())
 }

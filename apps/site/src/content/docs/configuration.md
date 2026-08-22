@@ -33,6 +33,7 @@ Each built-in adapter accepts:
 - `check_args`: replace arguments for checks
 - `format_args`: replace formatting arguments
 - `fix_args`: replace fix arguments
+- `timeout_seconds`: stop an invocation that exceeds this duration
 
 Set `required: false` when a tool is useful locally but should not make every environment fail.
 
@@ -71,6 +72,7 @@ Tasks run concurrently with built-in and custom adapters. Set
 `working_directory` for a workspace-specific command. When `extensions` or
 `config_files` are present, changed-file mode skips the task unless one of
 those inputs changed. With neither field, the task always runs.
+Tasks and custom adapters also accept `timeout_seconds`.
 
 During initialization, a canonical root package script is added as
 `repository-check` when available. Detected analyzers receive `check: false`

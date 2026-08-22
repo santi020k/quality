@@ -1,8 +1,11 @@
+mod atomic;
 mod baseline;
 mod changes;
 mod cli;
 mod config;
+mod hooks;
 mod output;
+mod presets;
 mod project;
 mod repositories;
 mod runner;
@@ -14,7 +17,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 
-use crate::cli::{AdapterSelection, BaselineCommand, CiProvider, Cli, Command, InstructionsFormat};
+use crate::cli::{
+    AdapterSelection, BaselineCommand, CiProvider, Cli, Command, HooksCommand, InstructionsFormat,
+    PresetCommand,
+};
 use crate::config::Config;
 use crate::project::Project;
 
@@ -72,6 +78,29 @@ fn run() -> Result<()> {
                 println!("Next: quality doctor && quality check");
             }
         }
+        Command::Preset { command } => match command {
+            PresetCommand::List => presets::print_list(),
+            PresetCommand::Show { profile } => presets::print_profile(profile),
+            PresetCommand::Apply {
+                profile,
+                dry_run,
+                force,
+                install,
+                only,
+                gate,
+            } => presets::apply(&project, profile, &only, gate, dry_run, force, install)?,
+            PresetCommand::Diff => {
+                if presets::diff(&project)? {
+                    std::process::exit(1);
+                }
+            }
+            PresetCommand::Update {
+                dry_run,
+                force,
+                install,
+            } => presets::update(&project, dry_run, force, install)?,
+            PresetCommand::Setup { install } => presets::setup(&project, install)?,
+        },
         Command::Doctor { format } => {
             let config = Config::load_or_default(&root)?;
             let report = runner::doctor(&project, &config);
@@ -82,12 +111,14 @@ fn run() -> Result<()> {
         }
         Command::Check {
             adapters,
+            execution,
             format,
             report: report_path,
             fail_fast,
             changed,
             report_level,
             fail_level,
+            require_checks,
         } => {
             let config = Config::load_or_default(&root)?;
             let adapters = prepare_selection(&config, adapters)?;
@@ -99,6 +130,7 @@ fn run() -> Result<()> {
                 fail_fast,
                 changes.as_ref(),
                 &adapters,
+                execution_settings(execution, require_checks),
             )?;
             baseline::apply(&mut report, &config.baseline_path(&root))?;
             present_run(
@@ -115,6 +147,7 @@ fn run() -> Result<()> {
         }
         Command::Format {
             adapters,
+            execution,
             check,
             format,
             report: report_path,
@@ -135,6 +168,7 @@ fn run() -> Result<()> {
                 false,
                 changes.as_ref(),
                 &adapters,
+                execution_settings(execution, false),
             )?;
             present_run(
                 &root,
@@ -150,6 +184,7 @@ fn run() -> Result<()> {
         }
         Command::Fix {
             adapters,
+            execution,
             format,
             report: report_path,
             changed,
@@ -164,6 +199,7 @@ fn run() -> Result<()> {
                 false,
                 changes.as_ref(),
                 &adapters,
+                execution_settings(execution, false),
             )?;
             present_run(
                 &root,
@@ -197,6 +233,7 @@ fn run() -> Result<()> {
                     false,
                     None,
                     &AdapterSelection::default(),
+                    runner::ExecutionSettings::default(),
                 )?;
                 let path = output
                     .map(|path| {
@@ -224,6 +261,15 @@ fn run() -> Result<()> {
         Command::Repositories { .. } => {
             unreachable!("repositories return before project discovery")
         }
+        Command::Hooks { command } => {
+            let config = Config::load_or_default(&root)?;
+            match command {
+                HooksCommand::Install => hooks::install(&root, &config)?,
+                HooksCommand::Status => hooks::status(&root, &config)?,
+                HooksCommand::Uninstall => hooks::uninstall(&root, &config)?,
+                HooksCommand::Run { event, args } => hooks::run(&root, &config, &event, &args)?,
+            }
+        }
     }
 
     Ok(())
@@ -239,6 +285,21 @@ fn prepare_selection(config: &Config, mut selection: AdapterSelection) -> Result
         .collect();
     config.validate_adapter_selection(&ids)?;
     Ok(selection)
+}
+
+fn execution_settings(
+    options: cli::ExecutionOptions,
+    require_checks: bool,
+) -> runner::ExecutionSettings {
+    let defaults = runner::ExecutionSettings::default();
+    runner::ExecutionSettings {
+        jobs: options
+            .jobs
+            .map_or(defaults.jobs, std::num::NonZeroUsize::get),
+        timeout_seconds: options.timeout_seconds.map(std::num::NonZeroU64::get),
+        max_output_bytes: options.max_output_bytes.get(),
+        require_checks,
+    }
 }
 
 fn discover_changes(
@@ -301,7 +362,7 @@ fn generate_github_workflow(
         .replace("__QUALITY_RUNNER__", runner)
         .replace("__QUALITY_PROJECT_SETUP__", &setup)
         .replace("__QUALITY_INSTALL_COMMAND__", install_command);
-    std::fs::write(&path, workflow)
+    atomic::write(&path, workflow.as_bytes())
         .with_context(|| format!("could not write {}", path.display()))?;
     Ok(path)
 }

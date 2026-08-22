@@ -123,6 +123,31 @@ fn init_selects_fast_and_full_repository_gates_explicitly() {
 }
 
 #[test]
+fn init_configures_installed_commitprompt_without_replacing_source_checks() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "packageManager":"pnpm@11.0.0",
+            "devDependencies":{"@santi020k/commitprompt":"1.0.0"}
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("commit-msg:"));
+    assert!(config.contains("name: Validate commit message"));
+    assert!(config.contains("command: pnpm"));
+    assert!(config.contains("- commitprompt"));
+    assert!(config.contains("- validate"));
+    assert!(config.contains("- --input"));
+    assert!(config.contains("pass_hook_args: true"));
+}
+
+#[test]
 fn doctor_distinguishes_disabled_checks_from_disabled_tools() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(
@@ -202,9 +227,7 @@ fn init_dry_run_previews_without_writing_or_replacing_configuration() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("eslint:"));
-    assert!(
-        stdout.contains("$schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json")
-    );
+    assert!(stdout.contains("$schema=https://quality.santi020k.com/quality.schema.json"));
     assert_eq!(
         fs::read_to_string(temp.path().join("quality.yml")).unwrap(),
         "existing: true\n"
@@ -1243,4 +1266,817 @@ fn repositories_audit_and_apply_emit_an_adoption_report() {
     assert_eq!(report["summary"]["created"], 1);
     assert!(missing.join("quality.yml").exists());
     assert!(configured.join("quality.yml").exists());
+}
+
+#[test]
+fn repositories_audit_can_fail_on_invalid_configuration() {
+    let parent = tempfile::tempdir().unwrap();
+    let repository = parent.path().join("invalid");
+    fs::create_dir_all(&repository).unwrap();
+    initialize_git(&repository);
+    fs::write(repository.join("quality.yml"), "version: 2\n").unwrap();
+
+    let default = quality(
+        parent.path(),
+        &["repositories", "audit", "--format", "json"],
+    );
+    assert!(default.status.success());
+
+    let strict = quality(
+        parent.path(),
+        &[
+            "repositories",
+            "audit",
+            "--format",
+            "json",
+            "--fail-on",
+            "invalid",
+        ],
+    );
+    assert_eq!(strict.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&strict.stdout).unwrap();
+    assert_eq!(report["summary"]["invalid"], 1);
+}
+
+#[test]
+fn repositories_audit_can_fail_on_missing_configuration() {
+    let parent = tempfile::tempdir().unwrap();
+    let repository = parent.path().join("missing");
+    fs::create_dir_all(&repository).unwrap();
+    initialize_git(&repository);
+
+    let strict = quality(
+        parent.path(),
+        &[
+            "repositories",
+            "audit",
+            "--fail-on",
+            "missing-configuration",
+        ],
+    );
+    assert_eq!(strict.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&strict.stdout).contains("needs_configuration"));
+}
+
+#[test]
+fn repositories_audit_can_fail_on_missing_toolchain() {
+    let parent = tempfile::tempdir().unwrap();
+    let repository = parent.path().join("missing-toolchain");
+    fs::create_dir_all(&repository).unwrap();
+    initialize_git(&repository);
+    fs::write(
+        repository.join("quality.yml"),
+        "version: 1\ntools:\n  swiftlint:\n    enabled: true\n    required: true\n    command: definitely-not-a-real-tool\n",
+    )
+    .unwrap();
+
+    let strict = quality(
+        parent.path(),
+        &["repositories", "audit", "--fail-on", "missing-toolchain"],
+    );
+    assert_eq!(strict.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&strict.stdout).contains("missing: swiftlint"));
+}
+
+#[cfg(unix)]
+#[test]
+fn hooks_install_run_status_and_uninstall_managed_launchers() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let recorder = temp.path().join("record-hook");
+    fs::write(
+        &recorder,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > hook-arguments.txt\n",
+    )
+    .unwrap();
+    fs::set_permissions(&recorder, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  commit-msg:\n    steps:\n      - name: Record arguments\n        command: ./record-hook\n        args: [configured]\n        pass_hook_args: true\n",
+    )
+    .unwrap();
+
+    let installed = quality(temp.path(), &["hooks", "install"]);
+    assert!(installed.status.success());
+    let launcher = temp.path().join(".git/hooks/commit-msg");
+    let text = fs::read_to_string(&launcher).unwrap();
+    assert!(text.contains("Managed by quality"));
+    assert_ne!(
+        fs::metadata(&launcher).unwrap().permissions().mode() & 0o111,
+        0
+    );
+
+    let status = quality(temp.path(), &["hooks", "status"]);
+    assert!(status.status.success());
+    let run = quality(temp.path(), &["hooks", "run", "commit-msg", "message.txt"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(temp.path().join("hook-arguments.txt")).unwrap(),
+        "configured\nmessage.txt\n"
+    );
+
+    let removed = quality(temp.path(), &["hooks", "uninstall"]);
+    assert!(removed.status.success());
+    assert!(!launcher.exists());
+}
+
+#[test]
+fn hooks_install_preserves_an_existing_unmanaged_hook() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-commit:\n    steps:\n      - command: git\n        args: [status, --short]\n",
+    )
+    .unwrap();
+    let launcher = temp.path().join(".git/hooks/pre-commit");
+    fs::write(&launcher, "#!/bin/sh\necho existing\n").unwrap();
+
+    let installed = quality(temp.path(), &["hooks", "install"]);
+
+    assert_eq!(installed.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&installed.stderr).contains("not managed by quality"));
+    assert_eq!(
+        fs::read_to_string(launcher).unwrap(),
+        "#!/bin/sh\necho existing\n"
+    );
+}
+
+#[test]
+fn hooks_status_reports_an_inactive_custom_hooks_path() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    git(temp.path(), &["config", "core.hooksPath", ".custom-hooks"]);
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-commit:\n    steps:\n      - command: git\n        args: [status, --short]\n",
+    )
+    .unwrap();
+
+    let status = quality(temp.path(), &["hooks", "status"]);
+
+    assert_eq!(status.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&status.stderr).contains("not active"));
+}
+
+#[cfg(unix)]
+#[test]
+fn fail_fast_continues_after_an_optional_missing_tool() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let recorder = temp.path().join("record-success");
+    fs::write(&recorder, "#!/bin/sh\nprintf 'ran\\n' > continued.txt\n").unwrap();
+    fs::set_permissions(&recorder, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  a-optional:\n    command: missing-optional-command\n    required: false\n  b-required:\n    command: ./record-success\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--fail-fast"]);
+
+    assert!(output.status.success());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("continued.txt")).unwrap(),
+        "ran\n"
+    );
+}
+
+#[test]
+fn require_checks_rejects_an_empty_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("quality.yml"), "version: 1\ntools: {}\n").unwrap();
+
+    let output = quality(temp.path(), &["check", "--require-checks"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no configured adapters"));
+}
+
+#[test]
+fn require_checks_allows_a_changed_scope_with_no_relevant_work() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("README.md"), "initial\n").unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntools:\n  swiftlint:\n    enabled: true\n    required: false\n    command: missing-optional-command\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::write(temp.path().join("README.md"), "documentation only\n").unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["check", "--changed", "--require-checks", "--format", "json"],
+    );
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["summary"]["tools"], 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn jobs_one_runs_tasks_sequentially() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let recorder = temp.path().join("record-order");
+    fs::write(
+        &recorder,
+        "#!/bin/sh\nprintf '%s-start\\n' \"$1\" >> order.txt\nsleep 0.1\nprintf '%s-end\\n' \"$1\" >> order.txt\n",
+    )
+    .unwrap();
+    fs::set_permissions(&recorder, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  a:\n    command: ./record-order\n    args: [a]\n  b:\n    command: ./record-order\n    args: [b]\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--jobs", "1"]);
+
+    assert!(output.status.success());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("order.txt")).unwrap(),
+        "a-start\na-end\nb-start\nb-end\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn configured_timeout_stops_a_long_running_task() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  slow:\n    command: sleep\n    args: [5]\n    timeout_seconds: 1\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["rule"],
+        "tool-timeout"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn command_line_timeout_overrides_adapter_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  slow:\n    command: sleep\n    args: [5]\n    timeout_seconds: 30\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["check", "--format", "json", "--timeout-seconds", "1"],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["message"],
+        "tool exceeded its 1-second timeout"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn analyzer_output_is_capped_and_reported_as_truncated() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let noisy = temp.path().join("noisy");
+    fs::write(&noisy, "#!/bin/sh\nprintf 'abcdefghijklmnopqrstuvwxyz'\n").unwrap();
+    fs::set_permissions(&noisy, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  noisy:\n    command: ./noisy\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["check", "--format", "json", "--max-output-bytes", "16"],
+    );
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["results"][0]["output_truncated"], true);
+    assert!(
+        report["results"][0]["output"]
+            .as_str()
+            .unwrap()
+            .contains("output truncated after 16 bytes")
+    );
+}
+
+#[test]
+fn preset_list_and_show_describe_all_profiles() {
+    let temp = tempfile::tempdir().unwrap();
+
+    let list = quality(temp.path(), &["preset", "list"]);
+    assert!(list.status.success());
+    let stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(stdout.contains("minimal"));
+    assert!(stdout.contains("recommended"));
+    assert!(stdout.contains("strict"));
+
+    let strict = quality(temp.path(), &["preset", "show", "strict"]);
+    assert!(strict.status.success());
+    let stdout = String::from_utf8_lossy(&strict.stdout);
+    assert!(stdout.contains("strict=pedantic"));
+    assert!(stdout.contains("github-actions"));
+}
+
+#[test]
+fn preset_dry_run_detects_every_supported_ecosystem_without_writing() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"packageManager":"pnpm@11.0.0"}"#,
+    )
+    .unwrap();
+    fs::write(temp.path().join("app.ts"), "export const value = 1\n").unwrap();
+    fs::write(temp.path().join("tool.py"), "value = 1\n").unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    fs::write(temp.path().join("Main.kt"), "class Main\n").unwrap();
+    fs::write(temp.path().join("AndroidManifest.xml"), "<manifest />\n").unwrap();
+    fs::write(temp.path().join(".github/workflows/ci.yml"), "name: CI\n").unwrap();
+
+    let output = quality(temp.path(), &["preset", "apply", "strict", "--dry-run"]);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Ecosystems: javascript, python, rust, swift, kotlin, github-actions"));
+    assert!(stdout.contains("strict: 'pedantic'"));
+    assert!(stdout.contains("--- .clippy.toml"));
+    assert!(stdout.contains("--- .swiftlint.yml"));
+    assert!(stdout.contains("--- detekt.yml"));
+    assert!(stdout.contains("--- .github/actionlint.yaml"));
+    assert!(stdout.contains("android-lint:"));
+    assert!(stdout.contains("pnpm add --save-dev --save-exact"));
+    assert!(stdout.contains("@santi020k/eslint-config-extensions@3.1.1"));
+    assert!(!temp.path().join("quality.yml").exists());
+    assert!(!temp.path().join("eslint.config.mjs").exists());
+}
+
+#[test]
+fn preset_dry_run_reports_an_invalid_root_manifest() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("package.json"), "{ invalid").unwrap();
+    fs::write(temp.path().join("app.js"), "export const value = 1\n").unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["preset", "apply", "recommended", "--dry-run"],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid JSON"));
+    assert!(!temp.path().join("quality.yml").exists());
+}
+
+#[test]
+fn preset_profiles_map_to_eslint_config_modes() {
+    let cases = [
+        ("minimal", "preset: 'basic'", "strict: false"),
+        (
+            "recommended",
+            "strict: 'recommended'",
+            "root: import.meta.dirname",
+        ),
+        ("strict", "strict: 'pedantic'", "printWidth: 90"),
+    ];
+    for (profile, expected, secondary) in cases {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("app.ts"), "export const value = 1\n").unwrap();
+
+        let output = quality(
+            temp.path(),
+            &["preset", "apply", profile, "--only", "javascript"],
+        );
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let eslint = fs::read_to_string(temp.path().join("eslint.config.mjs")).unwrap();
+        let generated = format!(
+            "{eslint}\n{}",
+            fs::read_to_string(temp.path().join("prettier.config.mjs")).unwrap_or_default()
+        );
+        assert!(generated.contains(expected), "{profile}: {generated}");
+        assert!(generated.contains(secondary), "{profile}: {generated}");
+        let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+        assert!(config.contains(&format!("Generated from the `{profile}` preset")));
+        if profile == "minimal" {
+            assert!(!config.contains("prettier:"));
+            assert!(!temp.path().join("knip.json").exists());
+        } else {
+            assert!(config.contains("prettier:"));
+            assert!(temp.path().join("knip.json").exists());
+        }
+    }
+}
+
+#[test]
+fn presets_select_one_spelling_adapter_for_each_repository() {
+    let python = tempfile::tempdir().unwrap();
+    fs::write(
+        python.path().join("pyproject.toml"),
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    fs::write(python.path().join("app.py"), "value = 1\n").unwrap();
+    let output = quality(
+        python.path(),
+        &["preset", "apply", "recommended", "--dry-run"],
+    );
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Ecosystems: python"));
+    assert!(stdout.contains("--- .codespellrc"));
+    assert!(stdout.contains("\n  codespell:"));
+    assert!(!stdout.contains("\n  cspell:"));
+    assert!(!stdout.contains("\n  typos:"));
+
+    let rust = tempfile::tempdir().unwrap();
+    fs::write(rust.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    let output = quality(
+        rust.path(),
+        &["preset", "apply", "recommended", "--dry-run"],
+    );
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--- _typos.toml"));
+    assert!(stdout.contains("\n  typos:"));
+    assert!(!stdout.contains("\n  cspell:"));
+    assert!(!stdout.contains("\n  codespell:"));
+}
+
+#[test]
+fn preset_apply_is_idempotent_and_refuses_conflicts_before_writing() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    fs::write(temp.path().join("rustfmt.toml"), "user_owned = true\n").unwrap();
+
+    let rejected = quality(
+        temp.path(),
+        &["preset", "apply", "recommended", "--only", "rust"],
+    );
+    assert_eq!(rejected.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("rustfmt.toml"));
+    assert!(!temp.path().join("quality.yml").exists());
+    assert!(!temp.path().join(".clippy.toml").exists());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("rustfmt.toml")).unwrap(),
+        "user_owned = true\n"
+    );
+
+    let forced = quality(
+        temp.path(),
+        &[
+            "preset",
+            "apply",
+            "recommended",
+            "--only",
+            "rust",
+            "--force",
+        ],
+    );
+    assert!(forced.status.success());
+    let repeated = quality(
+        temp.path(),
+        &["preset", "apply", "recommended", "--only", "rust"],
+    );
+    assert!(repeated.status.success());
+    assert!(String::from_utf8_lossy(&repeated.stdout).contains("0 written, 5 unchanged"));
+}
+
+#[test]
+fn preset_preserves_an_existing_commit_message_hook() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "devDependencies":{"@santi020k/commitprompt":"1.0.0"}
+        }"#,
+    )
+    .unwrap();
+    fs::write(temp.path().join("app.js"), "export const value = 1\n").unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  commit-msg:\n    steps:\n      - name: Custom policy\n        command: ./custom-commit-check\n        pass_hook_args: true\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["preset", "apply", "minimal", "--only", "javascript"],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("name: Custom policy"));
+    assert!(config.contains("command: ./custom-commit-check"));
+    assert!(!config.contains("command: npm\n"));
+}
+
+#[cfg(unix)]
+#[test]
+fn preset_install_uses_the_detected_package_manager_and_only_missing_dependencies() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"packageManager":"pnpm@11.0.0","devDependencies":{"eslint":"10.9.0"}}"#,
+    )
+    .unwrap();
+    fs::write(temp.path().join("app.js"), "export const value = 1\n").unwrap();
+    let pnpm = tools.path().join("pnpm");
+    fs::write(
+        &pnpm,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > preset-install-arguments.txt\n",
+    )
+    .unwrap();
+    fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = quality_with_path(
+        temp.path(),
+        &[
+            "preset",
+            "apply",
+            "minimal",
+            "--only",
+            "javascript",
+            "--install",
+        ],
+        tools.path(),
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let arguments = fs::read_to_string(temp.path().join("preset-install-arguments.txt")).unwrap();
+    assert!(arguments.contains("add\n--save-dev\n--save-exact\n"));
+    assert!(arguments.contains("@santi020k/eslint-config-basic@3.5.1"));
+    assert!(!arguments.contains("eslint@10.9.0"));
+}
+
+#[test]
+fn preset_metadata_enables_diff_and_safe_updates() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+
+    let applied = quality(
+        temp.path(),
+        &["preset", "apply", "recommended", "--only", "rust"],
+    );
+    assert!(applied.status.success());
+    let metadata: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(temp.path().join(".quality-preset.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(metadata["schema_version"], 1);
+    assert_eq!(metadata["catalog_version"], 2);
+    assert_eq!(
+        metadata["$schema"],
+        "https://quality.santi020k.com/quality-preset.schema.json"
+    );
+    assert_eq!(metadata["profile"], "recommended");
+
+    let current = quality(temp.path(), &["preset", "diff"]);
+    assert!(current.status.success());
+    fs::write(temp.path().join("rustfmt.toml"), "max_width = 77\n").unwrap();
+
+    let changed = quality(temp.path(), &["preset", "diff"]);
+    assert_eq!(changed.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&changed.stdout).contains("M rustfmt.toml"));
+    let rejected = quality(temp.path(), &["preset", "update"]);
+    assert_eq!(rejected.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("user changes"));
+    let forced = quality(temp.path(), &["preset", "update", "--force"]);
+    assert!(forced.status.success());
+    assert!(
+        fs::read_to_string(temp.path().join("rustfmt.toml"))
+            .unwrap()
+            .contains("max_width = 100")
+    );
+}
+
+#[test]
+fn preset_merges_editorconfig_and_quality_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("Main.kt"), "class Main\n").unwrap();
+    fs::write(
+        temp.path().join(".editorconfig"),
+        "root = true\n\n[*]\ncharset = utf-8\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: json\ntasks:\n  existing:\n    command: 'true'\nhooks:\n  pre-commit:\n    steps:\n      - command: 'true'\ncustom:\n  internal:\n    command: 'true'\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["preset", "apply", "recommended", "--only", "kotlin"],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let editorconfig = fs::read_to_string(temp.path().join(".editorconfig")).unwrap();
+    assert!(editorconfig.contains("charset = utf-8"));
+    assert!(editorconfig.contains("# quality-preset:start"));
+    assert!(editorconfig.contains("max_line_length = 100"));
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("output: json"));
+    assert!(config.contains("existing:"));
+    assert!(config.contains("pre-commit:"));
+    assert!(config.contains("internal:"));
+    assert!(config.contains("detekt:"));
+    assert!(config.contains("ktlint:"));
+
+    let strict = quality(
+        temp.path(),
+        &["preset", "apply", "strict", "--only", "kotlin", "--force"],
+    );
+    assert!(strict.status.success());
+    let editorconfig = fs::read_to_string(temp.path().join(".editorconfig")).unwrap();
+    assert_eq!(editorconfig.matches("# quality-preset:start").count(), 1);
+    assert!(editorconfig.contains("charset = utf-8"));
+    assert!(editorconfig.contains("max_line_length = 90"));
+}
+
+#[test]
+fn javascript_presets_install_explicit_detected_framework_packs() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"dependencies":{"react":"19.0.0","vite":"7.0.0","vue":"4.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(temp.path().join("app.ts"), "export const value = 1\n").unwrap();
+
+    let output = quality(
+        temp.path(),
+        &[
+            "preset",
+            "apply",
+            "recommended",
+            "--only",
+            "javascript",
+            "--dry-run",
+        ],
+    );
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("frameworks: { 'react': true, 'vite': true, 'vue': true }"));
+    assert!(stdout.contains("@santi020k/eslint-config-react@3.1.0"));
+    assert!(stdout.contains("@santi020k/eslint-config-vite@3.1.0"));
+    assert!(stdout.contains("@santi020k/eslint-config-vue@3.1.0"));
+}
+
+#[test]
+fn doctor_reports_preset_compatibility_and_setup_guidance() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    assert!(
+        quality(
+            temp.path(),
+            &["preset", "apply", "minimal", "--only", "rust"]
+        )
+        .status
+        .success()
+    );
+
+    let doctor = quality(temp.path(), &["doctor", "--format", "json"]);
+    let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    assert_eq!(report["preset"]["profile"], "minimal");
+    assert_eq!(report["preset"]["state"], "current");
+
+    let setup = quality(temp.path(), &["preset", "setup"]);
+    assert!(setup.status.success());
+    assert!(String::from_utf8_lossy(&setup.stdout).contains("rustup component add rustfmt clippy"));
+}
+
+#[test]
+fn changing_profiles_removes_only_untouched_stale_generated_files() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("package.json"), "{}\n").unwrap();
+    fs::write(temp.path().join("app.js"), "export const value = 1\n").unwrap();
+    assert!(
+        quality(
+            temp.path(),
+            &["preset", "apply", "recommended", "--only", "javascript",]
+        )
+        .status
+        .success()
+    );
+    assert!(temp.path().join("knip.json").exists());
+
+    let minimal = quality(
+        temp.path(),
+        &["preset", "apply", "minimal", "--only", "javascript"],
+    );
+    assert!(minimal.status.success());
+    assert!(!temp.path().join("knip.json").exists());
+    assert!(!temp.path().join("prettier.config.mjs").exists());
+}
+
+#[test]
+fn doctor_and_update_reject_a_newer_preset_catalog() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    assert!(
+        quality(
+            temp.path(),
+            &["preset", "apply", "minimal", "--only", "rust"]
+        )
+        .status
+        .success()
+    );
+    let metadata_path = temp.path().join(".quality-preset.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&metadata_path).unwrap()).unwrap();
+    metadata["catalog_version"] = serde_json::json!(3);
+    fs::write(
+        &metadata_path,
+        format!("{}\n", serde_json::to_string_pretty(&metadata).unwrap()),
+    )
+    .unwrap();
+
+    let doctor = quality(temp.path(), &["doctor", "--format", "json"]);
+    let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    assert_eq!(report["preset"]["state"], "incompatible");
+
+    let updated = quality(temp.path(), &["preset", "update"]);
+    assert_eq!(updated.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&updated.stderr).contains("upgrade quality"));
+}
+
+#[cfg(unix)]
+#[test]
+fn preset_setup_install_executes_supported_native_steps() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("lib.rs"), "pub fn value() {}\n").unwrap();
+    assert!(
+        quality(
+            temp.path(),
+            &["preset", "apply", "minimal", "--only", "rust"]
+        )
+        .status
+        .success()
+    );
+    let rustup = tools.path().join("rustup");
+    fs::write(
+        &rustup,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > native-setup-arguments.txt\n",
+    )
+    .unwrap();
+    fs::set_permissions(&rustup, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let setup = quality_with_path(temp.path(), &["preset", "setup", "--install"], tools.path());
+
+    assert!(setup.status.success());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("native-setup-arguments.txt")).unwrap(),
+        "component\nadd\nrustfmt\nclippy\n"
+    );
 }

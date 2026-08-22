@@ -18,6 +18,8 @@ description: Supported analyzers and the extension model for additional tools.
 | Astro | Astro Check | ✓ | — |
 | JavaScript/TypeScript | Prettier | ✓ | format |
 | Content | CSpell | ✓ | — |
+| Content | Codespell | ✓ | fix |
+| Content | Typos | ✓ | fix |
 | JavaScript/TypeScript | Knip | ✓ | — |
 | GitHub Actions | Actionlint | ✓ | — |
 
@@ -50,7 +52,8 @@ custom:
 
 Use `file_mode: append` to append changed source paths to configured arguments. Use `project` for analyzers that must inspect the whole repository.
 
-Supported parsers are `generic`, `eslint-json`, `swiftlint-json`, and `ktlint-json`. Generic diagnostics use:
+Supported parsers are `generic`, `codespell`, `eslint-json`, `swiftlint-json`,
+`ktlint-json`, and `typos-json`. Generic diagnostics use:
 
 ```text
 path/to/file:line:column: warning: Message (rule-id)

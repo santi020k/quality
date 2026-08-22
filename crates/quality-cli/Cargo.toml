@@ -10,7 +10,7 @@ publish = false
 keywords = ["lint", "swift", "kotlin", "android", "ci"]
 categories = ["command-line-utilities", "development-tools"]
 repository = "https://github.com/santi020k/quality"
-homepage = "https://quality-cli.santi020k.chatgpt.site"
+homepage = "https://quality.santi020k.com"
 
 [[bin]]
 name = "quality"
@@ -24,8 +24,7 @@ regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+tempfile = "3.20"
+wait-timeout = "0.2"
 walkdir = "2.5"
 which = "8.0"
-
-[dev-dependencies]
-tempfile = "3.20"

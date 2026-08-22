@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-preset.schema.json",
+  "title": "quality preset metadata",
+  "description": "Versioned ownership metadata for language-aware quality presets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "catalog_version",
+    "profile",
+    "ecosystems",
+    "gate",
+    "managed_files",
+    "dependencies"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://quality.santi020k.com/quality-preset.schema.json"
+    },
+    "schema_version": { "const": 1 },
+    "catalog_version": { "type": "integer", "minimum": 1 },
+    "profile": { "enum": ["minimal", "recommended", "strict"] },
+    "ecosystems": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["javascript", "python", "rust", "swift", "kotlin", "github-actions"]
+      }
+    },
+    "gate": { "enum": ["auto", "fast", "full"] },
+    "managed_files": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "not": { "pattern": "(^/|(^|/)\\.\\.(/|$))" }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^fnv1a64:[0-9a-f]{16}$"
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    }
+  }
+}

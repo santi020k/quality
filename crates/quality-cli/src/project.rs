@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use walkdir::{DirEntry, WalkDir};
 
 #[derive(Clone, Debug)]
@@ -20,12 +20,13 @@ impl Project {
         let mut relative_paths = BTreeSet::new();
         let mut directory_extensions = BTreeSet::new();
 
-        for entry in WalkDir::new(root)
-            .max_depth(6)
-            .into_iter()
-            .filter_entry(should_visit)
-            .filter_map(Result::ok)
-        {
+        for entry in WalkDir::new(root).into_iter().filter_entry(should_visit) {
+            let entry = entry.with_context(|| {
+                format!(
+                    "could not inspect project contents under {}",
+                    root.display()
+                )
+            })?;
             let path = entry.path();
             if entry.file_type().is_dir() {
                 if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
@@ -168,5 +169,35 @@ mod tests {
             vec![Path::new("apps/android/App.kt")]
         );
         assert!(project.contains_path(Path::new("apps/android/App.kt")));
+    }
+
+    #[test]
+    fn discovers_workspaces_deeper_than_six_levels() {
+        let temp = tempfile::tempdir().unwrap();
+        let nested = temp.path().join("groups/a/b/c/d/e/f/application");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("Cargo.toml"), "[package]\nname = \"deep\"\n").unwrap();
+
+        let project = Project::discover(temp.path()).unwrap();
+
+        assert!(project.has_file("Cargo.toml"));
+        assert_eq!(
+            project.paths_named("Cargo.toml").collect::<Vec<_>>(),
+            vec![Path::new("groups/a/b/c/d/e/f/application/Cargo.toml")]
+        );
+    }
+
+    #[test]
+    fn reports_project_traversal_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("does-not-exist");
+
+        let error = Project::discover(&missing).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("could not inspect project contents")
+        );
     }
 }

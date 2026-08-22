@@ -31,6 +31,7 @@ pub struct Invocation {
     pub parser: DiagnosticParser,
     pub required: bool,
     pub install_hint: String,
+    pub timeout_seconds: Option<u64>,
 }
 
 impl Tool {
@@ -183,13 +184,16 @@ impl Tool {
             args,
             env,
             parser: match self.id {
+                "codespell" => DiagnosticParser::Codespell,
                 "eslint" => DiagnosticParser::EslintJson,
                 "swiftlint" => DiagnosticParser::SwiftlintJson,
                 "ktlint" => DiagnosticParser::KtlintJson,
+                "typos" => DiagnosticParser::TyposJson,
                 _ => DiagnosticParser::Generic,
             },
             required: config.required.unwrap_or(true),
             install_hint: self.install_hint.to_owned(),
+            timeout_seconds: config.timeout_seconds,
         })
     }
 
@@ -265,6 +269,7 @@ impl Tool {
                     | "yml"
                     | "graphql"
             ),
+            "codespell" | "typos" => true,
             "cspell" => matches!(
                 extension,
                 "astro"
@@ -356,6 +361,13 @@ impl Tool {
                     || name.starts_with("cspell.config.")
                     || javascript_workspace_configuration(name)
             }
+            "codespell" => {
+                name == ".codespellrc" || name == "setup.cfg" || name == "pyproject.toml"
+            }
+            "typos" => matches!(
+                name,
+                "typos.toml" | "_typos.toml" | ".typos.toml" | "Cargo.toml" | "pyproject.toml"
+            ),
             "knip" => {
                 name == "package.json"
                     || name.starts_with("knip.json")
@@ -393,7 +405,7 @@ impl Tool {
                     );
                 }
             }
-            "swiftformat" | "eslint" | "prettier" | "cspell" => {
+            "swiftformat" | "eslint" | "prettier" | "cspell" | "codespell" | "typos" => {
                 args.retain(|arg| arg != ".");
                 args.extend(files.iter().map(|path| path.display().to_string()));
             }
@@ -415,7 +427,15 @@ impl Tool {
     fn scopes_changed_files(&self) -> bool {
         matches!(
             self.id,
-            "swiftlint" | "swiftformat" | "detekt" | "ktlint" | "eslint" | "prettier" | "cspell"
+            "swiftlint"
+                | "swiftformat"
+                | "detekt"
+                | "ktlint"
+                | "eslint"
+                | "prettier"
+                | "cspell"
+                | "codespell"
+                | "typos"
         )
     }
 }
@@ -480,6 +500,7 @@ pub fn task_invocation(
         install_hint: format!(
             "Install or configure the `{id}` command declared under `tasks` in quality.yml."
         ),
+        timeout_seconds: config.timeout_seconds,
     })
 }
 
@@ -572,6 +593,7 @@ pub fn external_invocation(
                 "Install or configure the `{id}` command declared under `custom` in quality.yml."
             )
         }),
+        timeout_seconds: config.timeout_seconds,
     })
 }
 
@@ -729,6 +751,26 @@ pub fn catalog() -> Vec<Tool> {
             fix_args: None,
         },
         Tool {
+            id: "codespell",
+            name: "Codespell",
+            executable: "codespell",
+            install_hint: "Install Codespell (`python3 -m pip install codespell`).",
+            detector: detects_codespell,
+            check_args: &["--quiet-level=2"],
+            format_args: None,
+            fix_args: Some(&["--quiet-level=2", "--write-changes"]),
+        },
+        Tool {
+            id: "typos",
+            name: "Typos",
+            executable: "typos",
+            install_hint: "Install Typos with Homebrew (`brew install typos-cli`) or Cargo (`cargo install typos-cli --locked`).",
+            detector: detects_typos,
+            check_args: &["--format", "json"],
+            format_args: None,
+            fix_args: Some(&["--write-changes"]),
+        },
+        Tool {
             id: "knip",
             name: "Knip",
             executable: "knip",
@@ -869,6 +911,28 @@ fn detects_cspell(project: &Project) -> bool {
         ]
         .iter()
         .any(|name| project.has_file(name))
+}
+
+fn detects_codespell(project: &Project) -> bool {
+    project.has_file(".codespellrc")
+        || project_file_contains(project, "setup.cfg", "[codespell]")
+        || project_file_contains(project, "pyproject.toml", "[tool.codespell]")
+}
+
+fn detects_typos(project: &Project) -> bool {
+    ["typos.toml", "_typos.toml", ".typos.toml"]
+        .iter()
+        .any(|name| project.has_file(name))
+        || project_file_contains(project, "Cargo.toml", "[workspace.metadata.typos]")
+        || project_file_contains(project, "Cargo.toml", "[package.metadata.typos]")
+        || project_file_contains(project, "pyproject.toml", "[tool.typos]")
+}
+
+fn project_file_contains(project: &Project, name: &str, section: &str) -> bool {
+    project.paths_named(name).any(|path| {
+        std::fs::read_to_string(project.root.join(path))
+            .is_ok_and(|contents| contents.lines().any(|line| line.trim() == section))
+    })
 }
 
 fn detects_knip(project: &Project) -> bool {
@@ -1183,6 +1247,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
         std::fs::write(temp.path().join("cspell.config.yaml"), "version: '0.2'\n").unwrap();
+        std::fs::write(temp.path().join(".codespellrc"), "[codespell]\n").unwrap();
+        std::fs::write(temp.path().join("_typos.toml"), "[default]\n").unwrap();
         std::fs::write(temp.path().join("knip.json"), "{}\n").unwrap();
         std::fs::write(
             temp.path().join(".github/workflows/actionlint.yml"),
@@ -1197,6 +1263,8 @@ mod tests {
             .collect();
 
         assert!(detected.contains(&"cspell"));
+        assert!(detected.contains(&"codespell"));
+        assert!(detected.contains(&"typos"));
         assert!(detected.contains(&"knip"));
         assert!(detected.contains(&"actionlint"));
     }
@@ -1227,6 +1295,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(invocation.args, vec!["--no-progress", "README.md"]);
+    }
+
+    #[test]
+    fn changed_spelling_adapters_receive_only_active_paths_and_support_fixes() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join(".codespellrc"), "[codespell]\n").unwrap();
+        std::fs::write(temp.path().join("_typos.toml"), "[default]\n").unwrap();
+        std::fs::write(temp.path().join("README.md"), "words\n").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let changes = ChangeSet {
+            base: "HEAD".to_owned(),
+            files: vec![PathBuf::from("README.md")],
+            deleted: Default::default(),
+        };
+
+        let tools = catalog();
+        let codespell = tools.iter().find(|tool| tool.id == "codespell").unwrap();
+        let typos = tools.iter().find(|tool| tool.id == "typos").unwrap();
+        assert_eq!(
+            codespell
+                .invocation(
+                    &project,
+                    &ToolConfig::default(),
+                    Operation::Check,
+                    Some(&changes),
+                )
+                .unwrap()
+                .args,
+            vec!["--quiet-level=2", "README.md"]
+        );
+        assert_eq!(
+            typos
+                .invocation(
+                    &project,
+                    &ToolConfig::default(),
+                    Operation::Check,
+                    Some(&changes),
+                )
+                .unwrap()
+                .args,
+            vec!["--format", "json", "README.md"]
+        );
+        assert_eq!(
+            codespell
+                .invocation(
+                    &project,
+                    &ToolConfig::default(),
+                    Operation::Fix,
+                    Some(&changes),
+                )
+                .unwrap()
+                .args,
+            vec!["--quiet-level=2", "--write-changes", "README.md"]
+        );
+        assert_eq!(
+            typos
+                .invocation(
+                    &project,
+                    &ToolConfig::default(),
+                    Operation::Fix,
+                    Some(&changes),
+                )
+                .unwrap()
+                .args,
+            vec!["--write-changes", "README.md"]
+        );
     }
 
     #[test]

@@ -45,6 +45,10 @@ export function checkArguments(inputs: {
   reportLevel: string;
   failLevel: string;
   sarif: string;
+  requireChecks: boolean;
+  jobs: string;
+  timeoutSeconds: string;
+  maxOutputBytes: string;
 }): string[] {
   const args = [
     "check",
@@ -55,9 +59,24 @@ export function checkArguments(inputs: {
     "--fail-level",
     inputs.failLevel,
   ];
+  if (inputs.requireChecks) args.push("--require-checks");
+  if (inputs.jobs) args.push("--jobs", inputs.jobs);
+  if (inputs.timeoutSeconds) args.push("--timeout-seconds", inputs.timeoutSeconds);
+  if (inputs.maxOutputBytes) args.push("--max-output-bytes", inputs.maxOutputBytes);
   if (inputs.sarif) args.push("--report", inputs.sarif);
   if (inputs.changedOnly && inputs.base) args.push("--changed", inputs.base);
   return args;
+}
+
+export function actionFailureMessage(exitCode: number, stderr: string): string {
+  if (exitCode === 1) return "quality found diagnostics at or above the configured failure level";
+  const detail = stderr
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return detail
+    ? `quality could not complete (exit ${exitCode}): ${detail}`
+    : `quality could not complete (exit ${exitCode})`;
 }
 
 export function resolveProjectPath(workspace: string, requested: string): string {

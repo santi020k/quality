@@ -1,12 +1,24 @@
 # quality
 
 `quality` is one fast, predictable code-quality workflow for repositories that
-contain Rust, Swift, Android/Kotlin, JavaScript, and Astro projects. It does not replace the
+contain Rust, Swift, Android/Kotlin, Python, JavaScript, and Astro projects. It does not replace the
 ecosystem's best analyzers. It detects, runs, and explains them through one CLI.
 
-Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
+Website and documentation: <https://quality.santi020k.com>
 
-> Status: `0.1.x` preview. The configuration format may change before the first
+[Documentation](https://quality.santi020k.com) ·
+[GitHub Action](#github-action) ·
+[Releases](https://github.com/santi020k/quality/releases) ·
+[Changelog](CHANGELOG.md) ·
+[Issues](https://github.com/santi020k/quality/issues) ·
+[Contributing](CONTRIBUTING.md)
+
+[![CI](https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/codeql.yml)
+[![GitHub release](https://img.shields.io/github/v/release/santi020k/quality)](https://github.com/santi020k/quality/releases/latest)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+> Status: `0.3.x` preview. The configuration format may change before the first
 > stable release.
 
 ## GitHub Action
@@ -16,9 +28,9 @@ Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v0.3.0
+- uses: santi020k/quality@v0.3.1
   with:
-    version: v0.3.0
+    version: v0.3.1
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -56,6 +68,12 @@ Quality checks passed (5 tools).
 Checks run concurrently by default. Use `--fail-fast` when a quick first
 failure is more useful than the complete report.
 
+Bound resource use with `--jobs`, configure per-adapter `timeout_seconds`, or
+override all timeouts with `--timeout-seconds`. Each analyzer retains at most
+1 MiB of combined output by default; change it with `--max-output-bytes`.
+CI can use `--require-checks` to prevent an empty policy from passing while
+changed-file runs may still skip every configured adapter when no input applies.
+
 ## Install for development
 
 ```bash
@@ -67,7 +85,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.3.0
+  | sh -s -- santi020k/quality v0.3.1
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -80,9 +98,14 @@ quality init            # Write an explicit policy based on detected files
 quality init --dry-run  # Preview adoption without writing quality.yml
 quality init --gate fast # Prefer the repository's fast local gate
 quality init --gate full # Prefer the repository's complete gate
+quality preset list      # Compare built-in setup profiles
+quality preset apply recommended --dry-run # Preview language configs and dependencies
+quality preset apply recommended # Generate configs without overwriting existing files
+quality preset apply strict --install # Generate strict configs and install pinned JS tools
 quality doctor          # Explain what is enabled, installed, or missing
 quality check           # Run applicable linters concurrently
 quality --root ~/Projects repositories audit # Audit a folder of repositories
+quality --root ~/Projects repositories audit --fail-on invalid,missing-configuration # Enforce audit findings in CI
 quality --root ~/Projects repositories apply # Configure missing repositories
 quality format          # Run applicable formatters
 quality format --check  # Check formatting without modifying files
@@ -91,6 +114,8 @@ quality baseline create # Record existing findings and block new regressions
 quality completions zsh # Generate native shell completions
 quality instructions --format agents # Print a section for a repository AGENTS.md
 quality ci github --install '…' # Generate a runnable GitHub Actions workflow
+quality hooks install   # Install the Git hooks declared in quality.yml
+quality hooks status    # Verify that every configured hook is installed
 ```
 
 For quick local feedback, scope checks, formatting, or fixes to Git changes:
@@ -149,8 +174,72 @@ quality check --format github --report artifacts/quality.sarif
 | Astro | Astro Check | yes | — |
 | JavaScript/TypeScript | Prettier | yes | yes |
 | Content | CSpell | yes | — |
+| Content | Codespell | yes | fix |
+| Content | Typos | yes | fix |
 | JavaScript/TypeScript | Knip | yes | — |
 | GitHub Actions | Actionlint | yes | — |
+
+## Language-aware presets
+
+Presets can bootstrap the analyzer configuration that `quality` runs. They are
+explicit generators: the resulting files and pinned dependency command remain
+visible in the repository, and no preset logic participates in the checking
+path.
+
+```bash
+quality preset list
+quality preset show recommended
+quality preset apply recommended --dry-run
+quality preset apply recommended
+quality preset diff
+quality preset update --dry-run
+quality preset setup
+```
+
+`minimal` installs the essential ecosystem checks, `recommended` adds balanced
+formatting, spelling, and unused-code policy, and `strict` tightens thresholds
+and promotes warnings where the underlying analyzer supports it. JavaScript
+presets use `@santi020k/eslint-config-basic`: minimal selects its `basic`
+preset, recommended uses its recommended severity mode, and strict selects
+`pedantic` mode.
+
+Generation supports JavaScript/TypeScript/Astro, Python, Rust, Swift,
+Kotlin/Android, and GitHub Actions. Limit an application with `--only`, preview
+all proposed contents with `--dry-run`, or explicitly replace differing
+generated targets with `--force`:
+
+```bash
+quality preset apply strict --only rust,github-actions
+quality preset apply minimal --only javascript
+```
+
+JavaScript dependencies are pinned in the displayed install command. Pass
+`--install` to run that command with the package manager declared by the root
+project. Explicit framework packs are selected for detected Angular, Astro,
+Expo, Hono, Lit, Nest, Next, Nuxt, Preact, Qwik, React, React Router, Slidev,
+Solid, Svelte, TanStack Start, Vite, and Vue projects.
+
+Each application records its catalog version, profile, ecosystems, managed
+file fingerprints, and dependency pins in `.quality-preset.json`. Use
+`quality preset diff` to detect catalog updates, dependency drift, or edited
+files, then `quality preset update --dry-run` and `quality preset update` to
+refresh untouched generated output. `quality doctor` reports current,
+update-available, and incompatible preset states.
+
+Preset updates merge tool policy into `quality.yml` without removing existing
+tasks, hooks, or custom adapters. Kotlin rules use a marked managed block in
+`.editorconfig`, leaving unrelated editor settings intact. Whole generated
+files are replaced only while their recorded fingerprint proves they were not
+edited, unless `--force` is explicitly supplied.
+
+Run `quality preset setup` for platform-aware Python, Rust, Swift, Kotlin,
+Android, spelling, and Actionlint setup guidance. Add `--install` to execute
+supported commands.
+
+Presets select one spelling adapter: CSpell for JavaScript repositories,
+Codespell for Python repositories, and Typos for other recommended or strict
+native-language repositories. Explicit `quality.yml` configuration can enable
+a different combination.
 
 The adapters use repository-local executables where that is conventional:
 `./gradlew` for Android and `node_modules/.bin` for JavaScript. Other tools are
@@ -181,8 +270,9 @@ custom:
 
 With `file_mode: append`, changed source paths are appended to the configured
 arguments. Use `project` for analyzers that must always inspect the whole
-project. Supported parsers are `generic`, `eslint-json`, `swiftlint-json`, and
-`ktlint-json`. Generic diagnostics use the familiar format:
+project. Supported parsers are `generic`, `codespell`, `eslint-json`,
+`swiftlint-json`, `ktlint-json`, and `typos-json`. Generic diagnostics use the
+familiar format:
 
 ```text
 path/to/file:line:column: warning: Message (rule-id)
@@ -297,7 +387,7 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v0.3.0` is pushed.
+macOS, and Windows whenever a version tag such as `v0.3.1` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -307,7 +397,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.3.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.3.1 --locked'
 ```
 
 ## Design direction

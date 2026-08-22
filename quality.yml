@@ -1,19 +1,25 @@
-# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json
-# quality.yml — this repository validates itself with its public CLI.
+# yaml-language-server: $schema=https://quality.santi020k.com/quality.schema.json
+# cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint
+# quality.yml — one code-quality workflow for this repository
+# Preset-managed tools are merged with repository-owned tasks, hooks, and custom adapters.
+# Generated from the `recommended` preset; rerun `quality preset update` to refresh it.
 version: 1
 output: pretty
 baseline: .quality-baseline.json
 tools:
-  cargo-fmt:
+  actionlint:
+    enabled: true
+    required: true
+  astro-check:
     enabled: true
     required: true
   cargo-clippy:
     enabled: true
     required: true
-  actionlint:
+  cargo-fmt:
     enabled: true
     required: true
-  astro-check:
+  cspell:
     enabled: true
     required: true
   eslint:
@@ -24,7 +30,34 @@ tasks:
   action-typecheck:
     name: GitHub Action type-check
     command: pnpm
+    args:
+    - run
+    - check
     working_directory: packages/action
-    args: [run, check]
-    extensions: [ts]
-    config_files: [package.json, tsconfig.json, pnpm-lock.yaml]
+    required: true
+    extensions:
+    - ts
+    config_files:
+    - package.json
+    - tsconfig.json
+    - pnpm-lock.yaml
+    parser: generic
+hooks:
+  commit-msg:
+    steps:
+    - name: Validate commit message
+      command: pnpm
+      args:
+      - exec
+      - commitprompt
+      - validate
+      - --input
+      pass_hook_args: true
+  pre-push:
+    steps:
+    - name: Run release validation
+      command: pnpm
+      args:
+      - run
+      - pre-push
+      pass_hook_args: false

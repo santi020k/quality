@@ -2,6 +2,6 @@
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-	site: 'https://quality-cli.santi020k.chatgpt.site',
+	site: 'https://quality.santi020k.com',
 	outDir: './.astro-dist',
 });

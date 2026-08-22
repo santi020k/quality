@@ -24,6 +24,18 @@ inputs:
   fail-level:
     description: Lowest severity that fails the action (info, warning, or error).
     default: warning
+  require-checks:
+    description: Fail when the project has no configured check adapters.
+    default: "true"
+  jobs:
+    description: Maximum analyzer processes to run concurrently; empty uses available parallelism.
+    required: false
+  timeout-seconds:
+    description: Override the timeout for every adapter; empty uses per-adapter configuration.
+    required: false
+  max-output-bytes:
+    description: Maximum bytes retained from each analyzer's combined output.
+    default: "1048576"
   sarif:
     description: Path for the SARIF report, or an empty string to disable it.
     default: quality.sarif

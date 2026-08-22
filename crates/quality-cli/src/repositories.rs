@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::cli::{AdoptionFormat, RepositoriesCommand};
+use crate::cli::{AdoptionFormat, AuditFailureCondition, RepositoriesCommand};
 use crate::config::{self, Config};
 use crate::project::Project;
 use crate::{runner, tools};
@@ -41,13 +41,24 @@ struct AdoptionSummary {
 }
 
 pub fn run(parent: &Path, command: RepositoriesCommand) -> Result<()> {
-    let (apply, dry_run, format) = match command {
-        RepositoriesCommand::Audit { format } => (false, true, format),
-        RepositoriesCommand::Apply { dry_run, format } => (true, dry_run, format),
+    let (apply, dry_run, format, fail_on) = match command {
+        RepositoriesCommand::Audit { format, fail_on } => (false, true, format, fail_on),
+        RepositoriesCommand::Apply { dry_run, format } => (true, dry_run, format, Vec::new()),
     };
     let report = inspect(parent, apply, dry_run)?;
     print_report(&report, format)?;
+    if audit_failed(&report, &fail_on) {
+        std::process::exit(1);
+    }
     Ok(())
+}
+
+fn audit_failed(report: &AdoptionReport, fail_on: &[AuditFailureCondition]) -> bool {
+    fail_on.iter().any(|condition| match condition {
+        AuditFailureCondition::Invalid => report.summary.invalid > 0,
+        AuditFailureCondition::MissingConfiguration => report.summary.needs_configuration > 0,
+        AuditFailureCondition::MissingToolchain => report.summary.missing_toolchains > 0,
+    })
 }
 
 fn inspect(parent: &Path, apply: bool, dry_run: bool) -> Result<AdoptionReport> {
