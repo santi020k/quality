@@ -374,3 +374,7 @@ See [`playground/README.md`](playground/README.md) for the complete walkthrough.
 
 Run `pnpm playground:verify` to create a temporary sandbox and verify the whole
 playground workflow automatically.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -1,5 +1,11 @@
 # @quality/action
 
+## 0.3.1
+
+### Patch Changes
+
+- [#22](https://github.com/santi020k/quality/pull/22) [`745e38f`](https://github.com/santi020k/quality/commit/745e38ffc5ea87eca373f92bd83ebc80759b49ea) Thanks [@santi020k](https://github.com/santi020k)! - Identify each missing required toolchain in multi-repository adoption reports so rollout problems are actionable in both pretty and JSON output.
+
 ## 0.3.0
 
 ### Minor Changes

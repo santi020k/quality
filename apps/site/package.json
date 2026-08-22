@@ -1,7 +1,7 @@
 {
   "name": "@quality/site",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "scripts": {
     "prebuild": "node scripts/generate-og-images.mjs",
     "dev": "astro dev",
