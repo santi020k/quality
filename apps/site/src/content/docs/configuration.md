@@ -5,6 +5,9 @@ description: Configure built-in and external quality analyzers.
 
 Configuration lives in `quality.yml` at the repository root.
 
+`quality init` adds a YAML language-server comment that points compatible
+editors to the published [`quality.yml` JSON Schema](/quality.schema.json).
+
 ```yaml
 version: 1
 output: pretty
@@ -23,6 +26,7 @@ tools:
 Each built-in adapter accepts:
 
 - `enabled`: include or exclude the tool
+- `check`: participate in `quality check`; set false to retain format and fix operations
 - `required`: fail if its executable is unavailable
 - `command`: override executable resolution
 - `working_directory`: run from a repository-relative workspace directory
@@ -67,6 +71,12 @@ Tasks run concurrently with built-in and custom adapters. Set
 `working_directory` for a workspace-specific command. When `extensions` or
 `config_files` are present, changed-file mode skips the task unless one of
 those inputs changed. With neither field, the task always runs.
+
+During initialization, a canonical root package script is added as
+`repository-check` when available. Detected analyzers receive `check: false`
+so that script remains the source of truth without sacrificing `quality
+format` or `quality fix`. If no composite script exists, `typecheck` or
+`type-check` is imported separately and analyzers continue to check normally.
 
 ## Validation
 

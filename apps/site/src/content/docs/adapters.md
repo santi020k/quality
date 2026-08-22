@@ -17,6 +17,9 @@ description: Supported analyzers and the extension model for additional tools.
 | JavaScript/TypeScript | ESLint | ✓ | fix |
 | Astro | Astro Check | ✓ | — |
 | JavaScript/TypeScript | Prettier | ✓ | format |
+| Content | CSpell | ✓ | — |
+| JavaScript/TypeScript | Knip | ✓ | — |
+| GitHub Actions | Actionlint | ✓ | — |
 
 Cargo workspaces, Astro applications, Swift packages, Xcode projects, and
 Android Gradle wrappers are located independently. In a monorepo, each adapter

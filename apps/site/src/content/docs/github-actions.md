@@ -60,11 +60,13 @@ quality ci github --install \
 The generated workflow:
 
 1. Checks out complete Git history for change detection.
-2. Installs `quality` using the command you supplied.
-3. Runs `quality doctor` to expose environment problems.
-4. Checks pull-request changes against the base branch.
-5. Emits native GitHub annotations.
-6. Uploads a SARIF report to code scanning.
+2. Selects macOS for Swift repositories and Linux otherwise.
+3. Sets up the detected package manager and installs frozen dependencies.
+4. Sets up detected Rust, Java/Gradle, SwiftLint, SwiftFormat, and Actionlint requirements.
+5. Installs `quality` using the command you supplied.
+6. Runs `quality doctor` to expose environment problems.
+7. Checks pull-request changes against the base branch.
+8. Emits native GitHub annotations and uploads SARIF to code scanning.
 
 ## Cost-aware CI
 

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json
 # quality.yml — this repository validates itself with its public CLI.
 version: 1
 output: pretty
@@ -9,6 +10,9 @@ tools:
   cargo-clippy:
     enabled: true
     required: true
+  actionlint:
+    enabled: true
+    required: true
   astro-check:
     enabled: true
     required: true
@@ -17,11 +21,6 @@ tools:
   prettier:
     enabled: false
 tasks:
-  actionlint:
-    name: GitHub Actions
-    command: actionlint
-    extensions: [yml, yaml]
-    config_files: [.github/workflows]
   action-typecheck:
     name: GitHub Action type-check
     command: pnpm

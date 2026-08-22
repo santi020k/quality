@@ -26,6 +26,18 @@ Without a base, `quality` includes staged, unstaged, and untracked files. With a
 
 Configuration changes trigger the corresponding full analyzer because a rules change can affect files that were not edited. Project-wide analyzers also retain their required project scope.
 
+Deleted paths participate in relevance checks. Deleting an analyzer
+configuration triggers a full run, and deleting a source file still triggers
+matching project-wide tasks and analyzers. File-scoped tools receive only paths
+that still exist, so a deleted file is never passed to an executable.
+
+Adapter selection composes with changed-file mode:
+
+```bash
+quality check --changed origin/main --only eslint,astro-check
+quality format --changed --exclude swiftformat
+```
+
 ## Baseline an existing repository
 
 Create a baseline after verifying every required tool is installed and runs successfully:

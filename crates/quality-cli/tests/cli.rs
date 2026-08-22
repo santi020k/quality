@@ -35,6 +35,8 @@ fn initialize_git(root: &std::path::Path) {
 fn init_detects_a_mixed_mobile_project() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    fs::write(temp.path().join(".swiftlint.yml"), "\n").unwrap();
+    fs::write(temp.path().join(".swiftformat"), "\n").unwrap();
     fs::write(temp.path().join("MainActivity.kt"), "class MainActivity\n").unwrap();
     fs::write(temp.path().join("AndroidManifest.xml"), "<manifest />\n").unwrap();
     fs::write(temp.path().join("detekt.yml"), "build: {}\n").unwrap();
@@ -58,6 +60,98 @@ fn init_detects_a_mixed_mobile_project() {
 }
 
 #[test]
+fn init_preserves_the_canonical_repository_check() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "packageManager":"pnpm@11.0.0",
+            "scripts":{"verify":"pnpm run lint && pnpm run typecheck"},
+            "devDependencies":{"eslint":"9.0.0"}
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("eslint:"));
+    assert!(config.contains("check: false"));
+    assert!(config.contains("repository-check:"));
+    assert!(config.contains("name: Repository check (verify)"));
+    assert!(config.contains("command: pnpm"));
+    assert!(config.contains("- verify"));
+}
+
+#[test]
+fn init_does_not_import_a_recursive_quality_script() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "scripts":{
+                "validate":"pnpm run check",
+                "check":"cargo run --package quality-cli -- check"
+            },
+            "devDependencies":{"eslint":"9.0.0"}
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(!config.contains("repository-check:"));
+    assert!(!config.contains("check: false"));
+}
+
+#[test]
+fn init_imports_typecheck_when_there_is_no_composite_gate() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "packageManager":"yarn@4.0.0",
+            "scripts":{"type-check":"turbo type-check"},
+            "devDependencies":{"eslint":"9.0.0"}
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("typecheck:"));
+    assert!(config.contains("name: TypeScript"));
+    assert!(config.contains("command: yarn"));
+    assert!(config.contains("- type-check"));
+    assert!(!config.contains("check: false"));
+}
+
+#[test]
+fn init_dry_run_previews_without_writing_or_replacing_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"devDependencies":{"eslint":"9.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(temp.path().join("quality.yml"), "existing: true\n").unwrap();
+
+    let output = quality(temp.path(), &["init", "--dry-run"]);
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("eslint:"));
+    assert_eq!(
+        fs::read_to_string(temp.path().join("quality.yml")).unwrap(),
+        "existing: true\n"
+    );
+}
+
+#[test]
 fn configuration_typos_are_rejected_with_a_suggestion() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(
@@ -70,6 +164,19 @@ fn configuration_typos_are_rejected_with_a_suggestion() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("unknown tool `swfitlint`"));
+    assert!(stderr.contains("Did you mean `swiftlint`?"));
+}
+
+#[test]
+fn adapter_selection_typos_are_rejected_with_a_suggestion() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+
+    let output = quality(temp.path(), &["check", "--only", "swfitlint"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown adapter `swfitlint`"));
     assert!(stderr.contains("Did you mean `swiftlint`?"));
 }
 
@@ -98,6 +205,23 @@ fn completions_are_generated_without_project_discovery() {
         .unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("complete -c quality"));
+}
+
+#[test]
+fn agent_instructions_are_generated_without_project_discovery() {
+    let missing_root = "/definitely/not/a/quality/project";
+    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(missing_root)
+        .args(["instructions", "--format", "agents"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.starts_with("## Code quality\n"));
+    assert!(stdout.contains("`quality check` before handoff"));
+    assert!(stdout.contains("Do not bypass configured checks"));
 }
 
 #[test]
@@ -387,6 +511,77 @@ fn changed_mode_passes_only_relevant_files_to_eslint() {
 
 #[cfg(unix)]
 #[test]
+fn changed_mode_runs_full_analyzer_when_configuration_is_deleted() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("app.ts"), "const value = 1;\n").unwrap();
+    fs::write(temp.path().join("eslint.config.js"), "export default [];\n").unwrap();
+    let tools_dir = temp.path().join("node_modules/.bin");
+    fs::create_dir_all(&tools_dir).unwrap();
+    let fake = tools_dir.join("eslint");
+    fs::write(&fake, "#!/bin/sh\nprintf '%s' \"$*\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  eslint:\n    enabled: true\n  prettier:\n    enabled: false\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::remove_file(temp.path().join("eslint.config.js")).unwrap();
+
+    let output = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["scope"]["files"], 1);
+    let command = report["results"][0]["command"].as_str().unwrap();
+    assert!(command.ends_with(". --format json"));
+    assert!(!command.contains("eslint.config.js"));
+}
+
+#[cfg(unix)]
+#[test]
+fn changed_mode_never_passes_deleted_sources_to_file_scoped_tools() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("live.ts"), "const live = 1;\n").unwrap();
+    fs::write(temp.path().join("deleted.ts"), "const removed = 1;\n").unwrap();
+    let tools_dir = temp.path().join("node_modules/.bin");
+    fs::create_dir_all(&tools_dir).unwrap();
+    let fake = tools_dir.join("eslint");
+    fs::write(&fake, "#!/bin/sh\nprintf '%s' \"$*\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  eslint:\n    enabled: true\n  prettier:\n    enabled: false\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::write(temp.path().join("live.ts"), "const live = 2;\n").unwrap();
+    fs::remove_file(temp.path().join("deleted.ts")).unwrap();
+
+    let output = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["scope"]["files"], 2);
+    let command = report["results"][0]["command"].as_str().unwrap();
+    assert!(command.ends_with("--format json live.ts"));
+    assert!(!command.contains("deleted.ts"));
+}
+
+#[cfg(unix)]
+#[test]
 fn changed_astro_files_run_eslint_and_lockfiles_expand_to_full_scope() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -556,6 +751,93 @@ fn repository_tasks_run_in_their_workspace_and_honor_change_filters() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn repository_tasks_run_when_a_relevant_source_is_deleted() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("app.ts"), "export const value = 1;\n").unwrap();
+    let command = temp.path().join("typecheck.sh");
+    fs::write(&command, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = fs::metadata(&command).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&command, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools: {}\ntasks:\n  typecheck:\n    command: ./typecheck.sh\n    extensions: [ts]\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::remove_file(temp.path().join("app.ts")).unwrap();
+
+    let output = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["results"][0]["tool"], "typecheck");
+    assert_eq!(report["scope"]["files"], 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn adapter_selection_filters_all_operations_and_reports_scope() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("widget.acme"), "content\n").unwrap();
+    for id in ["alpha", "beta"] {
+        let command = temp.path().join(id);
+        fs::write(&command, "#!/bin/sh\nprintf '%s' \"$*\"\n").unwrap();
+        let mut permissions = fs::metadata(&command).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(command, permissions).unwrap();
+    }
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools: {}\ncustom:\n  alpha:\n    command: ./alpha\n    extensions: [acme]\n    check_args: [check]\n    format_check_args: [format-check]\n    format_args: [format]\n    fix_args: [fix]\n  beta:\n    command: ./beta\n    extensions: [acme]\n    check_args: [check]\n    format_check_args: [format-check]\n    format_args: [format]\n    fix_args: [fix]\n",
+    )
+    .unwrap();
+
+    let checked = quality(
+        temp.path(),
+        &["check", "--only", "alpha,alpha", "--format", "json"],
+    );
+    assert!(checked.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["results"].as_array().unwrap().len(), 1);
+    assert_eq!(report["results"][0]["tool"], "alpha");
+    assert_eq!(report["scope"]["only"], serde_json::json!(["alpha"]));
+
+    let formatted = quality(
+        temp.path(),
+        &["format", "--exclude", "beta", "--format", "json"],
+    );
+    assert!(formatted.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&formatted.stdout).unwrap();
+    assert_eq!(report["results"].as_array().unwrap().len(), 1);
+    assert_eq!(report["results"][0]["tool"], "alpha");
+    assert_eq!(report["scope"]["exclude"], serde_json::json!(["beta"]));
+    assert!(
+        report["results"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("format")
+    );
+
+    let fixed = quality(temp.path(), &["fix", "--only", "beta", "--format", "sarif"]);
+    assert!(fixed.status.success());
+    let sarif: serde_json::Value = serde_json::from_slice(&fixed.stdout).unwrap();
+    assert_eq!(sarif["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(sarif["runs"][0]["tool"]["driver"]["name"], "beta");
+    assert_eq!(
+        sarif["runs"][0]["properties"]["qualityScope"]["only"],
+        serde_json::json!(["beta"])
+    );
+}
+
 #[test]
 fn changed_mode_requires_a_git_repository() {
     let temp = tempfile::tempdir().unwrap();
@@ -688,11 +970,108 @@ fn ci_generates_a_workflow_without_overwriting_by_default() {
     assert!(workflow_text.contains("quality check --format github --report quality.sarif"));
     assert!(workflow_text.contains("upload-sarif"));
     assert!(workflow_text.contains(install));
+    assert!(workflow_text.contains("runs-on: ubuntu-latest"));
+    assert!(workflow_text.contains("dtolnay/rust-toolchain"));
     assert!(!workflow_text.contains("__QUALITY_INSTALL_COMMAND__"));
+    assert!(!workflow_text.contains("__QUALITY_RUNNER__"));
+    assert!(!workflow_text.contains("__QUALITY_PROJECT_SETUP__"));
+    let _: serde_yaml::Value = serde_yaml::from_str(&workflow_text).unwrap();
 
     let second = quality(temp.path(), &["ci", "github", "--install", install]);
     assert_eq!(second.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&second.stderr).contains("--force"));
+}
+
+#[test]
+fn ci_generates_pnpm_setup_and_dependency_installation() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("package.json"), "{}\n").unwrap();
+    fs::write(
+        temp.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &[
+            "ci",
+            "github",
+            "--install",
+            "curl -fsSL https://example.test/install | sh",
+        ],
+    );
+
+    assert!(output.status.success());
+    let workflow = fs::read_to_string(temp.path().join(".github/workflows/quality.yml")).unwrap();
+    assert!(workflow.contains("pnpm/action-setup"));
+    assert!(workflow.contains("cache: pnpm"));
+    assert!(workflow.contains("pnpm install --frozen-lockfile"));
+    assert!(!workflow.contains("dtolnay/rust-toolchain"));
+    let _: serde_yaml::Value = serde_yaml::from_str(&workflow).unwrap();
+}
+
+#[test]
+fn ci_uses_macos_and_installs_configured_swift_tools() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("Package.swift"),
+        "// swift-tools-version: 6.0\n",
+    )
+    .unwrap();
+    fs::write(temp.path().join("Sources.swift"), "struct App {}\n").unwrap();
+    fs::write(temp.path().join(".swiftlint.yml"), "\n").unwrap();
+    fs::write(temp.path().join(".swiftformat"), "\n").unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["ci", "github", "--install", "./install-quality"],
+    );
+
+    assert!(output.status.success());
+    let workflow = fs::read_to_string(temp.path().join(".github/workflows/quality.yml")).unwrap();
+    assert!(workflow.contains("runs-on: macos-latest"));
+    assert!(workflow.contains("brew install swiftlint"));
+    assert!(workflow.contains("brew install swiftformat"));
+}
+
+#[test]
+fn ci_keeps_incidental_swift_sources_on_linux() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("NativeBridge.swift"),
+        "struct NativeBridge {}\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["ci", "github", "--install", "./install-quality"],
+    );
+
+    assert!(output.status.success());
+    let workflow = fs::read_to_string(temp.path().join(".github/workflows/quality.yml")).unwrap();
+    assert!(workflow.contains("runs-on: ubuntu-latest"));
+}
+
+#[test]
+fn ci_installs_actionlint_when_the_repository_uses_it() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/actionlint.yml"),
+        "name: actionlint\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["ci", "github", "--install", "./install-quality"],
+    );
+
+    assert!(output.status.success());
+    let workflow = fs::read_to_string(temp.path().join(".github/workflows/quality.yml")).unwrap();
+    assert!(workflow.contains("go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12"));
 }
 
 #[test]
@@ -713,7 +1092,11 @@ fn first_run_init_doctor_and_check_work_without_global_tools() {
     use std::os::unix::fs::PermissionsExt;
 
     let temp = tempfile::tempdir().unwrap();
-    fs::write(temp.path().join("package.json"), "{}\n").unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"devDependencies":{"eslint":"9.0.0","prettier":"3.0.0"}}"#,
+    )
+    .unwrap();
     let bin = temp.path().join("node_modules/.bin");
     fs::create_dir_all(&bin).unwrap();
     fs::write(bin.join("eslint"), "#!/bin/sh\necho '[]'\n").unwrap();

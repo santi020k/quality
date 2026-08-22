@@ -59,7 +59,7 @@ impl Tool {
         changes: Option<&ChangeSet>,
     ) -> Vec<Invocation> {
         let enabled = config.enabled.unwrap_or_else(|| self.detect(project));
-        if !enabled {
+        if !enabled || (matches!(operation, Operation::Check) && config.check == Some(false)) {
             return Vec::new();
         }
 
@@ -110,6 +110,14 @@ impl Tool {
                 .filter(|path| self.accepts_changed_path(path))
                 .map(Path::to_path_buf)
                 .collect();
+            let active_relevant: Vec<_> = relevant
+                .iter()
+                .filter(|path| {
+                    let repository_path = workspace.join(path);
+                    !changes.is_deleted(&repository_path)
+                })
+                .cloned()
+                .collect();
             let configuration_changed = changes
                 .files
                 .iter()
@@ -118,7 +126,10 @@ impl Tool {
                 return None;
             }
             if !customized && !configuration_changed {
-                self.scope_args(&working_directory, &relevant, &mut args, &mut env);
+                if active_relevant.is_empty() && self.scopes_changed_files() {
+                    return None;
+                }
+                self.scope_args(&working_directory, &active_relevant, &mut args, &mut env);
             }
         }
 
@@ -129,7 +140,10 @@ impl Tool {
                     return wrapper;
                 }
             }
-            if matches!(self.id, "eslint" | "prettier" | "astro-check") {
+            if matches!(
+                self.id,
+                "eslint" | "prettier" | "astro-check" | "cspell" | "knip"
+            ) {
                 let local = working_directory
                     .join("node_modules/.bin")
                     .join(self.executable);
@@ -247,6 +261,38 @@ impl Tool {
                     | "yml"
                     | "graphql"
             ),
+            "cspell" => matches!(
+                extension,
+                "astro"
+                    | "css"
+                    | "graphql"
+                    | "html"
+                    | "java"
+                    | "js"
+                    | "json"
+                    | "jsx"
+                    | "kt"
+                    | "kts"
+                    | "md"
+                    | "mdx"
+                    | "mjs"
+                    | "rs"
+                    | "scss"
+                    | "swift"
+                    | "ts"
+                    | "tsx"
+                    | "vue"
+                    | "yaml"
+                    | "yml"
+            ),
+            "knip" => matches!(
+                extension,
+                "astro" | "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts"
+            ),
+            "actionlint" => {
+                matches!(extension, "yml" | "yaml")
+                    && path.starts_with(Path::new(".github/workflows"))
+            }
             _ => false,
         }
     }
@@ -298,6 +344,26 @@ impl Tool {
                     || name.starts_with("prettier.config.")
                     || javascript_workspace_configuration(name)
             }
+            "cspell" => {
+                name == "package.json"
+                    || name == "cspell.json"
+                    || name == "cspell.yaml"
+                    || name == "cspell.yml"
+                    || name.starts_with("cspell.config.")
+                    || javascript_workspace_configuration(name)
+            }
+            "knip" => {
+                name == "package.json"
+                    || name.starts_with("knip.json")
+                    || name.starts_with("knip.config.")
+                    || javascript_workspace_configuration(name)
+            }
+            "actionlint" => {
+                matches!(
+                    name,
+                    "actionlint.yaml" | "actionlint.yml" | ".actionlint.yaml" | ".actionlint.yml"
+                )
+            }
             _ => false,
         }
     }
@@ -323,7 +389,7 @@ impl Tool {
                     );
                 }
             }
-            "swiftformat" | "eslint" | "prettier" => {
+            "swiftformat" | "eslint" | "prettier" | "cspell" => {
                 args.retain(|arg| arg != ".");
                 args.extend(files.iter().map(|path| path.display().to_string()));
             }
@@ -340,6 +406,13 @@ impl Tool {
             "android-lint" | "cargo-fmt" | "cargo-clippy" | "astro-check" => {}
             _ => {}
         }
+    }
+
+    fn scopes_changed_files(&self) -> bool {
+        matches!(
+            self.id,
+            "swiftlint" | "swiftformat" | "detekt" | "ktlint" | "eslint" | "prettier" | "cspell"
+        )
     }
 }
 
@@ -445,6 +518,14 @@ pub fn external_invocation(
             .filter(|path| external_accepts_path(path, config))
             .map(Path::to_path_buf)
             .collect();
+        let active_relevant: Vec<_> = relevant
+            .iter()
+            .filter(|path| {
+                let repository_path = workspace.join(path);
+                !changes.is_deleted(&repository_path)
+            })
+            .cloned()
+            .collect();
         let configuration_changed = changes
             .files
             .iter()
@@ -462,7 +543,14 @@ pub fn external_invocation(
             return None;
         }
         if !configuration_changed && matches!(config.file_mode, ExternalFileMode::Append) {
-            args.extend(relevant.iter().map(|path| path.display().to_string()));
+            if active_relevant.is_empty() {
+                return None;
+            }
+            args.extend(
+                active_relevant
+                    .iter()
+                    .map(|path| path.display().to_string()),
+            );
         }
     }
 
@@ -551,7 +639,7 @@ pub fn catalog() -> Vec<Tool> {
             name: "SwiftLint",
             executable: "swiftlint",
             install_hint: "Install SwiftLint with Homebrew (`brew install swiftlint`) or a SwiftPM plugin.",
-            detector: detects_swift,
+            detector: detects_swiftlint,
             check_args: &["lint", "--quiet", "--reporter", "json"],
             format_args: None,
             fix_args: Some(&["--fix"]),
@@ -561,7 +649,7 @@ pub fn catalog() -> Vec<Tool> {
             name: "SwiftFormat",
             executable: "swiftformat",
             install_hint: "Install SwiftFormat with Homebrew (`brew install swiftformat`) or a SwiftPM plugin.",
-            detector: detects_swift,
+            detector: detects_swiftformat,
             check_args: &["--lint", "."],
             format_args: Some(&["."]),
             fix_args: Some(&["."]),
@@ -601,7 +689,7 @@ pub fn catalog() -> Vec<Tool> {
             name: "ESLint",
             executable: "eslint",
             install_hint: "Install ESLint in the repository (`npm install --save-dev eslint`).",
-            detector: detects_javascript,
+            detector: detects_eslint,
             check_args: &[".", "--format", "json"],
             format_args: None,
             fix_args: Some(&[".", "--fix"]),
@@ -621,12 +709,54 @@ pub fn catalog() -> Vec<Tool> {
             name: "Prettier",
             executable: "prettier",
             install_hint: "Install Prettier in the repository (`npm install --save-dev prettier`).",
-            detector: detects_javascript,
+            detector: detects_prettier,
             check_args: &[".", "--check"],
             format_args: Some(&[".", "--write"]),
             fix_args: Some(&[".", "--write"]),
         },
+        Tool {
+            id: "cspell",
+            name: "CSpell",
+            executable: "cspell",
+            install_hint: "Install CSpell in the repository (`npm install --save-dev cspell`).",
+            detector: detects_cspell,
+            check_args: &["--no-progress", "."],
+            format_args: None,
+            fix_args: None,
+        },
+        Tool {
+            id: "knip",
+            name: "Knip",
+            executable: "knip",
+            install_hint: "Install Knip in the repository (`npm install --save-dev knip`).",
+            detector: detects_knip,
+            check_args: &[],
+            format_args: None,
+            fix_args: None,
+        },
+        Tool {
+            id: "actionlint",
+            name: "Actionlint",
+            executable: "actionlint",
+            install_hint: "Install actionlint from its release archive, Homebrew, or `go install`.",
+            detector: detects_actionlint,
+            check_args: &[],
+            format_args: None,
+            fix_args: None,
+        },
     ]
+}
+
+fn detects_swiftlint(project: &Project) -> bool {
+    detects_swift(project)
+        && (project.has_file(".swiftlint.yml")
+            || project.has_file(".swiftlint.yaml")
+            || package_manifest_uses(project, "swiftlint"))
+}
+
+fn detects_swiftformat(project: &Project) -> bool {
+    detects_swift(project)
+        && (project.has_file(".swiftformat") || package_manifest_uses(project, "swiftformat"))
 }
 
 fn detects_swift(project: &Project) -> bool {
@@ -667,13 +797,163 @@ fn detects_android(project: &Project) -> bool {
     project.has_file("AndroidManifest.xml")
 }
 
-fn detects_javascript(project: &Project) -> bool {
-    project.has_file("package.json")
+fn detects_eslint(project: &Project) -> bool {
+    package_manifest_uses(project, "eslint")
         || [
-            "js", "jsx", "ts", "tsx", "mts", "cts", "astro", "vue", "svelte",
+            "eslint.config.js",
+            "eslint.config.mjs",
+            "eslint.config.cjs",
+            "eslint.config.ts",
+            "eslint.config.mts",
+            "eslint.config.cts",
+            ".eslintrc",
+            ".eslintrc.js",
+            ".eslintrc.cjs",
+            ".eslintrc.json",
+            ".eslintrc.yml",
+            ".eslintrc.yaml",
         ]
         .iter()
-        .any(|extension| project.has_extension(extension))
+        .any(|name| project.has_file(name))
+}
+
+fn detects_prettier(project: &Project) -> bool {
+    package_manifest_uses(project, "prettier")
+        || project
+            .paths_named("package.json")
+            .any(|path| package_json_has_prettier_key(&project.root.join(path)))
+        || [
+            ".prettierrc",
+            ".prettierrc.json",
+            ".prettierrc.json5",
+            ".prettierrc.yml",
+            ".prettierrc.yaml",
+            ".prettierrc.js",
+            ".prettierrc.cjs",
+        ]
+        .iter()
+        .any(|name| project.has_file(name))
+        || [
+            "prettier.config.js",
+            "prettier.config.mjs",
+            "prettier.config.cjs",
+            "prettier.config.ts",
+            "prettier.config.mts",
+            "prettier.config.cts",
+        ]
+        .iter()
+        .any(|name| project.has_file(name))
+}
+
+fn detects_cspell(project: &Project) -> bool {
+    package_manifest_uses(project, "cspell")
+        || [
+            "cspell.json",
+            "cspell.yaml",
+            "cspell.yml",
+            "cspell.config.js",
+            "cspell.config.mjs",
+            "cspell.config.cjs",
+            "cspell.config.json",
+            "cspell.config.ts",
+            "cspell.config.yaml",
+            "cspell.config.yml",
+        ]
+        .iter()
+        .any(|name| project.has_file(name))
+}
+
+fn detects_knip(project: &Project) -> bool {
+    package_manifest_uses(project, "knip")
+        || ["knip.json", "knip.jsonc"]
+            .iter()
+            .any(|name| project.has_file(name))
+        || [
+            "knip.config.js",
+            "knip.config.mjs",
+            "knip.config.cjs",
+            "knip.config.ts",
+        ]
+        .iter()
+        .any(|name| project.has_file(name))
+}
+
+fn detects_actionlint(project: &Project) -> bool {
+    [
+        "actionlint.yaml",
+        "actionlint.yml",
+        ".actionlint.yaml",
+        ".actionlint.yml",
+    ]
+    .iter()
+    .any(|name| project.has_file(name))
+        || project
+            .paths_named("actionlint.yml")
+            .chain(project.paths_named("actionlint.yaml"))
+            .any(|path| path.starts_with(Path::new(".github/workflows")))
+        || project
+            .paths_with_extension("yml")
+            .chain(project.paths_with_extension("yaml"))
+            .filter(|path| path.starts_with(Path::new(".github/workflows")))
+            .any(|path| {
+                std::fs::read_to_string(project.root.join(path))
+                    .is_ok_and(|contents| contents.contains("actionlint"))
+            })
+}
+
+fn package_manifest_uses(project: &Project, tool: &str) -> bool {
+    project
+        .paths_named("package.json")
+        .any(|path| package_json_uses(&project.root.join(path), tool))
+}
+
+fn package_json_uses(path: &Path, tool: &str) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    ]
+    .into_iter()
+    .any(|section| {
+        manifest
+            .get(section)
+            .and_then(|value| value.as_object())
+            .is_some_and(|dependencies| dependencies.contains_key(tool))
+    }) || manifest
+        .get("scripts")
+        .and_then(|value| value.as_object())
+        .is_some_and(|scripts| {
+            scripts.values().any(|value| {
+                value
+                    .as_str()
+                    .is_some_and(|script| command_mentions(script, tool))
+            })
+        })
+}
+
+fn package_json_has_prettier_key(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .is_some_and(|manifest| manifest.get("prettier").is_some())
+}
+
+fn command_mentions(command: &str, tool: &str) -> bool {
+    command
+        .split(|character: char| {
+            character.is_ascii_whitespace()
+                || matches!(character, ';' | '&' | '|' | '(' | ')' | '"' | '\'')
+        })
+        .any(|token| {
+            token == tool || token.ends_with(&format!("/{tool}")) || token == format!("{tool}.cmd")
+        })
 }
 
 fn javascript_workspace_configuration(name: &str) -> bool {
@@ -723,10 +1003,7 @@ fn swift_workspaces(project: &Project) -> Vec<PathBuf> {
             .filter_map(Path::parent)
             .map(Path::to_path_buf),
     );
-    if roots.is_empty() {
-        roots.insert(PathBuf::new());
-    }
-    roots.into_iter().collect()
+    outermost_workspaces(roots)
 }
 
 fn cargo_workspaces(project: &Project) -> Vec<PathBuf> {
@@ -785,6 +1062,8 @@ mod tests {
     fn detects_a_mixed_mobile_repository() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("App.swift"), "").unwrap();
+        std::fs::write(temp.path().join(".swiftlint.yml"), "").unwrap();
+        std::fs::write(temp.path().join(".swiftformat"), "").unwrap();
         std::fs::write(temp.path().join("MainActivity.kt"), "").unwrap();
         std::fs::write(temp.path().join("build.gradle.kts"), "").unwrap();
         std::fs::write(temp.path().join("AndroidManifest.xml"), "").unwrap();
@@ -812,6 +1091,7 @@ mod tests {
     fn configuration_changes_keep_swiftlint_at_full_project_scope() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("App.swift"), "").unwrap();
+        std::fs::write(temp.path().join(".swiftlint.yml"), "").unwrap();
         let project = Project::discover(temp.path()).unwrap();
         let tool = catalog()
             .into_iter()
@@ -820,6 +1100,7 @@ mod tests {
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
             files: vec![PathBuf::from(".swiftlint.yml")],
+            deleted: Default::default(),
         };
 
         let invocation = tool
@@ -839,6 +1120,164 @@ mod tests {
     }
 
     #[test]
+    fn javascript_tools_require_project_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("package.json"),
+            r#"{"scripts":{"test":"node --test"}}"#,
+        )
+        .unwrap();
+        std::fs::write(temp.path().join("index.ts"), "export {};").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let detected: Vec<_> = catalog()
+            .into_iter()
+            .filter(|tool| tool.detect(&project))
+            .map(|tool| tool.id)
+            .collect();
+
+        assert!(!detected.contains(&"eslint"));
+        assert!(!detected.contains(&"prettier"));
+    }
+
+    #[test]
+    fn javascript_tools_detect_dependencies_and_scripts_independently() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("package.json"),
+            r#"{
+                "devDependencies":{"eslint":"9.0.0"},
+                "scripts":{"format":"prettier --write ."}
+            }"#,
+        )
+        .unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let detected: Vec<_> = catalog()
+            .into_iter()
+            .filter(|tool| tool.detect(&project))
+            .map(|tool| tool.id)
+            .collect();
+
+        assert!(detected.contains(&"eslint"));
+        assert!(detected.contains(&"prettier"));
+    }
+
+    #[test]
+    fn detects_configured_repository_analyzers() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+        std::fs::write(temp.path().join("cspell.config.yaml"), "version: '0.2'\n").unwrap();
+        std::fs::write(temp.path().join("knip.json"), "{}\n").unwrap();
+        std::fs::write(
+            temp.path().join(".github/workflows/actionlint.yml"),
+            "name: actionlint\n",
+        )
+        .unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let detected: Vec<_> = catalog()
+            .into_iter()
+            .filter(|tool| tool.detect(&project))
+            .map(|tool| tool.id)
+            .collect();
+
+        assert!(detected.contains(&"cspell"));
+        assert!(detected.contains(&"knip"));
+        assert!(detected.contains(&"actionlint"));
+    }
+
+    #[test]
+    fn changed_cspell_runs_only_on_active_relevant_files() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("cspell.json"), "{}\n").unwrap();
+        std::fs::write(temp.path().join("README.md"), "words\n").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let changes = ChangeSet {
+            base: "HEAD".to_owned(),
+            files: vec![PathBuf::from("README.md")],
+            deleted: Default::default(),
+        };
+        let tool = catalog()
+            .into_iter()
+            .find(|tool| tool.id == "cspell")
+            .unwrap();
+
+        let invocation = tool
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changes),
+            )
+            .unwrap();
+
+        assert_eq!(invocation.args, vec!["--no-progress", "README.md"]);
+    }
+
+    #[test]
+    fn check_disabled_tools_keep_format_operations() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("package.json"),
+            r#"{"devDependencies":{"prettier":"3.0.0"}}"#,
+        )
+        .unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let tool = catalog()
+            .into_iter()
+            .find(|tool| tool.id == "prettier")
+            .unwrap();
+        let config = ToolConfig {
+            enabled: Some(true),
+            check: Some(false),
+            ..ToolConfig::default()
+        };
+
+        assert!(
+            tool.invocations(&project, &config, Operation::Check, None)
+                .is_empty()
+        );
+        assert_eq!(
+            tool.invocations(&project, &config, Operation::CheckFormat, None)
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn incidental_swift_files_do_not_enable_unconfigured_tools() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("Bridge.swift"), "").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let detected: Vec<_> = catalog()
+            .into_iter()
+            .filter(|tool| tool.detect(&project))
+            .map(|tool| tool.id)
+            .collect();
+
+        assert!(!detected.contains(&"swiftlint"));
+        assert!(!detected.contains(&"swiftformat"));
+    }
+
+    #[test]
+    fn nested_swift_packages_use_the_outermost_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("packages/nested")).unwrap();
+        std::fs::write(temp.path().join("Package.swift"), "").unwrap();
+        std::fs::write(temp.path().join("packages/nested/Package.swift"), "").unwrap();
+        std::fs::write(temp.path().join(".swiftlint.yml"), "").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let tool = catalog()
+            .into_iter()
+            .find(|tool| tool.id == "swiftlint")
+            .unwrap();
+
+        let invocations =
+            tool.invocations(&project, &ToolConfig::default(), Operation::Check, None);
+
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].working_directory, temp.path());
+    }
+
+    #[test]
     fn android_lint_stays_project_wide_for_changed_kotlin() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("AndroidManifest.xml"), "").unwrap();
@@ -851,6 +1290,7 @@ mod tests {
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
             files: vec![PathBuf::from("MainActivity.kt")],
+            deleted: Default::default(),
         };
 
         let invocation = tool

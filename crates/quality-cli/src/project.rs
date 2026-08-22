@@ -66,7 +66,6 @@ impl Project {
             .map(PathBuf::as_path)
     }
 
-    #[cfg(test)]
     pub fn paths_with_extension(&self, extension: &str) -> impl Iterator<Item = &Path> {
         let extension = extension.to_ascii_lowercase();
         self.relative_paths
@@ -91,7 +90,21 @@ fn should_visit(entry: &DirEntry) -> bool {
     }
     !matches!(
         entry.file_name().to_str(),
-        Some(".git" | ".build" | "build" | "DerivedData" | "node_modules" | "target" | "vendor")
+        Some(
+            ".astro"
+                | ".build"
+                | ".git"
+                | ".next"
+                | ".pnpm-patches"
+                | ".turbo"
+                | ".yarn"
+                | "build"
+                | "coverage"
+                | "DerivedData"
+                | "node_modules"
+                | "target"
+                | "vendor"
+        )
     )
 }
 
@@ -108,6 +121,21 @@ mod tests {
         let project = Project::discover(temp.path()).unwrap();
         assert!(project.has_extension("swift"));
         assert!(!project.has_extension("kt"));
+    }
+
+    #[test]
+    fn ignores_dependency_caches_and_patched_package_snapshots() {
+        let temp = tempfile::tempdir().unwrap();
+        for directory in [".next", ".pnpm-patches", ".yarn", "coverage"] {
+            std::fs::create_dir(temp.path().join(directory)).unwrap();
+            std::fs::write(temp.path().join(directory).join("package.json"), "{}").unwrap();
+            std::fs::write(temp.path().join(directory).join("Generated.swift"), "").unwrap();
+        }
+
+        let project = Project::discover(temp.path()).unwrap();
+
+        assert!(!project.has_file("package.json"));
+        assert!(!project.has_extension("swift"));
     }
 
     #[test]

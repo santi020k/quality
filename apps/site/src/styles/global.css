@@ -88,6 +88,9 @@ a { color: inherit; }
 .docs-nav a:hover { background: hsl(var(--surface-muted)); color: hsl(var(--ink)); }
 .docs-nav a[aria-current='page'] { background: hsl(var(--brand-soft)); color: hsl(var(--brand)); font-weight: 700; }
 .docs-article { min-width: 0; }
+.breadcrumbs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; color: hsl(var(--ink-muted)); font-size: 0.78rem; }
+.breadcrumbs a { color: hsl(var(--brand)); font-weight: 650; text-decoration: none; }
+.breadcrumbs a:hover { text-decoration: underline; text-underline-offset: 0.18em; }
 .docs-article-header { border-bottom: 1px solid hsl(var(--line)); margin-bottom: 2.5rem; padding-bottom: 2rem; }
 .docs-article-header h1 { margin: 0; font-size: clamp(2.5rem, 6vw, 4.6rem); letter-spacing: -0.06em; line-height: 1; }
 .docs-article-header p { max-width: 42rem; margin: 1rem 0 0; color: hsl(var(--ink-soft)); font-size: 1.1rem; line-height: 1.65; }

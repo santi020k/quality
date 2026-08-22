@@ -9,6 +9,7 @@ use serde::Serialize;
 pub struct ChangeSet {
     pub base: String,
     pub files: Vec<PathBuf>,
+    pub deleted: BTreeSet<PathBuf>,
 }
 
 pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
@@ -40,6 +41,20 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         &mut files,
     )
     .with_context(|| format!("could not compare the project with `{base}`"))?;
+    let mut deleted = BTreeSet::new();
+    collect_paths(
+        root,
+        &[
+            "diff",
+            "--name-only",
+            "-z",
+            "--diff-filter=D",
+            &comparison,
+            "--",
+        ],
+        &mut deleted,
+    )
+    .with_context(|| format!("could not inspect deletions since `{base}`"))?;
 
     if base != "HEAD" {
         collect_paths(
@@ -55,6 +70,12 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
             &mut files,
         )
         .context("could not inspect uncommitted changes")?;
+        collect_paths(
+            root,
+            &["diff", "--name-only", "-z", "--diff-filter=D", "HEAD", "--"],
+            &mut deleted,
+        )
+        .context("could not inspect uncommitted deletions")?;
     }
     collect_paths(
         root,
@@ -63,10 +84,20 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
     )
     .context("could not inspect untracked files")?;
 
+    deleted.retain(|path| !root.join(path).exists());
+    files.extend(deleted.iter().cloned());
+
     Ok(ChangeSet {
         base: base.to_owned(),
         files: files.into_iter().collect(),
+        deleted,
     })
+}
+
+impl ChangeSet {
+    pub fn is_deleted(&self, path: &Path) -> bool {
+        self.deleted.contains(path)
+    }
 }
 
 fn ensure_repository(root: &Path) -> Result<()> {
@@ -153,5 +184,26 @@ mod tests {
             changes.files,
             vec![PathBuf::from("App.swift"), PathBuf::from("New.kt")]
         );
+        assert!(changes.deleted.is_empty());
+    }
+
+    #[test]
+    fn includes_deleted_paths_without_treating_them_as_active() {
+        let temp = tempfile::tempdir().unwrap();
+        run_git(temp.path(), &["init", "--quiet"]);
+        run_git(
+            temp.path(),
+            &["config", "user.email", "quality@example.test"],
+        );
+        run_git(temp.path(), &["config", "user.name", "Quality Tests"]);
+        std::fs::write(temp.path().join("eslint.config.js"), "export default [];\n").unwrap();
+        run_git(temp.path(), &["add", "eslint.config.js"]);
+        run_git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+        std::fs::remove_file(temp.path().join("eslint.config.js")).unwrap();
+
+        let changes = discover(temp.path(), "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("eslint.config.js")]);
+        assert!(changes.is_deleted(Path::new("eslint.config.js")));
     }
 }
