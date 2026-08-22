@@ -9,6 +9,15 @@ export type Platform =
   | "x86_64-pc-windows-msvc"
   | "x86_64-unknown-linux-gnu";
 
+export function releaseRepository(
+  actionRepository: string | undefined,
+  fallbackRepository: string | undefined,
+): string {
+  const repository = actionRepository || fallbackRepository;
+  if (!repository) throw new Error("release repository is unavailable");
+  return repository;
+}
+
 export function releaseTarget(platform: NodeJS.Platform, arch: string): Platform {
   if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
   if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";

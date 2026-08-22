@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkArguments, checksumFromFile, releaseTarget } from "./lib.js";
+import {
+  checkArguments,
+  checksumFromFile,
+  releaseRepository,
+  releaseTarget,
+} from "./lib.js";
 
 describe("releaseTarget", () => {
   it("maps supported runners", () => {
@@ -11,6 +16,17 @@ describe("releaseTarget", () => {
 
   it("rejects unsupported runners", () => {
     expect(() => releaseTarget("freebsd", "x64")).toThrow("does not publish");
+  });
+});
+
+describe("releaseRepository", () => {
+  it("prefers the Action repository and supports local workflow checks", () => {
+    expect(releaseRepository("owner/action", "owner/workflow")).toBe("owner/action");
+    expect(releaseRepository(undefined, "owner/workflow")).toBe("owner/workflow");
+  });
+
+  it("rejects missing repository context", () => {
+    expect(() => releaseRepository(undefined, undefined)).toThrow("repository is unavailable");
   });
 });
 
