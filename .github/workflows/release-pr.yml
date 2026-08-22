@@ -27,13 +27,13 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@fef302ccf927bb57eda82b1967aefb2033c6a515 # 1.100.0
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
       - run: pnpm install --frozen-lockfile
       - uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          version: pnpm run version-packages
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
+          version-script: pnpm run version-packages
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
         env:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.CHANGESETS_TOKEN || github.token }}
