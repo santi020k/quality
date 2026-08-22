@@ -77,6 +77,7 @@ Then run these commands from any repository:
 
 ```bash
 quality init            # Write an explicit policy based on detected files
+quality init --dry-run  # Preview adoption without writing quality.yml
 quality doctor          # Explain what is enabled, installed, or missing
 quality check           # Run applicable linters concurrently
 quality format          # Run applicable formatters
@@ -84,6 +85,7 @@ quality format --check  # Check formatting without modifying files
 quality fix             # Apply fixes supported by the configured tools
 quality baseline create # Record existing findings and block new regressions
 quality completions zsh # Generate native shell completions
+quality instructions --format agents # Print a section for a repository AGENTS.md
 quality ci github --install '…' # Generate a runnable GitHub Actions workflow
 ```
 
@@ -98,7 +100,20 @@ quality fix --changed
 
 File-capable tools receive only relevant changed files. Project analyzers such
 as Android Lint still run at project scope when Android files change. Changing
-a rules or configuration file also triggers the corresponding full check.
+a rules or configuration file—including deleting one—triggers the corresponding
+full check. Deleted source paths can trigger project-wide checks but are never
+passed to file-scoped tools.
+
+Select adapters by ID for focused local or CI runs. Flags can be repeated or
+receive comma-separated IDs, and work with `check`, `format`, and `fix`:
+
+```bash
+quality check --only eslint,astro-check
+quality check --exclude cargo-clippy
+quality fix --changed --only eslint
+```
+
+Selection details are retained in JSON and SARIF reports.
 
 Every command accepts `--root PATH`. Check results support `pretty`, `json`,
 `sarif`, and `github` output. The GitHub format emits native workflow commands
@@ -129,6 +144,9 @@ quality check --format github --report artifacts/quality.sarif
 | JavaScript/TypeScript | ESLint | yes | fix |
 | Astro | Astro Check | yes | — |
 | JavaScript/TypeScript | Prettier | yes | yes |
+| Content | CSpell | yes | — |
+| JavaScript/TypeScript | Knip | yes | — |
+| GitHub Actions | Actionlint | yes | — |
 
 The adapters use repository-local executables where that is conventional:
 `./gradlew` for Android and `node_modules/.bin` for JavaScript. Other tools are
@@ -172,7 +190,18 @@ executed directly without a shell, so arguments remain explicit and portable.
 
 ## Configuration
 
-`quality init` generates a minimal file containing only detected tools:
+`quality init` enables a tool only when the repository shows intent to use it,
+such as an analyzer configuration, dependency, or package script. Merely
+containing JavaScript or Swift files does not opt a repository into ESLint,
+Prettier, SwiftLint, or SwiftFormat.
+
+Use `quality init --dry-run` to review the complete generated policy before
+writing or replacing `quality.yml`.
+
+When the root package defines `verify:quality`, `verify`, `validate`, `check`,
+`pre-push`, or `prepush`, initialization preserves the first matching script as a
+`repository-check` task. Direct analyzer checks are disabled to avoid running
+the same work twice, while their format and fix operations remain available:
 
 ```yaml
 version: 1
@@ -180,16 +209,27 @@ output: pretty
 tools:
   swiftlint:
     enabled: true
+    check: false
     required: true
-  swiftformat:
-    enabled: true
+tasks:
+  repository-check:
+    name: Repository check (verify)
+    command: pnpm
+    args: [run, verify]
     required: true
 ```
 
-Each adapter also accepts `command`, `check_args`, `format_args`, and
-`fix_args`. Set `working_directory` when a tool belongs to one workspace in a
-monorepo. This provides an escape hatch for Gradle tasks, monorepo wrappers,
-and teams that pin tools in a custom directory:
+If no composite gate exists, a root `typecheck` or `type-check` script is
+imported as a change-aware `typecheck` task. This preserves Turborepo and
+workspace-specific TypeScript semantics instead of replacing them with a raw
+root `tsc` invocation.
+
+Set `check: false` to keep an adapter available to `quality format` and
+`quality fix` without also running it during `quality check`. Each adapter also
+accepts `command`, `check_args`, `format_args`, and `fix_args`. Set
+`working_directory` when a tool belongs to one workspace in a monorepo. This
+provides an escape hatch for Gradle tasks, monorepo wrappers, and teams that pin
+tools in a custom directory:
 
 ```yaml
 version: 1
@@ -256,7 +296,10 @@ The release workflow builds native archives for Linux, Apple Silicon and Intel
 macOS, and Windows whenever a version tag such as `v0.1.0` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
-generated CI from assuming a crate or repository that does not exist:
+generated CI from assuming a crate or repository that does not exist. It
+selects macOS for Swift repositories and Linux otherwise, then derives package
+manager setup, dependency installation, and relevant native toolchain setup
+from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \

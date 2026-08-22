@@ -3,10 +3,13 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "prebuild": "node scripts/generate-og-images.mjs",
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build && node scripts/clean-dist.mjs && vite build --config vite.sites.config.mjs",
     "check": "astro check",
+    "generate:og": "node scripts/generate-og-images.mjs",
+    "postbuild": "node scripts/validate-seo.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

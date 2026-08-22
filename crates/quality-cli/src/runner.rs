@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::Serialize;
 
 use crate::changes::ChangeSet;
-use crate::cli::Severity;
+use crate::cli::{AdapterSelection, Severity};
 use crate::config::{Config, DiagnosticParser};
 use crate::project::Project;
 use crate::tools::{self, Invocation};
@@ -69,9 +69,16 @@ pub struct RunReport {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct RunScope {
-    pub mode: &'static str,
-    pub base: String,
-    pub files: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
 }
 
 impl RunReport {
@@ -133,7 +140,8 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
         .flat_map(|tool| {
             let tool_config = config.tool(tool.id);
             let detected = tool.detect(project);
-            let enabled = tool_config.enabled.unwrap_or(detected);
+            let enabled =
+                tool_config.enabled.unwrap_or(detected) && tool_config.check != Some(false);
             let required = tool_config.required.unwrap_or(true);
             let invocations = tool.invocations(project, &tool_config, Operation::Check, None);
             if invocations.is_empty() {
@@ -242,6 +250,7 @@ pub fn execute(
     operation: Operation,
     fail_fast: bool,
     changes: Option<&ChangeSet>,
+    selection: &AdapterSelection,
 ) -> Result<RunReport> {
     let mut invocations: Vec<_> = tools::catalog()
         .into_iter()
@@ -253,10 +262,16 @@ pub fn execute(
     invocations.extend(config.custom_tools.iter().filter_map(|(id, tool_config)| {
         tools::external_invocation(id, tool_config, project, operation, changes)
     }));
-    let scope = changes.map(|changes| RunScope {
-        mode: "changed",
-        base: changes.base.clone(),
-        files: changes.files.len(),
+    invocations.retain(|invocation| {
+        let adapter = invocation.id.split('@').next().unwrap_or(&invocation.id);
+        selection.includes(adapter)
+    });
+    let scope = (changes.is_some() || !selection.is_empty()).then(|| RunScope {
+        mode: changes.map(|_| "changed"),
+        base: changes.map(|changes| changes.base.clone()),
+        files: changes.map(|changes| changes.files.len()),
+        only: selection.only.clone(),
+        exclude: selection.exclude.clone(),
     });
 
     if fail_fast {

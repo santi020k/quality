@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -39,6 +39,9 @@ impl Default for Config {
 pub struct ToolConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    /// Participate in `quality check`. Formatting and fixes remain available when false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -164,6 +167,31 @@ impl Config {
         } else {
             root.join(&self.baseline)
         }
+    }
+
+    pub fn validate_adapter_selection(&self, ids: &[String]) -> Result<()> {
+        let supported: Vec<_> = crate::tools::catalog()
+            .into_iter()
+            .map(|tool| tool.id.to_owned())
+            .chain(self.tasks.keys().cloned())
+            .chain(self.custom_tools.keys().cloned())
+            .collect();
+        for id in ids {
+            if supported.contains(id) {
+                continue;
+            }
+            let suggestion = supported
+                .iter()
+                .min_by_key(|candidate| edit_distance(id, candidate))
+                .filter(|candidate| edit_distance(id, candidate) <= 3)
+                .map(|candidate| format!(" Did you mean `{candidate}`?"))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "unknown adapter `{id}`.{suggestion} Available adapters: {}",
+                supported.join(", ")
+            );
+        }
+        Ok(())
     }
 
     fn validate(&self) -> Result<()> {
@@ -298,6 +326,14 @@ pub fn write_initial(path: &Path, project: &Project, force: bool) -> Result<()> 
         );
     }
 
+    let text = initial_text(project)?;
+    fs::write(path, text).with_context(|| format!("could not write {}", path.display()))?;
+    Ok(())
+}
+
+pub fn initial_text(project: &Project) -> Result<String> {
+    let repository_task = detect_repository_check(project);
+    let canonical_script_detected = repository_task.is_some();
     let mut tools = BTreeMap::new();
     for tool in crate::tools::catalog() {
         if tool.detect(project) {
@@ -305,23 +341,164 @@ pub fn write_initial(path: &Path, project: &Project, force: bool) -> Result<()> 
                 tool.id.to_owned(),
                 ToolConfig {
                     enabled: Some(true),
+                    check: canonical_script_detected.then_some(false),
                     required: Some(true),
                     ..ToolConfig::default()
                 },
             );
         }
     }
+    let mut tasks = BTreeMap::new();
+    if let Some(task) = repository_task {
+        tasks.insert("repository-check".to_owned(), task);
+    } else if let Some(task) = detect_typecheck(project) {
+        tasks.insert("typecheck".to_owned(), task);
+    }
     let config = Config {
         tools,
+        tasks,
         ..Config::default()
     };
     let mut text = String::from(
-        "# quality.yml — one code-quality workflow for this repository\n\
-         # Tools are auto-detected; entries below make the selected policy explicit.\n",
+        "# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json\n\
+         # quality.yml — one code-quality workflow for this repository\n\
+         # Tools are auto-detected; entries below make the selected policy explicit.\n\
+         # A canonical repository script replaces analyzer checks when one is detected,\n\
+         # while the analyzers remain available to `quality format` and `quality fix`.\n",
     );
     text.push_str(&serde_yaml::to_string(&config).context("could not serialize configuration")?);
-    fs::write(path, text).with_context(|| format!("could not write {}", path.display()))?;
-    Ok(())
+    Ok(text)
+}
+
+fn detect_repository_check(project: &Project) -> Option<TaskConfig> {
+    let path = project.root.join("package.json");
+    let text = fs::read_to_string(path).ok()?;
+    let manifest = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    let scripts = manifest.get("scripts")?.as_object()?;
+    let script = [
+        "verify:quality",
+        "verify",
+        "validate",
+        "check",
+        "pre-push",
+        "prepush",
+    ]
+    .into_iter()
+    .find_map(|name| {
+        scripts.get(name)?.as_str()?;
+        (!script_invokes_quality(scripts, name, &mut BTreeSet::new())).then_some(name)
+    })?;
+
+    Some(TaskConfig {
+        name: Some(format!("Repository check ({script})")),
+        command: PathBuf::from(package_manager(project, &manifest)),
+        args: vec!["run".to_owned(), script.to_owned()],
+        working_directory: None,
+        required: true,
+        extensions: Vec::new(),
+        config_files: Vec::new(),
+        parser: DiagnosticParser::Generic,
+    })
+}
+
+fn detect_typecheck(project: &Project) -> Option<TaskConfig> {
+    let path = project.root.join("package.json");
+    let text = fs::read_to_string(path).ok()?;
+    let manifest = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    let scripts = manifest.get("scripts")?.as_object()?;
+    let script = ["typecheck", "type-check"].into_iter().find(|name| {
+        scripts
+            .get(*name)
+            .and_then(|value| value.as_str())
+            .is_some()
+    })?;
+
+    Some(TaskConfig {
+        name: Some("TypeScript".to_owned()),
+        command: PathBuf::from(package_manager(project, &manifest)),
+        args: vec!["run".to_owned(), script.to_owned()],
+        working_directory: None,
+        required: true,
+        extensions: vec![
+            "astro".to_owned(),
+            "js".to_owned(),
+            "jsx".to_owned(),
+            "ts".to_owned(),
+            "tsx".to_owned(),
+        ],
+        config_files: vec![
+            "package.json".to_owned(),
+            "tsconfig.json".to_owned(),
+            "pnpm-lock.yaml".to_owned(),
+            "yarn.lock".to_owned(),
+            "package-lock.json".to_owned(),
+        ],
+        parser: DiagnosticParser::Generic,
+    })
+}
+
+fn package_manager<'a>(project: &Project, manifest: &'a serde_json::Value) -> &'a str {
+    manifest
+        .get("packageManager")
+        .and_then(|value| value.as_str())
+        .and_then(|value| value.split('@').next())
+        .filter(|value| matches!(*value, "pnpm" | "yarn" | "npm" | "bun"))
+        .unwrap_or_else(|| {
+            if project.root.join("pnpm-lock.yaml").exists() {
+                "pnpm"
+            } else if project.root.join("yarn.lock").exists() {
+                "yarn"
+            } else if project.root.join("bun.lock").exists()
+                || project.root.join("bun.lockb").exists()
+            {
+                "bun"
+            } else {
+                "npm"
+            }
+        })
+}
+
+fn invokes_quality_check(command: &str) -> bool {
+    command.contains("quality check")
+        || (command.contains("quality-cli") && command.contains(" check"))
+}
+
+fn script_invokes_quality(
+    scripts: &serde_json::Map<String, serde_json::Value>,
+    script: &str,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    if !visiting.insert(script.to_owned()) {
+        return false;
+    }
+    let invokes_quality = scripts
+        .get(script)
+        .and_then(|value| value.as_str())
+        .is_some_and(|command| {
+            invokes_quality_check(command)
+                || scripts.keys().any(|dependency| {
+                    command_invokes_script(command, dependency)
+                        && script_invokes_quality(scripts, dependency, visiting)
+                })
+        });
+    visiting.remove(script);
+    invokes_quality
+}
+
+fn command_invokes_script(command: &str, script: &str) -> bool {
+    let tokens: Vec<_> = command
+        .split(|character: char| {
+            character.is_ascii_whitespace()
+                || matches!(character, ';' | '&' | '|' | '(' | ')' | '"' | '\'')
+        })
+        .filter(|token| !token.is_empty())
+        .collect();
+    tokens
+        .windows(2)
+        .any(|tokens| tokens[0] == "run" && tokens[1] == script)
+        || tokens
+            .windows(2)
+            .any(|tokens| matches!(tokens[0], "yarn" | "pnpm" | "bun") && tokens[1] == script)
 }
 
 #[cfg(test)]
@@ -333,5 +510,25 @@ mod tests {
         assert_eq!(edit_distance("swiftlint", "swiftlint"), 0);
         assert_eq!(edit_distance("swfitlint", "swiftlint"), 2);
         assert_eq!(edit_distance("ktlin", "ktlint"), 1);
+    }
+
+    #[test]
+    fn published_schema_lists_every_builtin_tool() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../apps/site/public/quality.schema.json"
+        ))
+        .unwrap();
+        let schema_tools: BTreeSet<_> = schema["properties"]["tools"]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let catalog_tools: BTreeSet<_> = crate::tools::catalog()
+            .into_iter()
+            .map(|tool| tool.id)
+            .collect();
+
+        assert_eq!(schema_tools, catalog_tools);
     }
 }

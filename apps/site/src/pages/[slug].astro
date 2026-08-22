@@ -5,7 +5,7 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 const groups = [
 	{ label: 'Start', items: [['Overview', 'overview'], ['Getting started', 'getting-started']] },
 	{ label: 'Use quality', items: [['Commands', 'commands'], ['Configuration', 'configuration'], ['Changed files & baselines', 'changed-files-and-baselines']] },
-	{ label: 'Integrate', items: [['GitHub Actions', 'github-actions'], ['Built-in & custom adapters', 'adapters']] },
+	{ label: 'Integrate', items: [['GitHub Actions', 'github-actions'], ['AI coding agents', 'ai-agents'], ['Built-in & custom adapters', 'adapters']] },
 ];
 
 export async function getStaticPaths() {
@@ -18,7 +18,7 @@ const { Content } = await render(entry);
 const title = `${entry.data.title} — quality`;
 ---
 
-<SiteLayout title={title} description={entry.data.description}>
+<SiteLayout title={title} description={entry.data.description} pageType="article" sectionName={entry.data.title}>
 	<div class="docs-layout">
 		<aside class="docs-sidebar" aria-label="Documentation navigation">
 			{groups.map((group) => (
@@ -33,6 +33,11 @@ const title = `${entry.data.title} — quality`;
 			))}
 		</aside>
 		<article class="docs-article">
+			<nav class="breadcrumbs" aria-label="Breadcrumb">
+				<a href="/">Home</a>
+				<span aria-hidden="true">/</span>
+				<span aria-current="page">{entry.data.title}</span>
+			</nav>
 			<header class="docs-article-header">
 				<h1>{entry.data.title}</h1>
 				<p>{entry.data.description}</p>

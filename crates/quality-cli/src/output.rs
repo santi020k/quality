@@ -124,7 +124,8 @@ fn print_github_run(
         let detail = report
             .scope
             .as_ref()
-            .map(|scope| format!(" for {} changed files", scope.files))
+            .and_then(changed_scope)
+            .map(|(_, files)| format!(" for {files} changed files"))
             .unwrap_or_default();
         println!(
             "::notice title=quality::All {} quality tools passed{}",
@@ -156,12 +157,15 @@ fn write_github_summary(
         .open(&path)
         .with_context(|| format!("could not open GitHub step summary {path}"))?;
     writeln!(file, "## Quality report\n")?;
-    if let Some(scope) = &report.scope {
+    if let Some((base, files)) = report.scope.as_ref().and_then(changed_scope) {
         writeln!(
             file,
             "Checked **{} changed files** against `{}`.\n",
-            scope.files, scope.base
+            files, base
         )?;
+    }
+    if let Some(scope) = &report.scope {
+        write_selection_summary(&mut file, scope)?;
     }
     writeln!(file, "| Adapter | Result | Findings | Duration |")?;
     writeln!(file, "| --- | --- | ---: | ---: |")?;
@@ -199,6 +203,20 @@ fn write_github_summary(
 
 fn escape_markdown_cell(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
+}
+
+fn write_selection_summary(file: &mut impl Write, scope: &crate::runner::RunScope) -> Result<()> {
+    if !scope.only.is_empty() {
+        writeln!(file, "Selected adapters: `{}`.\n", scope.only.join("`, `"))?;
+    }
+    if !scope.exclude.is_empty() {
+        writeln!(
+            file,
+            "Excluded adapters: `{}`.\n",
+            scope.exclude.join("`, `")
+        )?;
+    }
+    Ok(())
 }
 
 fn print_github_doctor(report: &DoctorReport) {
@@ -245,18 +263,31 @@ fn escape_github_property(value: &str) -> String {
 
 fn print_pretty_run(report: &RunReport, report_level: Severity) {
     if report.results.is_empty() {
-        if let Some(scope) = &report.scope {
+        if let Some((base, files)) = report.scope.as_ref().and_then(changed_scope) {
             println!(
                 "No relevant changed files found against {} ({} changed files inspected).",
-                scope.base, scope.files
+                base, files
+            );
+        } else if let Some(scope) = &report.scope {
+            println!(
+                "No applicable tools matched {}.",
+                selection_description(scope)
             );
         } else {
             println!("No applicable tools found. Run `quality init` after adding project files.");
         }
         return;
     }
+    if let Some((base, files)) = report.scope.as_ref().and_then(changed_scope) {
+        println!("Changed files: {files} against {base}");
+    }
     if let Some(scope) = &report.scope {
-        println!("Changed files: {} against {}\n", scope.files, scope.base);
+        if !scope.only.is_empty() || !scope.exclude.is_empty() {
+            println!("Adapters: {}", selection_description(scope));
+        }
+        if scope.mode.is_some() || !scope.only.is_empty() || !scope.exclude.is_empty() {
+            println!();
+        }
     }
     for result in &report.results {
         let seconds = result.duration_ms as f64 / 1000.0;
@@ -376,7 +407,7 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
                     result
                 })
                 .collect::<Vec<_>>();
-            json!({
+            let mut run = json!({
                 "tool": {
                     "driver": {
                         "name": tool_result.name
@@ -387,7 +418,11 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
                     "commandLine": tool_result.command
                 }],
                 "results": results
-            })
+            });
+            if let Some(scope) = &report.scope {
+                run["properties"] = json!({ "qualityScope": scope });
+            }
+            run
         })
         .collect::<Vec<_>>();
     json!({
@@ -395,6 +430,21 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
         "version": "2.1.0",
         "runs": runs
     })
+}
+
+fn changed_scope(scope: &crate::runner::RunScope) -> Option<(&str, usize)> {
+    Some((scope.base.as_deref()?, scope.files?))
+}
+
+fn selection_description(scope: &crate::runner::RunScope) -> String {
+    let mut parts = Vec::new();
+    if !scope.only.is_empty() {
+        parts.push(format!("only {}", scope.only.join(", ")));
+    }
+    if !scope.exclude.is_empty() {
+        parts.push(format!("excluding {}", scope.exclude.join(", ")));
+    }
+    parts.join("; ")
 }
 
 fn sarif_level(severity: &str) -> &str {

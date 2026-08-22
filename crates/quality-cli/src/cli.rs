@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
@@ -25,6 +25,9 @@ pub enum Command {
         /// Replace an existing quality.yml.
         #[arg(long)]
         force: bool,
+        /// Print the detected configuration without writing a file.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Check installed tools and project configuration.
     Doctor {
@@ -33,6 +36,8 @@ pub enum Command {
     },
     /// Run every applicable analyzer.
     Check {
+        #[command(flatten)]
+        adapters: AdapterSelection,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
         /// Also write a SARIF report without changing console output.
@@ -53,6 +58,8 @@ pub enum Command {
     },
     /// Format the project or verify formatting without changing files.
     Format {
+        #[command(flatten)]
+        adapters: AdapterSelection,
         /// Only check formatting; do not change files.
         #[arg(long)]
         check: bool,
@@ -67,6 +74,8 @@ pub enum Command {
     },
     /// Apply safe fixes exposed by configured tools.
     Fix {
+        #[command(flatten)]
+        adapters: AdapterSelection,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
         /// Also write a SARIF report without changing console output.
@@ -86,6 +95,11 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// Print instructions for AI coding agents.
+    Instructions {
+        #[arg(long, value_enum, default_value_t = InstructionsFormat::Agents)]
+        format: InstructionsFormat,
+    },
     /// Generate continuous-integration configuration.
     Ci {
         #[arg(value_enum, default_value_t = CiProvider::Github)]
@@ -97,6 +111,34 @@ pub enum Command {
         #[arg(long, value_name = "COMMAND")]
         install: String,
     },
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub struct AdapterSelection {
+    /// Run only the named adapter. Repeat the flag or separate IDs with commas.
+    #[arg(long, value_name = "ID", value_delimiter = ',')]
+    pub only: Vec<String>,
+    /// Skip the named adapter. Repeat the flag or separate IDs with commas.
+    #[arg(long, value_name = "ID", value_delimiter = ',')]
+    pub exclude: Vec<String>,
+}
+
+impl AdapterSelection {
+    pub fn is_empty(&self) -> bool {
+        self.only.is_empty() && self.exclude.is_empty()
+    }
+
+    pub fn includes(&self, id: &str) -> bool {
+        (self.only.is_empty() || self.only.iter().any(|selected| selected == id))
+            && !self.exclude.iter().any(|excluded| excluded == id)
+    }
+
+    pub fn normalize(&mut self) {
+        self.only.sort();
+        self.only.dedup();
+        self.exclude.sort();
+        self.exclude.dedup();
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -151,4 +193,10 @@ fn severity_rank(severity: &str) -> u8 {
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum CiProvider {
     Github,
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum InstructionsFormat {
+    #[default]
+    Agents,
 }

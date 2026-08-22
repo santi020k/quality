@@ -32,7 +32,22 @@ quality doctor
 quality check
 ```
 
-`quality init` detects relevant files and creates a minimal `quality.yml`. It does not enable analyzers for ecosystems that are absent.
+Preview the generated policy without writing a file with `quality init
+--dry-run`.
+
+`quality init` creates a minimal `quality.yml`. ESLint, Prettier, SwiftLint,
+and SwiftFormat require evidence that the repository intends to use them, such
+as configuration, a dependency, or a package script; language files alone do
+not enable them.
+
+If the root package already exposes `verify:quality`, `verify`, `validate`,
+`check`, `pre-push`, or `prepush`, initialization preserves that canonical gate as a repository task.
+Detected analyzers remain available for formatting and fixes without repeating
+their checks alongside the canonical script.
+
+When there is no composite gate, a root `typecheck` or `type-check` script is
+imported as a change-aware task so existing workspace and Turborepo behavior is
+preserved.
 
 `quality doctor` explains which tools are enabled, where each executable resolves, and which required dependencies are missing.
 

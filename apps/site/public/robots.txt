@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# OpenAI search and training access are declared separately so either policy
+# can be changed later without affecting normal search-engine discovery.
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+Sitemap: https://quality-cli.santi020k.chatgpt.site/sitemap.xml

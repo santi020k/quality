@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality-cli.santi020k.chatgpt.site/quality.schema.json",
+  "title": "quality.yml",
+  "description": "Configuration for the quality code-quality orchestrator.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Configuration format version.",
+      "const": 1,
+      "default": 1
+    },
+    "output": {
+      "description": "Default output format for checks.",
+      "enum": ["pretty", "json", "sarif", "github"],
+      "default": "pretty"
+    },
+    "baseline": {
+      "description": "Repository-relative or absolute baseline file path.",
+      "type": "string",
+      "default": ".quality-baseline.json"
+    },
+    "tools": {
+      "description": "Configuration for built-in adapters.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cargo-fmt": { "$ref": "#/$defs/builtInTool" },
+        "cargo-clippy": { "$ref": "#/$defs/builtInTool" },
+        "swiftlint": { "$ref": "#/$defs/builtInTool" },
+        "swiftformat": { "$ref": "#/$defs/builtInTool" },
+        "android-lint": { "$ref": "#/$defs/builtInTool" },
+        "detekt": { "$ref": "#/$defs/builtInTool" },
+        "ktlint": { "$ref": "#/$defs/builtInTool" },
+        "eslint": { "$ref": "#/$defs/builtInTool" },
+        "astro-check": { "$ref": "#/$defs/builtInTool" },
+        "prettier": { "$ref": "#/$defs/builtInTool" },
+        "cspell": { "$ref": "#/$defs/builtInTool" },
+        "knip": { "$ref": "#/$defs/builtInTool" },
+        "actionlint": { "$ref": "#/$defs/builtInTool" }
+      },
+      "default": {}
+    },
+    "tasks": {
+      "description": "Repository-defined checks run by quality check.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/adapterId" },
+      "additionalProperties": { "$ref": "#/$defs/task" },
+      "default": {}
+    },
+    "custom": {
+      "description": "Custom file-oriented or project-wide analyzer adapters.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/adapterId" },
+      "additionalProperties": { "$ref": "#/$defs/customTool" },
+      "default": {}
+    }
+  },
+  "$defs": {
+    "adapterId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9]+$"
+      }
+    },
+    "parser": {
+      "enum": ["generic", "eslint-json", "swiftlint-json", "ktlint-json"],
+      "default": "generic"
+    },
+    "builtInTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "check": { "type": "boolean" },
+        "required": { "type": "boolean" },
+        "command": { "type": "string", "minLength": 1 },
+        "working_directory": { "type": "string" },
+        "check_args": { "$ref": "#/$defs/stringArray" },
+        "format_args": { "$ref": "#/$defs/stringArray" },
+        "fix_args": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "name": { "type": "string" },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "$ref": "#/$defs/stringArray" },
+        "working_directory": { "type": "string" },
+        "required": { "type": "boolean", "default": true },
+        "extensions": { "$ref": "#/$defs/extensions" },
+        "config_files": { "$ref": "#/$defs/stringArray" },
+        "parser": { "$ref": "#/$defs/parser" }
+      }
+    },
+    "customTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "name": { "type": "string" },
+        "command": { "type": "string", "minLength": 1 },
+        "working_directory": { "type": "string" },
+        "enabled": { "type": "boolean", "default": true },
+        "required": { "type": "boolean", "default": true },
+        "extensions": { "$ref": "#/$defs/extensions" },
+        "config_files": { "$ref": "#/$defs/stringArray" },
+        "file_mode": {
+          "enum": ["append", "project"],
+          "default": "append"
+        },
+        "parser": { "$ref": "#/$defs/parser" },
+        "check_args": { "$ref": "#/$defs/stringArray" },
+        "format_check_args": { "$ref": "#/$defs/stringArray" },
+        "format_args": { "$ref": "#/$defs/stringArray" },
+        "fix_args": { "$ref": "#/$defs/stringArray" },
+        "install_hint": { "type": "string" }
+      }
+    }
+  }
+}
