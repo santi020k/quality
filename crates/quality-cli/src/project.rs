@@ -10,6 +10,7 @@ pub struct Project {
     file_names: BTreeSet<String>,
     extensions: BTreeSet<String>,
     relative_paths: BTreeSet<PathBuf>,
+    directory_extensions: BTreeSet<String>,
 }
 
 impl Project {
@@ -17,15 +18,21 @@ impl Project {
         let mut file_names = BTreeSet::new();
         let mut extensions = BTreeSet::new();
         let mut relative_paths = BTreeSet::new();
+        let mut directory_extensions = BTreeSet::new();
 
         for entry in WalkDir::new(root)
             .max_depth(6)
             .into_iter()
             .filter_entry(should_visit)
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_file())
         {
             let path = entry.path();
+            if entry.file_type().is_dir() {
+                if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
+                    directory_extensions.insert(extension.to_ascii_lowercase());
+                }
+                continue;
+            }
             if let Some(name) = path.file_name().and_then(|value| value.to_str()) {
                 file_names.insert(name.to_owned());
             }
@@ -42,6 +49,7 @@ impl Project {
             file_names,
             extensions,
             relative_paths,
+            directory_extensions,
         })
     }
 
@@ -51,6 +59,11 @@ impl Project {
 
     pub fn has_extension(&self, extension: &str) -> bool {
         self.extensions.contains(extension)
+    }
+
+    pub fn has_directory_extension(&self, extension: &str) -> bool {
+        self.directory_extensions
+            .contains(&extension.to_ascii_lowercase())
     }
 
     pub fn path_contains(&self, fragment: &str) -> bool {

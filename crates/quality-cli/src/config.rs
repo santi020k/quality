@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::cli::OutputFormat;
+use crate::cli::{GateProfile, OutputFormat};
 use crate::project::Project;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -319,6 +319,15 @@ fn edit_distance(left: &str, right: &str) -> usize {
 }
 
 pub fn write_initial(path: &Path, project: &Project, force: bool) -> Result<()> {
+    write_initial_with_gate(path, project, force, GateProfile::Auto)
+}
+
+pub fn write_initial_with_gate(
+    path: &Path,
+    project: &Project,
+    force: bool,
+    gate: GateProfile,
+) -> Result<()> {
     if path.exists() && !force {
         anyhow::bail!(
             "{} already exists; pass --force to replace it",
@@ -326,13 +335,17 @@ pub fn write_initial(path: &Path, project: &Project, force: bool) -> Result<()> 
         );
     }
 
-    let text = initial_text(project)?;
+    let text = initial_text_with_gate(project, gate)?;
     fs::write(path, text).with_context(|| format!("could not write {}", path.display()))?;
     Ok(())
 }
 
 pub fn initial_text(project: &Project) -> Result<String> {
-    let repository_task = detect_repository_check(project);
+    initial_text_with_gate(project, GateProfile::Auto)
+}
+
+pub fn initial_text_with_gate(project: &Project, gate: GateProfile) -> Result<String> {
+    let repository_task = detect_repository_check(project, gate);
     let canonical_script_detected = repository_task.is_some();
     let mut tools = BTreeMap::new();
     for tool in crate::tools::catalog() {
@@ -371,21 +384,37 @@ pub fn initial_text(project: &Project) -> Result<String> {
     Ok(text)
 }
 
-fn detect_repository_check(project: &Project) -> Option<TaskConfig> {
+fn detect_repository_check(project: &Project, gate: GateProfile) -> Option<TaskConfig> {
     let path = project.root.join("package.json");
     let text = fs::read_to_string(path).ok()?;
     let manifest = serde_json::from_str::<serde_json::Value>(&text).ok()?;
     let scripts = manifest.get("scripts")?.as_object()?;
-    let script = [
-        "verify:quality",
-        "verify",
-        "validate",
-        "check",
-        "pre-push",
-        "prepush",
-    ]
-    .into_iter()
-    .find_map(|name| {
+    let candidates: &[&str] = match gate {
+        GateProfile::Auto => &[
+            "verify:quality",
+            "verify",
+            "validate",
+            "check",
+            "pre-push",
+            "prepush",
+        ],
+        GateProfile::Fast => &[
+            "verify:fast",
+            "verify:quality",
+            "check",
+            "typecheck",
+            "type-check",
+        ],
+        GateProfile::Full => &[
+            "verify:full",
+            "validate",
+            "verify",
+            "pre-push",
+            "prepush",
+            "check",
+        ],
+    };
+    let script = candidates.iter().copied().find_map(|name| {
         scripts.get(name)?.as_str()?;
         (!script_invokes_quality(scripts, name, &mut BTreeSet::new())).then_some(name)
     })?;

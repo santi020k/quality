@@ -136,6 +136,7 @@ pub fn apply(report: &mut RunReport, path: &Path) -> Result<()> {
             result.status = Status::Passed;
         }
     }
+    report.refresh_summary();
     Ok(())
 }
 
@@ -190,6 +191,7 @@ mod tests {
         let path = temp.path().join("baseline.json");
         let initial = RunReport {
             results: vec![result(vec![diagnostic(2)])],
+            summary: Default::default(),
             scope: None,
             suppressed: 0,
         };
@@ -197,6 +199,7 @@ mod tests {
 
         let mut current = RunReport {
             results: vec![result(vec![diagnostic(4), diagnostic(8)])],
+            summary: Default::default(),
             scope: None,
             suppressed: 0,
         };

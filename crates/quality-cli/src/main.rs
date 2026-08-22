@@ -4,6 +4,7 @@ mod cli;
 mod config;
 mod output;
 mod project;
+mod repositories;
 mod runner;
 mod tools;
 
@@ -51,15 +52,22 @@ fn run() -> Result<()> {
         .unwrap_or(env::current_dir().context("could not determine the current directory")?)
         .canonicalize()
         .context("project root does not exist")?;
+    if let Command::Repositories { command } = cli.command {
+        return repositories::run(&root, command);
+    }
     let project = Project::discover(&root)?;
 
     match cli.command {
-        Command::Init { force, dry_run } => {
+        Command::Init {
+            force,
+            dry_run,
+            gate,
+        } => {
             let path = root.join("quality.yml");
             if dry_run {
-                print!("{}", config::initial_text(&project)?);
+                print!("{}", config::initial_text_with_gate(&project, gate)?);
             } else {
-                config::write_initial(&path, &project, force)?;
+                config::write_initial_with_gate(&path, &project, force, gate)?;
                 println!("Created {}", display_path(&path));
                 println!("Next: quality doctor && quality check");
             }
@@ -212,6 +220,9 @@ fn run() -> Result<()> {
         Command::Completions { .. } => unreachable!("completions return before project discovery"),
         Command::Instructions { .. } => {
             unreachable!("instructions return before project discovery")
+        }
+        Command::Repositories { .. } => {
+            unreachable!("repositories return before project discovery")
         }
     }
 

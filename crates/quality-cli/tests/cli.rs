@@ -102,6 +102,27 @@ fn init_preserves_the_canonical_repository_check() {
 }
 
 #[test]
+fn init_selects_fast_and_full_repository_gates_explicitly() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"scripts":{"verify:fast":"eslint .","verify:full":"pnpm test && pnpm build"}}"#,
+    )
+    .unwrap();
+
+    let fast = quality(temp.path(), &["init", "--dry-run", "--gate", "fast"]);
+    assert!(fast.status.success());
+    let fast = String::from_utf8_lossy(&fast.stdout);
+    assert!(fast.contains("Repository check (verify:fast)"));
+    assert!(!fast.contains("Repository check (verify:full)"));
+
+    let full = quality(temp.path(), &["init", "--dry-run", "--gate", "full"]);
+    assert!(full.status.success());
+    let full = String::from_utf8_lossy(&full.stdout);
+    assert!(full.contains("Repository check (verify:full)"));
+}
+
+#[test]
 fn doctor_distinguishes_disabled_checks_from_disabled_tools() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(
@@ -361,6 +382,10 @@ fn check_normalizes_a_tool_failure_to_json_and_sarif() {
         report["results"][0]["diagnostics"][0]["rule"],
         "example_rule"
     );
+    assert_eq!(report["summary"]["tools"], 1);
+    assert_eq!(report["summary"]["warnings"], 1);
+    assert_eq!(report["summary"]["files"][0], "App.swift");
+    assert_eq!(report["summary"]["rules"]["example_rule"], 1);
 
     let sarif_output = quality(temp.path(), &["check", "--format", "sarif"]);
     assert_eq!(sarif_output.status.code(), Some(1));
@@ -1169,4 +1194,44 @@ fn first_run_init_doctor_and_check_work_without_global_tools() {
         String::from_utf8_lossy(&checked.stderr)
     );
     assert!(String::from_utf8_lossy(&checked.stdout).contains("Quality checks passed"));
+}
+
+#[test]
+fn repositories_audit_and_apply_emit_an_adoption_report() {
+    let parent = tempfile::tempdir().unwrap();
+    let configured = parent.path().join("configured");
+    let missing = parent.path().join("missing");
+    fs::create_dir_all(&configured).unwrap();
+    fs::create_dir_all(&missing).unwrap();
+    initialize_git(&configured);
+    initialize_git(&missing);
+    fs::write(
+        configured.join("quality.yml"),
+        "version: 1\noutput: pretty\ntools: {}\n",
+    )
+    .unwrap();
+    fs::write(
+        missing.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+
+    let audit = quality(
+        parent.path(),
+        &["repositories", "audit", "--format", "json"],
+    );
+    assert!(audit.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&audit.stdout).unwrap();
+    assert_eq!(report["summary"]["total"], 2);
+    assert_eq!(report["summary"]["needs_configuration"], 1);
+
+    let applied = quality(
+        parent.path(),
+        &["repositories", "apply", "--format", "json"],
+    );
+    assert!(applied.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&applied.stdout).unwrap();
+    assert_eq!(report["summary"]["created"], 1);
+    assert!(missing.join("quality.yml").exists());
+    assert!(configured.join("quality.yml").exists());
 }
