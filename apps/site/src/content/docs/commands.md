@@ -16,6 +16,14 @@ task.
 Use `quality init --dry-run` to print the generated policy without creating or
 replacing `quality.yml`.
 
+Choose the canonical repository gate explicitly when a project exposes both a
+fast local workflow and a complete release workflow:
+
+```bash
+quality init --gate fast
+quality init --gate full
+```
+
 ## `quality doctor`
 
 Validate configuration and explain enabled, available, optional, and missing tools.
@@ -34,6 +42,9 @@ quality check --exclude cargo-clippy
 ```
 
 `--report-level` controls which diagnostics are displayed and written to SARIF. `--fail-level` independently controls which severities fail the command.
+
+JSON output includes an aggregate `summary` with tool states, severity counts,
+affected files, and counts by rule.
 
 Use repeatable `--only ID` or `--exclude ID` flags to select built-in adapters,
 repository tasks, or custom tools. Comma-separated IDs are also accepted. The
@@ -99,11 +110,32 @@ Generate a GitHub Actions workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.2.1 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.3.0 --locked'
 ```
 
 The generator selects Linux or macOS from the detected platforms and adds
 package-manager setup, frozen dependency installation, and detected native
 toolchain setup before running `quality doctor`.
+
+## `quality repositories`
+
+Audit every immediate Git repository under a parent folder without changing it:
+
+```bash
+quality --root ~/Projects repositories audit
+quality --root ~/Projects repositories audit --format json
+```
+
+Create `quality.yml` only in repositories that do not already have one. Existing
+configuration is never replaced:
+
+```bash
+quality --root ~/Projects repositories apply --dry-run
+quality --root ~/Projects repositories apply --format json
+```
+
+The JSON adoption report includes readiness state, detected adapters, generated
+tasks, missing toolchains, invalid configurations, and created files for every
+repository.
 
 All commands accept `--root PATH` when the target repository is not the current directory.

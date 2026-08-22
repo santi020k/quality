@@ -16,9 +16,9 @@ Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v0.2.1
+- uses: santi020k/quality@v0.3.0
   with:
-    version: v0.2.1
+    version: v0.3.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -67,7 +67,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.2.1
+  | sh -s -- santi020k/quality v0.3.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -78,8 +78,12 @@ Then run these commands from any repository:
 ```bash
 quality init            # Write an explicit policy based on detected files
 quality init --dry-run  # Preview adoption without writing quality.yml
+quality init --gate fast # Prefer the repository's fast local gate
+quality init --gate full # Prefer the repository's complete gate
 quality doctor          # Explain what is enabled, installed, or missing
 quality check           # Run applicable linters concurrently
+quality --root ~/Projects repositories audit # Audit a folder of repositories
+quality --root ~/Projects repositories apply # Configure missing repositories
 quality format          # Run applicable formatters
 quality format --check  # Check formatting without modifying files
 quality fix             # Apply fixes supported by the configured tools
@@ -293,7 +297,7 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v0.2.1` is pushed.
+macOS, and Windows whenever a version tag such as `v0.3.0` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -303,7 +307,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.2.1 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.3.0 --locked'
 ```
 
 ## Design direction

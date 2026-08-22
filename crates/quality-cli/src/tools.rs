@@ -755,18 +755,22 @@ fn detects_swiftlint(project: &Project) -> bool {
     detects_swift(project)
         && (project.has_file(".swiftlint.yml")
             || project.has_file(".swiftlint.yaml")
-            || package_manifest_uses(project, "swiftlint"))
+            || package_manifest_uses(project, "swiftlint")
+            || swift_package_uses(project, "swiftlint"))
 }
 
 fn detects_swiftformat(project: &Project) -> bool {
     detects_swift(project)
-        && (project.has_file(".swiftformat") || package_manifest_uses(project, "swiftformat"))
+        && (project.has_file(".swiftformat")
+            || package_manifest_uses(project, "swiftformat")
+            || swift_package_uses(project, "swiftformat"))
 }
 
 fn detects_swift(project: &Project) -> bool {
     project.has_extension("swift")
         || project.has_file("Package.swift")
         || project.path_contains(".xcodeproj/")
+        || project.has_directory_extension("xcodeproj")
 }
 
 fn detects_rust(project: &Project) -> bool {
@@ -909,6 +913,15 @@ fn package_manifest_uses(project: &Project, tool: &str) -> bool {
     project
         .paths_named("package.json")
         .any(|path| package_json_uses(&project.root.join(path), tool))
+}
+
+fn swift_package_uses(project: &Project, tool: &str) -> bool {
+    let tool = tool.to_ascii_lowercase();
+    project.paths_named("Package.swift").any(|path| {
+        std::fs::read_to_string(project.root.join(path))
+            .map(|manifest| manifest.to_ascii_lowercase().contains(&tool))
+            .unwrap_or(false)
+    })
 }
 
 fn package_json_uses(path: &Path, tool: &str) -> bool {
@@ -1259,6 +1272,26 @@ mod tests {
 
         assert!(!detected.contains(&"swiftlint"));
         assert!(!detected.contains(&"swiftformat"));
+    }
+
+    #[test]
+    fn swift_package_plugins_enable_declared_quality_tools() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("Package.swift"),
+            r#".package(url: "https://github.com/realm/SwiftLint", from: "0.60.0")
+.package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.55.0")"#,
+        )
+        .unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let detected: Vec<_> = catalog()
+            .into_iter()
+            .filter(|tool| tool.detect(&project))
+            .map(|tool| tool.id)
+            .collect();
+
+        assert!(detected.contains(&"swiftlint"));
+        assert!(detected.contains(&"swiftformat"));
     }
 
     #[test]

@@ -28,6 +28,9 @@ pub enum Command {
         /// Print the detected configuration without writing a file.
         #[arg(long)]
         dry_run: bool,
+        /// Choose which repository script becomes the generated canonical gate.
+        #[arg(long, value_enum, default_value_t = GateProfile::Auto)]
+        gate: GateProfile,
     },
     /// Check installed tools and project configuration.
     Doctor {
@@ -111,6 +114,43 @@ pub enum Command {
         #[arg(long, value_name = "COMMAND")]
         install: String,
     },
+    /// Audit or configure a folder containing multiple Git repositories.
+    Repositories {
+        #[command(subcommand)]
+        command: RepositoriesCommand,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum GateProfile {
+    #[default]
+    Auto,
+    Fast,
+    Full,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RepositoriesCommand {
+    /// Report adoption readiness without changing repositories.
+    Audit {
+        #[arg(long, value_enum, default_value_t = AdoptionFormat::Pretty)]
+        format: AdoptionFormat,
+    },
+    /// Create quality.yml in repositories that do not have one.
+    Apply {
+        /// Preview which configurations would be created.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = AdoptionFormat::Pretty)]
+        format: AdoptionFormat,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum AdoptionFormat {
+    #[default]
+    Pretty,
+    Json,
 }
 
 #[derive(Clone, Debug, Default, Args)]

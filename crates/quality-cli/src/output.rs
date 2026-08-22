@@ -380,7 +380,28 @@ fn print_pretty_run(report: &RunReport, report_level: Severity) {
         println!(
             "Quality checks found problems ({failed} of {} tools).",
             report.results.len()
-        )
+        );
+        if report.summary.diagnostics > 0 {
+            let rules = report
+                .summary
+                .rules
+                .iter()
+                .map(|(rule, count)| format!("{rule} ({count})"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "Diagnostics: {} errors, {} warnings, {} info across {} files{}",
+                report.summary.errors,
+                report.summary.warnings,
+                report.summary.info,
+                report.summary.files.len(),
+                if rules.is_empty() {
+                    String::new()
+                } else {
+                    format!("; rules: {rules}")
+                }
+            );
+        }
     }
 }
 

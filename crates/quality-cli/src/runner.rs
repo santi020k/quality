@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::process::Command;
 use std::sync::OnceLock;
@@ -71,10 +72,25 @@ pub struct ToolResult {
 #[derive(Clone, Debug, Serialize)]
 pub struct RunReport {
     pub results: Vec<ToolResult>,
+    pub summary: RunSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<RunScope>,
     #[serde(default)]
     pub suppressed: usize,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct RunSummary {
+    pub tools: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub missing: usize,
+    pub diagnostics: usize,
+    pub errors: usize,
+    pub warnings: usize,
+    pub info: usize,
+    pub files: Vec<String>,
+    pub rules: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -92,6 +108,71 @@ pub struct RunScope {
 }
 
 impl RunReport {
+    pub fn new(results: Vec<ToolResult>, scope: Option<RunScope>) -> Self {
+        let mut report = Self {
+            results,
+            summary: RunSummary::default(),
+            scope,
+            suppressed: 0,
+        };
+        report.refresh_summary();
+        report
+    }
+
+    pub fn refresh_summary(&mut self) {
+        let mut files = BTreeSet::new();
+        let mut rules = BTreeMap::new();
+        let diagnostics = self
+            .results
+            .iter()
+            .flat_map(|result| &result.diagnostics)
+            .collect::<Vec<_>>();
+        for diagnostic in &diagnostics {
+            if let Some(path) = &diagnostic.path {
+                files.insert(path.clone());
+            }
+            if let Some(rule) = &diagnostic.rule {
+                *rules.entry(rule.clone()).or_insert(0) += 1;
+            }
+        }
+        self.summary = RunSummary {
+            tools: self.results.len(),
+            passed: self
+                .results
+                .iter()
+                .filter(|result| matches!(result.status, Status::Passed))
+                .count(),
+            failed: self
+                .results
+                .iter()
+                .filter(|result| matches!(result.status, Status::Failed))
+                .count(),
+            missing: self
+                .results
+                .iter()
+                .filter(|result| matches!(result.status, Status::Missing))
+                .count(),
+            diagnostics: diagnostics.len(),
+            errors: diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity.eq_ignore_ascii_case("error"))
+                .count(),
+            warnings: diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity.eq_ignore_ascii_case("warning"))
+                .count(),
+            info: diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    !diagnostic.severity.eq_ignore_ascii_case("error")
+                        && !diagnostic.severity.eq_ignore_ascii_case("warning")
+                })
+                .count(),
+            files: files.into_iter().collect(),
+            rules,
+        };
+    }
+
     pub fn failed(&self) -> bool {
         self.results.iter().any(|result| {
             matches!(result.status, Status::Failed)
@@ -313,11 +394,7 @@ pub fn execute(
                 break;
             }
         }
-        return Ok(RunReport {
-            results,
-            scope,
-            suppressed: 0,
-        });
+        return Ok(RunReport::new(results, scope));
     }
 
     let (sender, receiver) = mpsc::channel();
@@ -332,11 +409,7 @@ pub fn execute(
     drop(sender);
     let mut results: Vec<_> = receiver.iter().take(count).collect();
     results.sort_by(|left, right| left.tool.cmp(&right.tool));
-    Ok(RunReport {
-        results,
-        scope,
-        suppressed: 0,
-    })
+    Ok(RunReport::new(results, scope))
 }
 
 fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
