@@ -11,7 +11,7 @@
     "check": "cargo run --quiet --package quality-cli -- check",
     "check:packages": "turbo run check",
     "check:action-dist": "pnpm --filter @quality/action run build && git diff --exit-code -- packages/action/dist && test -z \"$(git ls-files --others --exclude-standard packages/action/dist)\"",
-    "check:security": "pnpm audit --prod --audit-level high",
+    "check:security": "pnpm audit --audit-level low",
     "check:versions": "node scripts/sync-release-version.mjs --check",
     "changeset": "changeset",
     "commit": "commitprompt",
