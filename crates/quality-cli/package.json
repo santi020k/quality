@@ -1,6 +1,6 @@
 {
   "name": "@quality/cli",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "build": "cargo build --release --package quality-cli",
