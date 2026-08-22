@@ -9,9 +9,9 @@ allowBuilds:
   workerd: true
 
 minimumReleaseAgeExclude:
-  - '@santi020k/lumen-astro@1.2.0'
-  - '@santi020k/lumen-core@1.2.0'
-  - '@santi020k/lumen@1.2.0'
+  - '@santi020k/lumen-astro@1.4.0'
+  - '@santi020k/lumen-core@1.4.0'
+  - '@santi020k/lumen@1.4.0'
   - '@cspell/cspell-bundled-dicts@10.1.0'
   - '@cspell/cspell-json-reporter@10.1.0'
   - '@cspell/cspell-performance-monitor@10.1.0'
