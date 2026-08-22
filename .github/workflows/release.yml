@@ -195,7 +195,10 @@ jobs:
   action-smoke:
     name: Verify published Action
     needs: [prepare, publish]
-    if: needs.prepare.outputs.release == 'true'
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.release == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
