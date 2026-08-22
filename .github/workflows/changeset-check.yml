@@ -10,7 +10,7 @@ permissions:
 jobs:
   changeset:
     name: User-visible changes are documented
-    if: github.head_ref != 'changeset-release/main'
+    if: github.head_ref != 'changeset-release/main' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

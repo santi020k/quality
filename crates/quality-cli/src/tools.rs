@@ -371,23 +371,23 @@ pub fn task_invocation(
     let workspace = working_directory
         .strip_prefix(&project.root)
         .unwrap_or(Path::new(""));
-    if let Some(changes) = changes
-        && (!config.extensions.is_empty() || !config.config_files.is_empty())
-    {
-        let relevant = changes.files.iter().any(|path| {
-            configured_path(path, &config.config_files)
-                || path.strip_prefix(workspace).is_ok_and(|path| {
-                    (!config.extensions.is_empty()
-                        && external_accepts_extensions(path, &config.extensions))
-                        || configured_path(path, &config.config_files)
-                })
-        });
-        let global_configuration_changed = changes
-            .files
-            .iter()
-            .any(|path| path == Path::new("quality.yml"));
-        if !relevant && !global_configuration_changed {
-            return None;
+    if let Some(changes) = changes {
+        if !config.extensions.is_empty() || !config.config_files.is_empty() {
+            let relevant = changes.files.iter().any(|path| {
+                configured_path(path, &config.config_files)
+                    || path.strip_prefix(workspace).is_ok_and(|path| {
+                        (!config.extensions.is_empty()
+                            && external_accepts_extensions(path, &config.extensions))
+                            || configured_path(path, &config.config_files)
+                    })
+            });
+            let global_configuration_changed = changes
+                .files
+                .iter()
+                .any(|path| path == Path::new("quality.yml"));
+            if !relevant && !global_configuration_changed {
+                return None;
+            }
         }
     }
 
