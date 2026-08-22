@@ -111,4 +111,32 @@ if (socialImages.size !== htmlFiles.length) {
 	throw new Error(`Expected one unique social image for each of ${htmlFiles.length} pages, found ${socialImages.size}.`);
 }
 
-console.log(`Validated complete social metadata and unique 1200x630 images for ${htmlFiles.length} pages.`);
+const llmsIndex = await readFile(path.join(outputDirectory, 'llms.txt'), 'utf8');
+const llmCompatibilityIndex = await readFile(path.join(outputDirectory, 'llm.txt'), 'utf8');
+const llmsFull = await readFile(path.join(outputDirectory, 'llms-full.txt'), 'utf8');
+
+if (llmCompatibilityIndex !== llmsIndex) {
+	throw new Error('llm.txt must remain an exact compatibility copy of llms.txt.');
+}
+
+for (const htmlFile of htmlFiles) {
+	const route = path.relative(outputDirectory, htmlFile).replace(/(?:^|\/)index\.html$/, '/').replace(/\.html$/, '/');
+
+	if (route === '/') continue;
+
+	const slug = route.replaceAll('/', '');
+	const markdownFile = `${slug}.md`;
+	const markdown = await readFile(path.join(outputDirectory, markdownFile), 'utf8');
+
+	if (!llmsIndex.includes(`/${markdownFile}`)) {
+		throw new Error(`llms.txt does not link to ${markdownFile}.`);
+	}
+
+	const title = markdown.match(/^# (.+)$/m)?.[1];
+
+	if (!title || !llmsFull.includes(`# ${title}\n`)) {
+		throw new Error(`llms-full.txt does not include ${markdownFile}.`);
+	}
+}
+
+console.log(`Validated metadata, social images, and AI-readable resources for ${htmlFiles.length} pages.`);
