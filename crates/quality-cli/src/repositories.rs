@@ -25,6 +25,7 @@ struct RepositoryEntry {
     detected_adapters: Vec<String>,
     generated_tasks: Vec<String>,
     doctor_errors: usize,
+    missing_toolchains: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -121,6 +122,7 @@ fn inspect_one(parent: &Path, root: &Path, apply: bool, dry_run: bool) -> Reposi
             detected_adapters,
             generated_tasks,
             doctor_errors: 0,
+            missing_toolchains: Vec::new(),
             error: None,
         };
     }
@@ -137,11 +139,13 @@ fn inspect_one(parent: &Path, root: &Path, apply: bool, dry_run: bool) -> Reposi
         }
     };
     let doctor = runner::doctor(&project, &config);
-    let doctor_errors = doctor
+    let missing_toolchains = doctor
         .tools
         .iter()
         .filter(|entry| entry.check_enabled && entry.required && !entry.available)
-        .count();
+        .map(|entry| entry.tool.clone())
+        .collect::<Vec<_>>();
+    let doctor_errors = missing_toolchains.len();
     RepositoryEntry {
         path,
         configured: true,
@@ -154,6 +158,7 @@ fn inspect_one(parent: &Path, root: &Path, apply: bool, dry_run: bool) -> Reposi
         detected_adapters,
         generated_tasks,
         doctor_errors,
+        missing_toolchains,
         error: None,
     }
 }
@@ -177,6 +182,7 @@ fn invalid_entry_with_detection(
         detected_adapters,
         generated_tasks,
         doctor_errors: 0,
+        missing_toolchains: Vec::new(),
         error: Some(error),
     }
 }
@@ -215,6 +221,9 @@ fn print_report(report: &AdoptionReport, format: AdoptionFormat) -> Result<()> {
                 println!("  {marker} {:<24} {}{created}", entry.path, entry.status);
                 if let Some(error) = &entry.error {
                     println!("    {error}");
+                }
+                if !entry.missing_toolchains.is_empty() {
+                    println!("    missing: {}", entry.missing_toolchains.join(", "));
                 }
             }
             println!();

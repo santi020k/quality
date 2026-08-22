@@ -134,8 +134,9 @@ quality --root ~/Projects repositories apply --dry-run
 quality --root ~/Projects repositories apply --format json
 ```
 
-The JSON adoption report includes readiness state, detected adapters, generated
-tasks, missing toolchains, invalid configurations, and created files for every
-repository.
+The adoption report includes readiness state, detected adapters, generated
+tasks, the exact IDs of missing toolchains, invalid configurations, and created
+files for every repository. Pretty output prints missing IDs below the affected
+repository, while JSON exposes them through `missing_toolchains`.
 
 All commands accept `--root PATH` when the target repository is not the current directory.

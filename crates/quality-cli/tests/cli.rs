@@ -1207,7 +1207,7 @@ fn repositories_audit_and_apply_emit_an_adoption_report() {
     initialize_git(&missing);
     fs::write(
         configured.join("quality.yml"),
-        "version: 1\noutput: pretty\ntools: {}\n",
+        "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    required: true\n    command: definitely-not-a-real-tool\n",
     )
     .unwrap();
     fs::write(
@@ -1224,6 +1224,15 @@ fn repositories_audit_and_apply_emit_an_adoption_report() {
     let report: serde_json::Value = serde_json::from_slice(&audit.stdout).unwrap();
     assert_eq!(report["summary"]["total"], 2);
     assert_eq!(report["summary"]["needs_configuration"], 1);
+    assert_eq!(report["summary"]["missing_toolchains"], 1);
+    assert_eq!(
+        report["repositories"][0]["missing_toolchains"][0],
+        "swiftlint"
+    );
+
+    let pretty = quality(parent.path(), &["repositories", "audit"]);
+    assert!(pretty.status.success());
+    assert!(String::from_utf8_lossy(&pretty.stdout).contains("missing: swiftlint"));
 
     let applied = quality(
         parent.path(),

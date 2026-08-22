@@ -7,6 +7,20 @@ description: Give coding agents a deterministic quality workflow without adding 
 runs the same local analyzers, configuration, and repository tasks as a human or
 CI job; checking does not call an AI service.
 
+## Read the documentation programmatically
+
+The documentation site publishes AI-readable resources that stay synchronized
+with these pages during every build:
+
+- [`/llms.txt`](/llms.txt) is the compact documentation index.
+- [`/llms-full.txt`](/llms-full.txt) contains the complete documentation in one
+  Markdown document.
+- Every documentation page is also available as Markdown by replacing its
+  trailing slash with `.md`, such as [`/commands.md`](/commands.md).
+
+`/llm.txt` is provided as a compatibility copy for tools that look for the
+singular filename. New integrations should prefer the standard `/llms.txt`.
+
 ## Add repository instructions
 
 Print a ready-to-paste `AGENTS.md` section:
