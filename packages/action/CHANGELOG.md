@@ -1,5 +1,11 @@
 # @quality/action
 
+## 0.1.1
+
+### Patch Changes
+
+- [#8](https://github.com/santi020k/quality/pull/8) [`06998e5`](https://github.com/santi020k/quality/commit/06998e5316700ff7f58ec02f018dec00e994036f) Thanks [@santi020k](https://github.com/santi020k)! - Support release verification when the Action runs from a local checkout.
+
 ## 0.1.0
 
 ### Minor Changes
