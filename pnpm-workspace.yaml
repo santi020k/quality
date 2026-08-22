@@ -7,3 +7,8 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@santi020k/lumen-astro@1.2.0'
+  - '@santi020k/lumen-core@1.2.0'
+  - '@santi020k/lumen@1.2.0'
