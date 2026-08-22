@@ -24,7 +24,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|chore|refactor|perf|test|ci|build|revert)([(][-a-z0-9._/]+[)])?:[[:space:]][^[:space:]A-Z].*$ ]]; then
+          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|chore|refactor|perf|test|ci|build|revert)([(][-a-z0-9._/]+[)])?!?:[[:space:]][^[:space:]A-Z].*$ ]]; then
             echo "::error::Use a Conventional Commit title, for example: feat: add repository-aware checks"
             exit 1
           fi
