@@ -144,7 +144,7 @@ jobs:
           }
           Compress-Archive -Path release/package/* -DestinationPath "release/$asset"
           $hash = (Get-FileHash "release/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $asset" | Set-Content "release/$asset.sha256"
+          [System.IO.File]::WriteAllText("release/$asset.sha256", "$hash  $asset`n")
 
       - uses: actions/upload-artifact@v6
         with:
