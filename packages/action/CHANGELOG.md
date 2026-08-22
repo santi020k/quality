@@ -1,5 +1,11 @@
 # @quality/action
 
+## 0.3.0
+
+### Minor Changes
+
+- [#20](https://github.com/santi020k/quality/pull/20) [`4635669`](https://github.com/santi020k/quality/commit/46356693441ca8c533ac91cdc05a0dca711d76fe) Thanks [@santi020k](https://github.com/santi020k)! - Add multi-repository adoption audit/apply commands with machine-readable reports, explicit fast/full initialization gates, aggregate diagnostic summaries, and improved SwiftPM and Xcode project detection.
+
 ## 0.2.1
 
 ### Patch Changes
