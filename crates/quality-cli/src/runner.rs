@@ -31,6 +31,14 @@ pub enum Status {
     Missing,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureKind {
+    Code,
+    Environment,
+    Toolchain,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Diagnostic {
     pub tool: String,
@@ -47,6 +55,8 @@ pub struct ToolResult {
     pub tool: String,
     pub name: String,
     pub status: Status,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_kind: Option<FailureKind>,
     pub duration_ms: u128,
     pub command: String,
     pub diagnostics: Vec<Diagnostic>,
@@ -112,6 +122,8 @@ pub struct DoctorEntry {
     pub name: String,
     pub detected: bool,
     pub enabled: bool,
+    pub check_enabled: bool,
+    pub format_or_fix_available: bool,
     pub available: bool,
     pub required: bool,
     pub command: String,
@@ -130,7 +142,7 @@ impl DoctorReport {
     pub fn has_errors(&self) -> bool {
         self.tools
             .iter()
-            .any(|entry| entry.enabled && entry.required && !entry.available)
+            .any(|entry| entry.check_enabled && entry.required && !entry.available)
     }
 }
 
@@ -140,8 +152,9 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
         .flat_map(|tool| {
             let tool_config = config.tool(tool.id);
             let detected = tool.detect(project);
-            let enabled =
-                tool_config.enabled.unwrap_or(detected) && tool_config.check != Some(false);
+            let enabled = tool_config.enabled.unwrap_or(detected);
+            let check_enabled = enabled && tool_config.check != Some(false);
+            let format_or_fix_available = enabled && tool.supports_format_or_fix();
             let required = tool_config.required.unwrap_or(true);
             let invocations = tool.invocations(project, &tool_config, Operation::Check, None);
             if invocations.is_empty() {
@@ -150,7 +163,9 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
                     name: tool.name.to_owned(),
                     detected,
                     enabled,
-                    available: !enabled,
+                    check_enabled,
+                    format_or_fix_available,
+                    available: !check_enabled,
                     required,
                     command: tool.executable.to_owned(),
                     working_directory: project.root.display().to_string(),
@@ -160,21 +175,31 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             invocations
                 .into_iter()
                 .map(|invocation| {
-                    let available = !enabled
-                        || command_available(
+                    let command_ready = command_available(
                             &invocation.working_directory,
                             Some(&invocation.command),
                         );
+                    let runtime_ready = invocation.id.split('@').next() != Some("android-lint")
+                        || java_runtime_available(&invocation.working_directory);
+                    let available = !check_enabled || (command_ready && runtime_ready);
                     DoctorEntry {
                         tool: invocation.id,
                         name: invocation.name,
                         detected,
                         enabled,
+                        check_enabled,
+                        format_or_fix_available,
                         available,
                         required,
                         command: invocation.command.display().to_string(),
                         working_directory: invocation.working_directory.display().to_string(),
-                        guidance: (enabled && !available).then(|| tool.install_hint.to_owned()),
+                        guidance: (check_enabled && !available).then(|| {
+                            if command_ready && !runtime_ready {
+                                "Install a Java runtime supported by the Android project and ensure `java -version` succeeds.".to_owned()
+                            } else {
+                                tool.install_hint.to_owned()
+                            }
+                        }),
                     }
                 })
                 .collect()
@@ -189,6 +214,8 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             name: invocation.name,
             detected: true,
             enabled: true,
+            check_enabled: true,
+            format_or_fix_available: false,
             available,
             required: task_config.required,
             command: invocation.command.display().to_string(),
@@ -219,6 +246,8 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             name: tool_config.name.clone().unwrap_or_else(|| id.clone()),
             detected,
             enabled,
+            check_enabled: enabled,
+            format_or_fix_available: false,
             available,
             required,
             command,
@@ -340,6 +369,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
                 tool: invocation.id,
                 name: invocation.name,
                 status,
+                failure_kind: (!output.status.success()).then(|| classify_failure(&combined)),
                 duration_ms: started.elapsed().as_millis(),
                 command: command_display,
                 diagnostics,
@@ -368,6 +398,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
                 tool: invocation.id,
                 name: invocation.name,
                 status: Status::Missing,
+                failure_kind: Some(FailureKind::Toolchain),
                 duration_ms: started.elapsed().as_millis(),
                 command: command_display,
                 diagnostics,
@@ -380,6 +411,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
             tool: invocation.id.clone(),
             name: invocation.name,
             status: Status::Failed,
+            failure_kind: Some(FailureKind::Environment),
             duration_ms: started.elapsed().as_millis(),
             command: command_display,
             diagnostics: vec![Diagnostic {
@@ -427,6 +459,9 @@ fn parse_diagnostics_at(
     };
     if let Some(structured) = structured {
         return (structured, true);
+    }
+    if parser == DiagnosticParser::Generic && !synthesize_failure {
+        return (Vec::new(), false);
     }
 
     let pattern = diagnostic_pattern();
@@ -660,6 +695,27 @@ fn combine_output(stdout: &[u8], stderr: &[u8]) -> String {
     .join("\n")
 }
 
+fn classify_failure(output: &str) -> FailureKind {
+    let normalized = output.to_ascii_lowercase();
+    if [
+        "address already in use",
+        "port is already in use",
+        "unable to locate a java runtime",
+        "could not find java",
+        "java_home is not set",
+        "no space left on device",
+        "too many open files",
+        "cannot allocate memory",
+    ]
+    .iter()
+    .any(|pattern| normalized.contains(pattern))
+    {
+        FailureKind::Environment
+    } else {
+        FailureKind::Code
+    }
+}
+
 fn format_command(invocation: &Invocation) -> String {
     std::iter::once(invocation.command.display().to_string())
         .chain(invocation.args.iter().cloned())
@@ -681,6 +737,15 @@ fn command_available(root: &std::path::Path, command: Option<&std::path::PathBuf
     } else {
         which::which(command).is_ok()
     }
+}
+
+fn java_runtime_available(root: &std::path::Path) -> bool {
+    Command::new("java")
+        .arg("-version")
+        .current_dir(root)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 #[cfg(unix)]
@@ -763,5 +828,30 @@ mod tests {
         );
         assert_eq!(found.len(), 1);
         assert!(!baseline_safe);
+    }
+
+    #[test]
+    fn ignores_generic_diagnostic_looking_output_from_successful_tasks() {
+        let (found, baseline_safe) = parse_diagnostics(
+            DiagnosticParser::Generic,
+            "repository-check",
+            std::path::Path::new("/project"),
+            "src/app.ts:4:2: warning: informational output",
+            false,
+        );
+        assert!(found.is_empty());
+        assert!(!baseline_safe);
+    }
+
+    #[test]
+    fn classifies_resource_conflicts_as_environment_failures() {
+        assert!(matches!(
+            classify_failure("Error: address already in use 127.0.0.1:4321"),
+            FailureKind::Environment
+        ));
+        assert!(matches!(
+            classify_failure("src/app.ts:1:1: error: Type mismatch"),
+            FailureKind::Code
+        ));
     }
 }

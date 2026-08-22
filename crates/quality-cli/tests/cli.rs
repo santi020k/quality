@@ -10,6 +10,21 @@ fn quality(root: &std::path::Path, args: &[&str]) -> Output {
         .expect("quality should execute")
 }
 
+fn quality_with_path(root: &std::path::Path, args: &[&str], path: &std::path::Path) -> Output {
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let joined = std::env::join_paths(
+        std::iter::once(path.to_path_buf()).chain(std::env::split_paths(&inherited)),
+    )
+    .unwrap();
+    Command::new(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(root)
+        .args(args)
+        .env("PATH", joined)
+        .output()
+        .expect("quality should execute")
+}
+
 fn git(root: &std::path::Path, args: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
@@ -56,6 +71,8 @@ fn init_detects_a_mixed_mobile_project() {
     assert!(config.contains("detekt:"));
     assert!(config.contains("ktlint:"));
     assert!(config.contains("baseline: .quality-baseline.json"));
+    assert!(config.contains("cspell:ignore"));
+    assert!(config.contains("clippy"));
     assert!(!config.contains("command: null"));
 }
 
@@ -82,6 +99,24 @@ fn init_preserves_the_canonical_repository_check() {
     assert!(config.contains("name: Repository check (verify)"));
     assert!(config.contains("command: pnpm"));
     assert!(config.contains("- verify"));
+}
+
+#[test]
+fn doctor_distinguishes_disabled_checks_from_disabled_tools() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"scripts":{"verify":"printf ok"},"devDependencies":{"prettier":"3.0.0"}}"#,
+    )
+    .unwrap();
+    let output = quality(temp.path(), &["init"]);
+    assert!(output.status.success());
+
+    let doctor = quality(temp.path(), &["doctor"]);
+    assert!(doctor.status.success());
+    assert!(
+        String::from_utf8_lossy(&doctor.stdout).contains("check disabled; format/fix available")
+    );
 }
 
 #[test]
@@ -663,13 +698,20 @@ fn nested_android_workspace_uses_its_wrapper_and_rebases_diagnostics() {
     let mut permissions = fs::metadata(&wrapper).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&wrapper, permissions).unwrap();
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    let java = fake_bin.join("java");
+    fs::write(&java, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = fs::metadata(&java).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&java, permissions).unwrap();
     fs::write(
         temp.path().join("quality.yml"),
         "version: 1\noutput: pretty\ntools:\n  android-lint:\n    enabled: true\n  detekt:\n    enabled: false\n  ktlint:\n    enabled: false\n",
     )
     .unwrap();
 
-    let doctor = quality(temp.path(), &["doctor", "--format", "json"]);
+    let doctor = quality_with_path(temp.path(), &["doctor", "--format", "json"], &fake_bin);
     assert!(doctor.status.success());
     let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
     let android_entry = report["tools"]

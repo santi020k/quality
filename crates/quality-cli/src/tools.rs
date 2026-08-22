@@ -38,6 +38,10 @@ impl Tool {
         (self.detector)(project)
     }
 
+    pub fn supports_format_or_fix(&self) -> bool {
+        self.format_args.is_some() || self.fix_args.is_some()
+    }
+
     #[cfg(test)]
     pub fn invocation(
         &self,

@@ -10,7 +10,7 @@ On macOS or Linux:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.1.0
+  | sh -s -- santi020k/quality v0.2.1
 ```
 
 Install from a local checkout when developing the CLI itself:
