@@ -211,6 +211,7 @@ mod tests {
             tool: "swiftlint".to_owned(),
             name: "SwiftLint".to_owned(),
             status: Status::Failed,
+            failure_kind: None,
             duration_ms: 1,
             command: "swiftlint".to_owned(),
             diagnostics,

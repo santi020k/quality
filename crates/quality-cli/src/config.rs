@@ -57,7 +57,7 @@ pub struct ToolConfig {
     pub fix_args: Option<Vec<String>>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticParser {
     #[default]
@@ -361,6 +361,7 @@ pub fn initial_text(project: &Project) -> Result<String> {
     };
     let mut text = String::from(
         "# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json\n\
+         # cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint\n\
          # quality.yml — one code-quality workflow for this repository\n\
          # Tools are auto-detected; entries below make the selected policy explicit.\n\
          # A canonical repository script replaces analyzer checks when one is detected,\n\

@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde_json::json;
 
 use crate::cli::{OutputFormat, Severity};
-use crate::runner::{DoctorReport, RunReport, Status};
+use crate::runner::{DoctorReport, FailureKind, RunReport, Status};
 
 pub fn print_run(
     report: &RunReport,
@@ -38,6 +38,13 @@ pub fn print_doctor(report: &DoctorReport, format: OutputFormat) -> Result<()> {
                         "disabled"
                     } else {
                         "not detected"
+                    };
+                    println!("  – {:<14} {reason}", entry.name);
+                } else if !entry.check_enabled {
+                    let reason = if entry.format_or_fix_available {
+                        "check disabled; format/fix available"
+                    } else {
+                        "check disabled"
                     };
                     println!("  – {:<14} {reason}", entry.name);
                 } else if entry.available {
@@ -274,7 +281,7 @@ fn print_pretty_run(report: &RunReport, report_level: Severity) {
                 selection_description(scope)
             );
         } else {
-            println!("No applicable tools found. Run `quality init` after adding project files.");
+            println!("Warning: no checks ran. Run `quality init` after adding project files.");
         }
         return;
     }
@@ -304,7 +311,12 @@ fn print_pretty_run(report: &RunReport, report_level: Severity) {
                 }
             }
             Status::Failed => {
-                println!("  ✗ {:<14} {:.2}s", result.name, seconds);
+                let category = match result.failure_kind {
+                    Some(FailureKind::Environment) => " (environment)",
+                    Some(FailureKind::Toolchain) => " (toolchain)",
+                    Some(FailureKind::Code) | None => "",
+                };
+                println!("  ✗ {:<14} {:.2}s{category}", result.name, seconds);
                 let visible: Vec<_> = result
                     .diagnostics
                     .iter()

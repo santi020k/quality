@@ -16,9 +16,9 @@ Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v0.1.0
+- uses: santi020k/quality@v0.2.1
   with:
-    version: v0.1.0
+    version: v0.2.1
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -67,10 +67,10 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.1.0
+  | sh -s -- santi020k/quality v0.2.1
 ```
 
-Omit `v0.1.0` to install the latest release. Native archives are published for
+Omit the version to install the latest release. Native archives are published for
 Intel and Apple Silicon macOS, x86-64 and ARM64 Linux, and x86-64 Windows.
 
 Then run these commands from any repository:
@@ -293,7 +293,7 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v0.1.0` is pushed.
+macOS, and Windows whenever a version tag such as `v0.2.1` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -303,7 +303,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.1.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.2.1 --locked'
 ```
 
 ## Design direction
