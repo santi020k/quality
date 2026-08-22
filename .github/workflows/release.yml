@@ -65,7 +65,7 @@ jobs:
           components: clippy, rustfmt
       - name: Install actionlint
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
       - run: pnpm validate

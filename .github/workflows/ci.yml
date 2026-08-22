@@ -35,7 +35,7 @@ jobs:
           components: rustfmt, clippy
       - name: Install actionlint
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Restore Rust build cache
         uses: actions/cache@v5
