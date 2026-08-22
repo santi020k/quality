@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   checkArguments,
   checksumFromFile,
+  releaseRepository,
   releaseTarget,
   resolveProjectPath,
   sha256,
@@ -19,8 +20,10 @@ async function installQuality(version: string): Promise<string> {
   const cached = cacheVersion ? cache.find("quality", cacheVersion, target) : "";
   if (cached) return path.join(cached, binaryName);
 
-  const repository = process.env.GITHUB_ACTION_REPOSITORY;
-  if (!repository) throw new Error("GITHUB_ACTION_REPOSITORY is unavailable");
+  const repository = releaseRepository(
+    process.env.GITHUB_ACTION_REPOSITORY,
+    process.env.QUALITY_ACTION_REPOSITORY,
+  );
   const release = version === "latest" ? "releases/latest/download" : `releases/download/${version}`;
   const asset = `quality-${target}.${windows ? "zip" : "tar.gz"}`;
   const base = `https://github.com/${repository}/${release}`;

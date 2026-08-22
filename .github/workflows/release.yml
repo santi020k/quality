@@ -219,7 +219,7 @@ jobs:
       - name: Run published release through the Action
         uses: ./
         env:
-          GITHUB_ACTION_REPOSITORY: ${{ github.repository }}
+          QUALITY_ACTION_REPOSITORY: ${{ github.repository }}
         with:
           version: ${{ needs.prepare.outputs.tag }}
           working-directory: smoke
