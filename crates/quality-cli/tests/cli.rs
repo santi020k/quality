@@ -37,6 +37,8 @@ fn init_detects_a_mixed_mobile_project() {
     fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
     fs::write(temp.path().join("MainActivity.kt"), "class MainActivity\n").unwrap();
     fs::write(temp.path().join("AndroidManifest.xml"), "<manifest />\n").unwrap();
+    fs::write(temp.path().join("detekt.yml"), "build: {}\n").unwrap();
+    fs::write(temp.path().join(".editorconfig"), "root = true\n").unwrap();
 
     let output = quality(temp.path(), &["init"]);
     assert!(
@@ -252,6 +254,56 @@ fn github_output_annotates_findings_and_writes_a_report() {
 
 #[cfg(unix)]
 #[test]
+fn severity_levels_separate_reporting_from_failure_and_write_a_summary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    let fake = temp.path().join("fake-swiftlint");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho 'App.swift:3:1: warning: Non-blocking warning (example_rule)'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: false\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+    let summary = temp.path().join("summary.md");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(temp.path())
+        .args([
+            "check",
+            "--format",
+            "github",
+            "--report-level",
+            "warning",
+            "--fail-level",
+            "error",
+        ])
+        .env("GITHUB_STEP_SUMMARY", &summary)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("::warning file=App.swift"));
+    let summary = fs::read_to_string(summary).unwrap();
+    assert!(summary.contains("| SwiftLint | ⚠️ Findings | 1 |"));
+
+    let strict = quality(temp.path(), &["check", "--fail-level", "warning"]);
+    assert_eq!(strict.status.code(), Some(1));
+}
+
+#[cfg(unix)]
+#[test]
 fn changed_mode_uses_swiftlints_supported_file_environment() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -331,6 +383,177 @@ fn changed_mode_passes_only_relevant_files_to_eslint() {
     assert!(command.contains("--format json app.ts"));
     assert!(!command.contains("notes.md"));
     assert!(!command.contains(" . "));
+}
+
+#[cfg(unix)]
+#[test]
+fn changed_astro_files_run_eslint_and_lockfiles_expand_to_full_scope() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("page.astro"), "<h1>Hello</h1>\n").unwrap();
+    fs::write(
+        temp.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+    let tools_dir = temp.path().join("node_modules/.bin");
+    fs::create_dir_all(&tools_dir).unwrap();
+    let fake = tools_dir.join("eslint");
+    fs::write(&fake, "#!/bin/sh\nprintf '%s' \"$*\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  eslint:\n    enabled: true\n  prettier:\n    enabled: false\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+
+    fs::write(temp.path().join("page.astro"), "<h1>Changed</h1>\n").unwrap();
+    let astro = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+    assert!(astro.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&astro.stdout).unwrap();
+    assert!(
+        report["results"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("--format json page.astro")
+    );
+
+    git(temp.path(), &["checkout", "--", "page.astro"]);
+    fs::write(
+        temp.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.1'\n",
+    )
+    .unwrap();
+    let lockfile = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+    assert!(lockfile.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&lockfile.stdout).unwrap();
+    assert!(
+        report["results"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with(". --format json")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn nested_android_workspace_uses_its_wrapper_and_rebases_diagnostics() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let android = temp.path().join("apps/android");
+    fs::create_dir_all(android.join("src/main")).unwrap();
+    fs::write(
+        android.join("src/main/AndroidManifest.xml"),
+        "<manifest />\n",
+    )
+    .unwrap();
+    fs::write(android.join("src/main/Main.kt"), "class Main\n").unwrap();
+    let wrapper = android.join("gradlew");
+    fs::write(
+        &wrapper,
+        "#!/bin/sh\necho 'src/main/Main.kt:4:2: warning: Nested issue (android-rule)'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&wrapper).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&wrapper, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  android-lint:\n    enabled: true\n  detekt:\n    enabled: false\n  ktlint:\n    enabled: false\n",
+    )
+    .unwrap();
+
+    let doctor = quality(temp.path(), &["doctor", "--format", "json"]);
+    assert!(doctor.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    let android_entry = report["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["tool"] == "android-lint@apps/android")
+        .unwrap();
+    assert_eq!(android_entry["available"], true);
+    assert!(
+        android_entry["working_directory"]
+            .as_str()
+            .unwrap()
+            .ends_with("apps/android")
+    );
+
+    let checked = quality(temp.path(), &["check", "--format", "json"]);
+    assert_eq!(checked.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["results"][0]["tool"], "android-lint@apps/android");
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["path"],
+        "apps/android/src/main/Main.kt"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_tasks_run_in_their_workspace_and_honor_change_filters() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let workspace = temp.path().join("apps/web");
+    fs::create_dir_all(workspace.join("src")).unwrap();
+    fs::write(workspace.join("src/app.ts"), "export const value = 1;\n").unwrap();
+    fs::write(workspace.join("README.md"), "Initial\n").unwrap();
+    let command = workspace.join("check.sh");
+    fs::write(
+        &command,
+        "#!/bin/sh\necho 'src/app.ts:2:1: error: Type mismatch (typecheck)'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&command).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&command, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  eslint:\n    enabled: false\n  prettier:\n    enabled: false\ntasks:\n  typecheck:\n    name: TypeScript\n    command: ./check.sh\n    working_directory: apps/web\n    args: [--strict]\n    extensions: [ts]\n    config_files: [tsconfig.json]\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+
+    let doctor = quality(temp.path(), &["doctor"]);
+    assert!(doctor.status.success());
+    assert!(String::from_utf8_lossy(&doctor.stdout).contains("TypeScript"));
+
+    fs::write(workspace.join("README.md"), "Documentation only\n").unwrap();
+    let skipped = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+    assert!(skipped.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&skipped.stdout).unwrap();
+    assert!(report["results"].as_array().unwrap().is_empty());
+
+    fs::write(
+        workspace.join("src/app.ts"),
+        "export const value = 'changed';\n",
+    )
+    .unwrap();
+    let checked = quality(temp.path(), &["check", "--changed", "--format", "json"]);
+    assert_eq!(checked.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["results"][0]["tool"], "typecheck");
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["path"],
+        "apps/web/src/app.ts"
+    );
+    assert!(
+        report["results"][0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("./check.sh --strict")
+    );
 }
 
 #[test]

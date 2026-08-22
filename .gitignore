@@ -1,8 +1,12 @@
 /target
 .DS_Store
 node_modules/
+.env
+.env.*
+!.env.example
 .turbo/
 apps/site/dist/
 apps/site/.astro/
 apps/site/.astro-dist/
 apps/site/.wrangler/
+/playground/.sandbox/

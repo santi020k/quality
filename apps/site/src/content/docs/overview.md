@@ -5,7 +5,7 @@ description: Understand what quality does and where it fits in your development 
 
 `quality` is a fast command-line orchestrator for code-quality tools across Swift, Android/Kotlin, JavaScript, and TypeScript projects.
 
-It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing SwiftLint, Android Lint, detekt, ktlint, ESLint, or Prettier, it gives them a shared workflow:
+It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, or Prettier, it gives them a shared workflow:
 
 1. Detect the ecosystems present in a repository.
 2. Resolve repository-local tools before global installations.

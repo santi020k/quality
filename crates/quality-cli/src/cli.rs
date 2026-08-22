@@ -44,6 +44,12 @@ pub enum Command {
         /// Check files changed since BASE. With no BASE, include local changes since HEAD.
         #[arg(long, num_args = 0..=1, default_missing_value = "HEAD", value_name = "BASE")]
         changed: Option<String>,
+        /// Lowest severity shown in human, GitHub, and SARIF reports.
+        #[arg(long, value_enum, default_value_t = Severity::Info)]
+        report_level: Severity,
+        /// Lowest diagnostic severity that makes the command fail.
+        #[arg(long, value_enum, default_value_t = Severity::Info)]
+        fail_level: Severity,
     },
     /// Format the project or verify formatting without changing files.
     Format {
@@ -115,6 +121,31 @@ pub enum OutputFormat {
     Sarif,
     /// Emit GitHub Actions workflow commands for inline annotations.
     Github,
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ValueEnum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    #[default]
+    Info,
+    Warning,
+    Error,
+}
+
+impl Severity {
+    pub fn includes(self, severity: &str) -> bool {
+        severity_rank(severity) >= self as u8
+    }
+}
+
+fn severity_rank(severity: &str) -> u8 {
+    match severity.to_ascii_lowercase().as_str() {
+        "error" => Severity::Error as u8,
+        "warning" => Severity::Warning as u8,
+        _ => Severity::Info as u8,
+    }
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

@@ -1,0 +1,43 @@
+name: Quality
+description: Run fast, changed-file-aware code quality checks with native GitHub annotations.
+author: quality contributors
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  version:
+    description: Release tag to install, or latest.
+    default: latest
+  working-directory:
+    description: Project directory to check.
+    default: .
+  changed-only:
+    description: Check only pull-request changes when a base branch is available.
+    default: "true"
+  base:
+    description: Explicit Git revision to compare against.
+    required: false
+  report-level:
+    description: Lowest severity shown (info, warning, or error).
+    default: warning
+  fail-level:
+    description: Lowest severity that fails the action (info, warning, or error).
+    default: warning
+  sarif:
+    description: Path for the SARIF report, or an empty string to disable it.
+    default: quality.sarif
+
+outputs:
+  sarif:
+    description: Absolute path to the generated SARIF report.
+  findings:
+    description: Number of reported findings.
+  tools:
+    description: Number of quality adapters that ran.
+  duration-ms:
+    description: Total action execution time in milliseconds.
+
+runs:
+  using: node24
+  main: packages/action/dist/index.js

@@ -1,0 +1,31 @@
+# quality.yml — this repository validates itself with its public CLI.
+version: 1
+output: pretty
+baseline: .quality-baseline.json
+tools:
+  cargo-fmt:
+    enabled: true
+    required: true
+  cargo-clippy:
+    enabled: true
+    required: true
+  astro-check:
+    enabled: true
+    required: true
+  eslint:
+    enabled: false
+  prettier:
+    enabled: false
+tasks:
+  actionlint:
+    name: GitHub Actions
+    command: actionlint
+    extensions: [yml, yaml]
+    config_files: [.github/workflows]
+  action-typecheck:
+    name: GitHub Action type-check
+    command: pnpm
+    working_directory: packages/action
+    args: [run, check]
+    extensions: [ts]
+    config_files: [package.json, tsconfig.json, pnpm-lock.yaml]

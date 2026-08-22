@@ -58,6 +58,31 @@ impl Project {
             .iter()
             .any(|path| path.to_string_lossy().contains(fragment))
     }
+
+    pub fn paths_named(&self, name: &str) -> impl Iterator<Item = &Path> {
+        self.relative_paths
+            .iter()
+            .filter(move |path| path.file_name().and_then(|value| value.to_str()) == Some(name))
+            .map(PathBuf::as_path)
+    }
+
+    #[cfg(test)]
+    pub fn paths_with_extension(&self, extension: &str) -> impl Iterator<Item = &Path> {
+        let extension = extension.to_ascii_lowercase();
+        self.relative_paths
+            .iter()
+            .filter(move |path| {
+                path.extension()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value.eq_ignore_ascii_case(&extension))
+            })
+            .map(PathBuf::as_path)
+    }
+
+    #[cfg(test)]
+    pub fn contains_path(&self, path: &Path) -> bool {
+        self.relative_paths.contains(path)
+    }
 }
 
 fn should_visit(entry: &DirEntry) -> bool {
@@ -83,5 +108,24 @@ mod tests {
         let project = Project::discover(temp.path()).unwrap();
         assert!(project.has_extension("swift"));
         assert!(!project.has_extension("kt"));
+    }
+
+    #[test]
+    fn keeps_marker_locations_for_workspace_discovery() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("apps/android")).unwrap();
+        std::fs::write(temp.path().join("apps/android/gradlew"), "").unwrap();
+        std::fs::write(temp.path().join("apps/android/App.kt"), "").unwrap();
+
+        let project = Project::discover(temp.path()).unwrap();
+        assert_eq!(
+            project.paths_named("gradlew").collect::<Vec<_>>(),
+            vec![Path::new("apps/android/gradlew")]
+        );
+        assert_eq!(
+            project.paths_with_extension("kt").collect::<Vec<_>>(),
+            vec![Path::new("apps/android/App.kt")]
+        );
+        assert!(project.contains_path(Path::new("apps/android/App.kt")));
     }
 }

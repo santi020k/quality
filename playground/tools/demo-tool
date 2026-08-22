@@ -1,0 +1,107 @@
+#!/bin/sh
+
+set -eu
+
+operation="${1:-}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+project_files() {
+  case "$operation" in
+    lint | fix)
+      find src -type f -name '*.demo' -print
+      ;;
+    format-check | format)
+      find src -type f -name '*.prose' -print
+      ;;
+  esac
+}
+
+lint_files() {
+  status=0
+  for file in "$@"; do
+    if [ ! -f "$file" ]; then
+      continue
+    fi
+    if awk '
+      /QUALITY_ERROR/ {
+        printf "%s:%d:1: error: Playground error marker found (demo-error)\n", FILENAME, FNR
+        found = 1
+        next
+      }
+      /QUALITY_WARNING/ {
+        printf "%s:%d:1: warning: Playground warning marker found (demo-warning)\n", FILENAME, FNR
+        found = 1
+      }
+      END { exit found ? 1 : 0 }
+    ' "$file"; then
+      :
+    else
+      status=1
+    fi
+  done
+  return "$status"
+}
+
+format_check_files() {
+  status=0
+  for file in "$@"; do
+    if [ ! -f "$file" ]; then
+      continue
+    fi
+    if awk '
+      /[[:blank:]]$/ {
+        printf "%s:%d:1: warning: Trailing whitespace found (demo-format)\n", FILENAME, FNR
+        found = 1
+      }
+      END { exit found ? 1 : 0 }
+    ' "$file"; then
+      :
+    else
+      status=1
+    fi
+  done
+  return "$status"
+}
+
+rewrite_files() {
+  expression="$1"
+  shift
+  for file in "$@"; do
+    if [ ! -f "$file" ]; then
+      continue
+    fi
+    # quality runs independent tools concurrently, so each process needs its own
+    # temporary file even when formatter and fixer touch the same source file.
+    temporary="${file}.quality-tmp.$$"
+    sed "$expression" "$file" > "$temporary"
+    mv "$temporary" "$file"
+  done
+}
+
+if [ "$#" -eq 0 ]; then
+  set -- $(project_files)
+fi
+
+case "$operation" in
+  lint)
+    lint_files "$@"
+    ;;
+  fix)
+    rewrite_files 's/[[:blank:]]*# QUALITY_\(WARNING\|ERROR\)//' "$@"
+    ;;
+  format-check)
+    format_check_files "$@"
+    ;;
+  format)
+    rewrite_files 's/[[:blank:]]*$//' "$@"
+    ;;
+  noop)
+    exit 0
+    ;;
+  *)
+    echo "unknown demo operation: $operation" >&2
+    exit 2
+    ;;
+esac

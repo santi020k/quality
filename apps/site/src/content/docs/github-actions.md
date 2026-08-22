@@ -1,9 +1,56 @@
 ---
 title: GitHub Actions
-description: Add pull-request annotations, SARIF, and changed-file checks.
+description: Run changed-file checks with annotations, summaries, and SARIF.
 ---
 
-Generate a starter workflow with an explicit, pinned installation command:
+The official Action installs a verified `quality` release, checks pull-request changes, and writes native annotations and a job summary:
+
+```yaml
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: santi020k/quality@v0.1.0
+        id: quality
+        with:
+          version: v0.1.0
+          changed-only: true
+          report-level: warning
+          fail-level: warning
+
+      - name: Upload code-scanning results
+        if: always() && steps.quality.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.quality.outputs.sarif }}
+```
+
+Pin `version` to a release for reproducible checks. Warnings fail by default; set `fail-level: error` only for an intentional, documented migration period.
+
+The Action exposes `sarif`, `findings`, `tools`, and `duration-ms` outputs. On pull requests it compares against `origin/$GITHUB_BASE_REF`; on pushes without a base it safely checks the complete project.
+
+## Generate a standalone workflow
+
+Generate a workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
@@ -31,4 +78,14 @@ concurrency:
   cancel-in-progress: true
 ```
 
-For monorepos, combine `quality check --changed` with Turborepo's affected-package selection so unchanged applications never start expensive jobs.
+For monorepos, combine the Action's `changed-only` mode with Turborepo's affected-package selection so unchanged applications never start expensive jobs.
+
+## Reporting and failure levels
+
+Reporting and build policy are independent:
+
+```bash
+quality check --report-level warning --fail-level error
+```
+
+Warnings appear as annotations and in SARIF, while only errors fail the job. Required tools that are missing always fail regardless of severity settings.

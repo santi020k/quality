@@ -1,18 +1,27 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde_json::json;
 
-use crate::cli::OutputFormat;
+use crate::cli::{OutputFormat, Severity};
 use crate::runner::{DoctorReport, RunReport, Status};
 
-pub fn print_run(report: &RunReport, format: OutputFormat) -> Result<()> {
+pub fn print_run(
+    report: &RunReport,
+    format: OutputFormat,
+    report_level: Severity,
+    fail_level: Severity,
+) -> Result<()> {
     match format {
-        OutputFormat::Pretty => print_pretty_run(report),
+        OutputFormat::Pretty => print_pretty_run(report, report_level),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(report)?),
-        OutputFormat::Sarif => println!("{}", serde_json::to_string_pretty(&to_sarif(report))?),
-        OutputFormat::Github => print_github_run(report),
+        OutputFormat::Sarif => println!(
+            "{}",
+            serde_json::to_string_pretty(&to_sarif(report, report_level))?
+        ),
+        OutputFormat::Github => print_github_run(report, report_level, fail_level)?,
     }
     Ok(())
 }
@@ -51,21 +60,28 @@ pub fn print_doctor(report: &DoctorReport, format: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-pub fn write_sarif(report: &RunReport, path: &Path) -> Result<()> {
+pub fn write_sarif(report: &RunReport, path: &Path, report_level: Severity) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create report directory {}", parent.display()))?;
     }
-    let serialized = serde_json::to_vec_pretty(&to_sarif(report))?;
+    let serialized = serde_json::to_vec_pretty(&to_sarif(report, report_level))?;
     fs::write(path, serialized)
         .with_context(|| format!("could not write SARIF report to {}", path.display()))?;
     Ok(())
 }
 
-fn print_github_run(report: &RunReport) {
+fn print_github_run(
+    report: &RunReport,
+    report_level: Severity,
+    fail_level: Severity,
+) -> Result<()> {
     let mut annotations = 0;
     for result in &report.results {
         for diagnostic in &result.diagnostics {
+            if !report_level.includes(&diagnostic.severity) {
+                continue;
+            }
             annotations += 1;
             let command = github_level(&diagnostic.severity);
             let mut properties = Vec::new();
@@ -97,7 +113,7 @@ fn print_github_run(report: &RunReport) {
         .iter()
         .filter(|result| matches!(result.status, Status::Passed))
         .count();
-    if report.failed() {
+    if report.failed_at(fail_level) {
         println!(
             "::notice title=quality::{} annotations from {} tools; {} passed",
             annotations,
@@ -122,6 +138,67 @@ fn print_github_run(report: &RunReport) {
             report.suppressed
         );
     }
+    write_github_summary(report, report_level, fail_level)?;
+    Ok(())
+}
+
+fn write_github_summary(
+    report: &RunReport,
+    report_level: Severity,
+    fail_level: Severity,
+) -> Result<()> {
+    let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") else {
+        return Ok(());
+    };
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("could not open GitHub step summary {path}"))?;
+    writeln!(file, "## Quality report\n")?;
+    if let Some(scope) = &report.scope {
+        writeln!(
+            file,
+            "Checked **{} changed files** against `{}`.\n",
+            scope.files, scope.base
+        )?;
+    }
+    writeln!(file, "| Adapter | Result | Findings | Duration |")?;
+    writeln!(file, "| --- | --- | ---: | ---: |")?;
+    for result in &report.results {
+        let findings = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| report_level.includes(&diagnostic.severity))
+            .count();
+        let status = if RunReport::result_failed_at(result, fail_level) {
+            "❌ Failed"
+        } else {
+            match result.status {
+                Status::Passed => "✅ Passed",
+                Status::Failed => "⚠️ Findings",
+                Status::Missing => "➖ Optional",
+            }
+        };
+        writeln!(
+            file,
+            "| {} | {status} | {findings} | {:.2}s |",
+            escape_markdown_cell(&result.name),
+            result.duration_ms as f64 / 1000.0
+        )?;
+    }
+    if report.suppressed > 0 {
+        writeln!(
+            file,
+            "\n{} baseline findings were suppressed.",
+            report.suppressed
+        )?;
+    }
+    Ok(())
+}
+
+fn escape_markdown_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', " ")
 }
 
 fn print_github_doctor(report: &DoctorReport) {
@@ -166,7 +243,7 @@ fn escape_github_property(value: &str) -> String {
         .replace(',', "%2C")
 }
 
-fn print_pretty_run(report: &RunReport) {
+fn print_pretty_run(report: &RunReport, report_level: Severity) {
     if report.results.is_empty() {
         if let Some(scope) = &report.scope {
             println!(
@@ -197,7 +274,12 @@ fn print_pretty_run(report: &RunReport) {
             }
             Status::Failed => {
                 println!("  ✗ {:<14} {:.2}s", result.name, seconds);
-                for diagnostic in result.diagnostics.iter().take(20) {
+                let visible: Vec<_> = result
+                    .diagnostics
+                    .iter()
+                    .filter(|diagnostic| report_level.includes(&diagnostic.severity))
+                    .collect();
+                for diagnostic in visible.iter().take(20) {
                     let location = match (&diagnostic.path, diagnostic.line, diagnostic.column) {
                         (Some(path), Some(line), Some(column)) => format!("{path}:{line}:{column}"),
                         (Some(path), Some(line), None) => format!("{path}:{line}"),
@@ -214,8 +296,8 @@ fn print_pretty_run(report: &RunReport) {
                         diagnostic.severity, diagnostic.message
                     );
                 }
-                if result.diagnostics.len() > 20 {
-                    println!("    … and {} more", result.diagnostics.len() - 20);
+                if visible.len() > 20 {
+                    println!("    … and {} more", visible.len() - 20);
                 }
                 if result.diagnostics.len() == 1 && result.diagnostics[0].path.is_none() {
                     for line in result.output.lines().skip(1).take(8) {
@@ -259,7 +341,7 @@ fn print_pretty_run(report: &RunReport) {
     }
 }
 
-fn to_sarif(report: &RunReport) -> serde_json::Value {
+fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
     let runs = report
         .results
         .iter()
@@ -267,6 +349,7 @@ fn to_sarif(report: &RunReport) -> serde_json::Value {
             let results = tool_result
                 .diagnostics
                 .iter()
+                .filter(|diagnostic| report_level.includes(&diagnostic.severity))
                 .map(|diagnostic| {
                     let mut result = json!({
                         "level": sarif_level(&diagnostic.severity),

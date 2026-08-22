@@ -1,0 +1,23 @@
+version: 1
+output: pretty
+baseline: .quality-baseline.json
+tools: {}
+custom:
+  demo-format:
+    name: Demo Formatter
+    command: ./tools/demo-tool
+    extensions: [prose]
+    check_args: [noop]
+    format_check_args: [format-check]
+    format_args: [format]
+    fix_args: [noop]
+    file_mode: append
+    parser: generic
+  demo-lint:
+    name: Demo Linter
+    command: ./tools/demo-tool
+    extensions: [demo]
+    check_args: [lint]
+    fix_args: [fix]
+    file_mode: append
+    parser: generic

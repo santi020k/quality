@@ -3,15 +3,24 @@ title: Getting started
 description: Install quality and run the first repository check.
 ---
 
-## Install from source
+## Install a native release
 
-Until native releases are published, install the CLI from a local checkout:
+On macOS or Linux:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
+  | sh -s -- santi020k/quality v0.1.0
+```
+
+Install from a local checkout when developing the CLI itself:
 
 ```bash
 cargo install --path crates/quality-cli
 ```
 
-The release workflow also produces checksum-protected archives for Linux, Apple Silicon and Intel macOS, and Windows.
+The release includes checksum-protected archives for x86-64 and ARM64 Linux,
+Apple Silicon and Intel macOS, and x86-64 Windows.
 
 ## Initialize a repository
 

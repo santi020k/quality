@@ -7,13 +7,21 @@ description: Supported analyzers and the extension model for additional tools.
 
 | Ecosystem | Analyzer | Check | Format or fix |
 | --- | --- | :---: | :---: |
+| Rust | Cargo fmt | ✓ | format |
+| Rust | Clippy | ✓ | — |
 | Swift | SwiftLint | ✓ | fix |
 | Swift | SwiftFormat | ✓ | format |
 | Android | Android Lint | ✓ | — |
 | Kotlin | detekt | ✓ | — |
 | Kotlin | ktlint | ✓ | format |
 | JavaScript/TypeScript | ESLint | ✓ | fix |
+| Astro | Astro Check | ✓ | — |
 | JavaScript/TypeScript | Prettier | ✓ | format |
+
+Cargo workspaces, Astro applications, Swift packages, Xcode projects, and
+Android Gradle wrappers are located independently. In a monorepo, each adapter
+runs from the workspace it belongs to and diagnostics remain relative to the
+repository root.
 
 ## External adapters
 

@@ -62,6 +62,8 @@ fn run() -> Result<()> {
             report: report_path,
             fail_fast,
             changed,
+            report_level,
+            fail_level,
         } => {
             let config = Config::load_or_default(&root)?;
             let changes = discover_changes(&root, changed.as_deref())?;
@@ -78,8 +80,10 @@ fn run() -> Result<()> {
                 &report,
                 format.unwrap_or(config.output_format()),
                 report_path,
+                report_level,
+                fail_level,
             )?;
-            if report.failed() {
+            if report.failed_at(fail_level) {
                 std::process::exit(1);
             }
         }
@@ -102,6 +106,8 @@ fn run() -> Result<()> {
                 &report,
                 format.unwrap_or(config.output_format()),
                 report_path,
+                cli::Severity::Info,
+                cli::Severity::Info,
             )?;
             if report.failed() {
                 std::process::exit(1);
@@ -126,6 +132,8 @@ fn run() -> Result<()> {
                 &report,
                 format.unwrap_or(config.output_format()),
                 report_path,
+                cli::Severity::Info,
+                cli::Severity::Info,
             )?;
             if report.failed() {
                 std::process::exit(1);
@@ -183,6 +191,8 @@ fn present_run(
     run_report: &runner::RunReport,
     format: cli::OutputFormat,
     report_path: Option<PathBuf>,
+    report_level: cli::Severity,
+    fail_level: cli::Severity,
 ) -> Result<()> {
     if let Some(report_path) = report_path {
         let report_path = if report_path.is_absolute() {
@@ -190,10 +200,10 @@ fn present_run(
         } else {
             root.join(report_path)
         };
-        output::write_sarif(run_report, &report_path)?;
+        output::write_sarif(run_report, &report_path, report_level)?;
         eprintln!("Wrote SARIF report to {}", display_path(&report_path));
     }
-    output::print_run(run_report, format)
+    output::print_run(run_report, format, report_level, fail_level)
 }
 
 fn generate_github_workflow(

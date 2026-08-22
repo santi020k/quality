@@ -15,6 +15,8 @@ pub struct Config {
     pub output: OutputFormat,
     pub baseline: PathBuf,
     pub tools: BTreeMap<String, ToolConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tasks: BTreeMap<String, TaskConfig>,
     #[serde(rename = "custom", skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_tools: BTreeMap<String, ExternalToolConfig>,
 }
@@ -26,6 +28,7 @@ impl Default for Config {
             output: OutputFormat::Pretty,
             baseline: PathBuf::from(".quality-baseline.json"),
             tools: BTreeMap::new(),
+            tasks: BTreeMap::new(),
             custom_tools: BTreeMap::new(),
         }
     }
@@ -40,6 +43,9 @@ pub struct ToolConfig {
     pub required: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<PathBuf>,
+    /// Run this adapter from a repository-relative workspace directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub check_args: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,6 +78,8 @@ pub struct ExternalToolConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub command: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<PathBuf>,
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
     #[serde(default = "enabled_by_default")]
@@ -94,6 +102,28 @@ pub struct ExternalToolConfig {
     pub fix_args: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub install_hint: Option<String>,
+}
+
+/// A repository-defined quality gate. Tasks run for `quality check` only and
+/// let projects preserve their canonical lint, type-check, test, or build command.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub command: PathBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<PathBuf>,
+    #[serde(default = "enabled_by_default")]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config_files: Vec<String>,
+    #[serde(default)]
+    pub parser: DiagnosticParser,
 }
 
 fn enabled_by_default() -> bool {
@@ -156,34 +186,80 @@ impl Config {
                 supported.join(", ")
             );
         }
+        for (id, tool) in &self.tools {
+            if let Some(directory) = &tool.working_directory {
+                validate_working_directory(id, directory)?;
+            }
+        }
+        for (id, task) in &self.tasks {
+            if supported.contains(&id.as_str()) || self.custom_tools.contains_key(id) {
+                anyhow::bail!("task `{id}` conflicts with another configured adapter");
+            }
+            validate_custom_id(id, "task")?;
+            if task.command.as_os_str().is_empty() {
+                anyhow::bail!("task `{id}` must define a non-empty command");
+            }
+            if let Some(directory) = &task.working_directory {
+                validate_working_directory(id, directory)?;
+            }
+            validate_extensions(id, "task", &task.extensions)?;
+        }
         for (id, tool) in &self.custom_tools {
             if supported.contains(&id.as_str()) {
                 anyhow::bail!(
                     "custom tool `{id}` conflicts with a built-in tool; configure the built-in under `tools` instead"
                 );
             }
-            if !valid_tool_id(id) {
-                anyhow::bail!(
-                    "invalid custom tool ID `{id}`; use lowercase letters, numbers, hyphens, or underscores"
-                );
-            }
+            validate_custom_id(id, "custom tool")?;
             if tool.command.as_os_str().is_empty() {
                 anyhow::bail!("custom tool `{id}` must define a non-empty command");
             }
-            if let Some(extension) = tool.extensions.iter().find(|value| {
-                value.is_empty()
-                    || value.starts_with('.')
-                    || !value
-                        .chars()
-                        .all(|character| character.is_ascii_alphanumeric())
-            }) {
-                anyhow::bail!(
-                    "invalid extension `{extension}` for custom tool `{id}`; write extensions without a leading dot"
-                );
+            if let Some(directory) = &tool.working_directory {
+                validate_working_directory(id, directory)?;
             }
+            validate_extensions(id, "custom tool", &tool.extensions)?;
         }
         Ok(())
     }
+}
+
+fn validate_custom_id(id: &str, kind: &str) -> Result<()> {
+    if !valid_tool_id(id) {
+        anyhow::bail!(
+            "invalid {kind} ID `{id}`; use lowercase letters, numbers, hyphens, or underscores"
+        );
+    }
+    Ok(())
+}
+
+fn validate_extensions(id: &str, kind: &str, extensions: &[String]) -> Result<()> {
+    if let Some(extension) = extensions.iter().find(|value| {
+        value.is_empty()
+            || value.starts_with('.')
+            || !value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric())
+    }) {
+        anyhow::bail!(
+            "invalid extension `{extension}` for {kind} `{id}`; write extensions without a leading dot"
+        );
+    }
+    Ok(())
+}
+
+fn validate_working_directory(id: &str, directory: &Path) -> Result<()> {
+    use std::path::Component;
+
+    if directory.is_absolute()
+        || directory
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::RootDir))
+    {
+        anyhow::bail!(
+            "working directory for `{id}` must stay inside the repository and be relative"
+        );
+    }
+    Ok(())
 }
 
 fn valid_tool_id(id: &str) -> bool {

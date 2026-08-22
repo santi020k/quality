@@ -14,6 +14,14 @@ quality format --changed
 quality fix --changed
 ```
 
+In CI, reporting and failure thresholds can be tuned separately:
+
+```bash
+quality check --changed origin/main \
+  --report-level warning \
+  --fail-level error
+```
+
 Without a base, `quality` includes staged, unstaged, and untracked files. With a base, it also includes branch changes since that revision.
 
 Configuration changes trigger the corresponding full analyzer because a rules change can affect files that were not edited. Project-wide analyzers also retain their required project scope.

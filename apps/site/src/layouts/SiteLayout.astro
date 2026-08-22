@@ -1,0 +1,73 @@
+---
+import { ButtonLink, SkipLink, ThemeToggle, UIPrimitives } from '@santi020k/lumen-astro';
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const {
+	title = 'quality — One quality command for every project',
+	description = 'Run the best Swift, Android, Kotlin, JavaScript, and TypeScript analyzers through one fast workflow.',
+} = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const isDocs = Astro.url.pathname !== '/';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta name="theme-color" content="#2563eb" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:image" content="/og.png" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<title>{title}</title>
+		<script is:inline>
+			const theme = localStorage.getItem('quality-theme');
+			if (theme) document.documentElement.dataset.theme = theme;
+		</script>
+	</head>
+	<body>
+		<UIPrimitives />
+		<SkipLink href="#main-content">Skip to content</SkipLink>
+		<div class="site-shell">
+			<header class="site-header">
+				<nav class="site-nav" aria-label="Primary navigation">
+					<a class="wordmark" href="/" aria-label="quality home">
+						<img class="wordmark-mark" src="/logo.svg" alt="" width="32" height="32" />
+						<span>quality</span>
+					</a>
+					<div class="nav-links">
+						<a class="nav-link" href="/overview/" aria-current={Astro.url.pathname === '/overview/' ? 'page' : undefined}>Why quality</a>
+						<a class="nav-link" href="/getting-started/" aria-current={isDocs ? 'page' : undefined}>Docs</a>
+						<a class="nav-link" href="/adapters/" aria-current={Astro.url.pathname === '/adapters/' ? 'page' : undefined}>Adapters</a>
+					</div>
+					<div class="nav-actions">
+						<ThemeToggle aria-label="Toggle color theme" storageKey="quality-theme" />
+						<ButtonLink class="github-link" href="https://github.com/santi020k/quality" newTab variant="ghost">GitHub</ButtonLink>
+					</div>
+				</nav>
+			</header>
+			<main class="site-main" id="main-content"><slot /></main>
+			<footer class="site-footer">
+				<div class="footer-inner">
+					<span>Built for teams that care about the details.</span>
+					<div class="footer-links">
+						<a href="/getting-started/">Documentation</a>
+						<a href="https://github.com/santi020k/quality">Source</a>
+					</div>
+				</div>
+			</footer>
+		</div>
+	</body>
+</html>

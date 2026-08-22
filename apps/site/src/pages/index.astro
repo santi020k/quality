@@ -1,0 +1,125 @@
+---
+import {
+	ButtonLink,
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+	Icon,
+	RevealGroup,
+	ScrollReveal,
+} from '@santi020k/lumen-astro';
+import SiteLayout from '../layouts/SiteLayout.astro';
+
+const features = [
+	{
+		icon: 'git-branch',
+		title: 'Fast where it matters',
+		body: 'Scope file-capable analyzers to what changed. Keep project-wide checks correct. Run independent tools concurrently.',
+	},
+	{
+		icon: 'shield-check',
+		title: 'Adopt without a flag day',
+		body: 'Baseline existing findings once, then prevent new regressions without hiding crashes, missing tools, or parse failures.',
+	},
+	{
+		icon: 'message-square-code',
+		title: 'Review in context',
+		body: 'Turn one deterministic run into clean terminal output, native GitHub annotations, JSON, or a SARIF report.',
+	},
+];
+
+const steps = [
+	['Detect', 'quality reads the repository and enables only the ecosystems that are actually present.'],
+	['Resolve', 'Repository-local binaries win, so every developer and CI runner uses the tools the project intended.'],
+	['Run', 'Independent analyzers execute concurrently and keep their native behavior as the source of truth.'],
+	['Normalize', 'Findings and failures become one predictable result for terminals, automation, and code review.'],
+];
+---
+
+<SiteLayout>
+	<section class="home-hero">
+		<div class="hero-copy">
+			<div class="hero-kicker"><span class="hero-kicker-dot"></span> Code quality, orchestrated</div>
+			<h1 class="hero-title">One command. <span>Every tool.</span></h1>
+			<p class="hero-lede">Keep the native analyzers your teams trust. Replace the fragmented scripts, output, and CI wiring around them.</p>
+			<div class="hero-actions">
+				<ButtonLink href="/getting-started/" showArrow>Get started</ButtonLink>
+				<ButtonLink href="https://github.com/santi020k/quality" newTab variant="secondary">View source</ButtonLink>
+			</div>
+			<div class="hero-note"><Icon name="terminal" decorative /> Deterministic by design. No AI service required.</div>
+		</div>
+
+		<ScrollReveal animation="scale" duration="slow">
+			<div class="terminal" aria-label="Example quality check output">
+				<div class="terminal-bar">
+					<span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
+					<span class="terminal-label">quality check</span>
+				</div>
+				<pre class="terminal-body"><span class="terminal-command"><span class="terminal-prompt">$</span> quality check --changed origin/main</span>
+
+<span class="terminal-pass">✓</span> SwiftLint                 <span class="terminal-dim">0.42s</span>
+<span class="terminal-pass">✓</span> SwiftFormat               <span class="terminal-dim">0.18s</span>
+<span class="terminal-pass">✓</span> Android Lint              <span class="terminal-dim">5.31s</span>
+<span class="terminal-pass">✓</span> detekt                    <span class="terminal-dim">1.24s</span>
+<span class="terminal-pass">✓</span> ESLint                    <span class="terminal-dim">0.37s</span>
+
+<span class="terminal-pass">Quality checks passed.</span>
+<span class="terminal-dim">5 tools ran concurrently.</span></pre>
+			</div>
+		</ScrollReveal>
+	</section>
+
+	<div class="ecosystem-band">
+		<div class="ecosystem-inner">
+			<span class="ecosystem-label">One workflow across</span>
+			<div class="ecosystem-list"><span>Swift</span><span>Android</span><span>Kotlin</span><span>JavaScript</span><span>TypeScript</span></div>
+		</div>
+	</div>
+
+	<section class="section" aria-labelledby="features-title">
+		<div class="section-head">
+			<p class="section-eyebrow">Less glue. Better signal.</p>
+			<h2 class="section-title" id="features-title">A coherent quality loop for mixed repositories.</h2>
+			<p class="section-lede">quality does not replace excellent ecosystem tools. It gives them a shared operating model that stays fast locally and dependable in CI.</p>
+		</div>
+		<RevealGroup class="feature-grid" stagger={100}>
+			{features.map((feature) => (
+				<Card as="article" class="feature-card" variant="muted">
+					<CardHeader>
+						<div class="feature-icon"><Icon name={feature.icon} decorative /></div>
+						<CardTitle as="h3">{feature.title}</CardTitle>
+					</CardHeader>
+					<CardContent><p>{feature.body}</p></CardContent>
+				</Card>
+			))}
+		</RevealGroup>
+	</section>
+
+	<section class="workflow-section" aria-labelledby="workflow-title">
+		<div class="workflow-inner">
+			<div class="workflow-grid">
+				<div class="section-head">
+					<p class="section-eyebrow">How it works</p>
+					<h2 class="section-title" id="workflow-title">Native tools in. One answer out.</h2>
+					<p class="section-lede">A thin, explicit orchestration layer makes every repository feel familiar.</p>
+				</div>
+				<div class="workflow-steps">
+					{steps.map(([title, body], index) => (
+						<div class="workflow-step">
+							<span class="step-number">0{index + 1}</span>
+							<div><h3>{title}</h3><p>{body}</p></div>
+						</div>
+					))}
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="section">
+		<div class="principle">
+			<blockquote>Keep the tools your teams already trust. Make them feel like <span>one coherent product.</span></blockquote>
+			<ButtonLink href="/adapters/" showArrow variant="secondary">Explore adapters</ButtonLink>
+		</div>
+	</section>
+</SiteLayout>

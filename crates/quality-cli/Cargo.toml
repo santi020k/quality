@@ -1,6 +1,6 @@
 [package]
 name = "quality-cli"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2024"
 rust-version = "1.85"
 description = "One fast code-quality workflow for multi-platform projects"
@@ -9,6 +9,8 @@ readme = "../../README.md"
 publish = false
 keywords = ["lint", "swift", "kotlin", "android", "ci"]
 categories = ["command-line-utilities", "development-tools"]
+repository = "https://github.com/santi020k/quality"
+homepage = "https://quality-cli.santi020k.chatgpt.site"
 
 [[bin]]
 name = "quality"

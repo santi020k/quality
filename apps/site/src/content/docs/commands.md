@@ -18,8 +18,11 @@ Run all applicable analyzers concurrently and normalize their diagnostics.
 ```bash
 quality check --format github --report quality.sarif
 quality check --changed origin/main
+quality check --report-level warning --fail-level error
 quality check --fail-fast
 ```
+
+`--report-level` controls which diagnostics are displayed and written to SARIF. `--fail-level` independently controls which severities fail the command.
 
 ## `quality format`
 

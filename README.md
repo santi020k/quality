@@ -1,13 +1,30 @@
 # quality
 
 `quality` is one fast, predictable code-quality workflow for repositories that
-contain Swift, Android/Kotlin, and JavaScript projects. It does not replace the
+contain Rust, Swift, Android/Kotlin, JavaScript, and Astro projects. It does not replace the
 ecosystem's best analyzers. It detects, runs, and explains them through one CLI.
 
 Website and documentation: <https://quality-cli.santi020k.chatgpt.site>
 
-> Status: early working prototype. The configuration format may change before
-> the first stable release.
+> Status: `0.1.x` preview. The configuration format may change before the first
+> stable release.
+
+## GitHub Action
+
+```yaml
+- uses: actions/checkout@v6
+  with:
+    fetch-depth: 0
+
+- uses: santi020k/quality@v0.1.0
+  with:
+    version: v0.1.0
+    changed-only: true
+    report-level: warning
+    fail-level: warning
+```
+
+The Action verifies the downloaded release checksum, adds pull-request annotations, writes a job summary, and produces SARIF for GitHub code scanning.
 
 ## The developer experience
 
@@ -45,17 +62,16 @@ failure is more useful than the complete report.
 cargo install --path crates/quality-cli
 ```
 
-After the repository is published and has a tagged release, Unix users can
-install a checksum-verified native binary without Rust:
+Unix users can install a checksum-verified native binary without Rust:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/OWNER/REPOSITORY/main/install.sh \
-  | sh -s -- OWNER/REPOSITORY
+  https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
+  | sh -s -- santi020k/quality v0.1.0
 ```
 
-Pass a tag such as `v0.1.0` after the repository name to pin the installation.
-Windows archives are attached to the same GitHub release.
+Omit `v0.1.0` to install the latest release. Native archives are published for
+Intel and Apple Silicon macOS, x86-64 and ARM64 Linux, and x86-64 Windows.
 
 Then run these commands from any repository:
 
@@ -103,12 +119,15 @@ quality check --format github --report artifacts/quality.sarif
 
 | Ecosystem | Analyzer | Check | Format/fix |
 | --- | --- | ---: | ---: |
+| Rust | Cargo fmt | yes | yes |
+| Rust | Clippy | yes | — |
 | Swift | SwiftLint | yes | fix |
 | Swift | SwiftFormat | yes | yes |
 | Android | Android Lint | yes | — |
 | Kotlin | detekt | yes | — |
 | Kotlin | ktlint | yes | yes |
 | JavaScript/TypeScript | ESLint | yes | fix |
+| Astro | Astro Check | yes | — |
 | JavaScript/TypeScript | Prettier | yes | yes |
 
 The adapters use repository-local executables where that is conventional:
@@ -168,7 +187,8 @@ tools:
 ```
 
 Each adapter also accepts `command`, `check_args`, `format_args`, and
-`fix_args`. This provides an escape hatch for Gradle tasks, monorepo wrappers,
+`fix_args`. Set `working_directory` when a tool belongs to one workspace in a
+monorepo. This provides an escape hatch for Gradle tasks, monorepo wrappers,
 and teams that pin tools in a custom directory:
 
 ```yaml
@@ -178,6 +198,7 @@ tools:
   detekt:
     enabled: true
     required: true
+    working_directory: apps/android
     command: ./gradlew
     check_args: [detekt]
   ktlint:
@@ -185,6 +206,21 @@ tools:
 ```
 
 Set `required: false` to keep a locally optional tool from failing the run.
+
+Repository-defined `tasks` preserve canonical gates such as type-checking,
+package validation, tests, or builds. Tasks run during `quality check`, support
+workspace directories, and can be skipped in changed-file mode when their
+configured extensions and files are unaffected:
+
+```yaml
+tasks:
+  typecheck:
+    name: TypeScript
+    command: pnpm
+    args: [run, typecheck]
+    extensions: [ts, tsx, astro]
+    config_files: [package.json, tsconfig.json, pnpm-lock.yaml]
+```
 
 ## Adopt incrementally with a baseline
 
@@ -260,10 +296,34 @@ Install workspace dependencies and use the shared commands:
 pnpm install
 pnpm dev    # Start the documentation site
 pnpm check  # Rust and web checks
-pnpm test   # Rust test suite
+pnpm test   # Automated tests plus the disposable playground workflow
 pnpm build  # Release CLI and production site
 pnpm run ci # Affected-only pipeline used by GitHub Actions
 ```
 
 Cargo remains available directly for Rust-only work. Turborepo coordinates
 Cargo and Astro, caches deterministic tasks, and scopes CI to affected projects.
+
+## Try features in the playground
+
+The repository includes a disposable playground with mock analyzers, so CLI
+features can be exercised without installing Swift, Android, or JavaScript
+tooling. It requires the same Rust, Git, and POSIX shell tools used for local
+development:
+
+```bash
+pnpm playground:setup
+pnpm playground -- doctor
+pnpm playground -- check
+pnpm playground -- fix
+pnpm playground -- format --check
+pnpm playground -- format
+```
+
+The first `check` and `format --check` intentionally fail to demonstrate
+diagnostics. The sandbox is a standalone Git repository, so changed-file mode,
+baselines, JSON output, and SARIF reports work as they would in a real project.
+See [`playground/README.md`](playground/README.md) for the complete walkthrough.
+
+Run `pnpm playground:verify` to create a temporary sandbox and verify the whole
+playground workflow automatically.

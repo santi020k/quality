@@ -1,0 +1,43 @@
+---
+import { getCollection, render } from 'astro:content';
+import SiteLayout from '../layouts/SiteLayout.astro';
+
+const groups = [
+	{ label: 'Start', items: [['Overview', 'overview'], ['Getting started', 'getting-started']] },
+	{ label: 'Use quality', items: [['Commands', 'commands'], ['Configuration', 'configuration'], ['Changed files & baselines', 'changed-files-and-baselines']] },
+	{ label: 'Integrate', items: [['GitHub Actions', 'github-actions'], ['Built-in & custom adapters', 'adapters']] },
+];
+
+export async function getStaticPaths() {
+	const entries = await getCollection('docs');
+	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const title = `${entry.data.title} — quality`;
+---
+
+<SiteLayout title={title} description={entry.data.description}>
+	<div class="docs-layout">
+		<aside class="docs-sidebar" aria-label="Documentation navigation">
+			{groups.map((group) => (
+				<div class="docs-group">
+					<p class="docs-group-title">{group.label}</p>
+					<nav class="docs-nav" aria-label={`${group.label} documentation`}>
+						{group.items.map(([label, slug]) => (
+							<a href={`/${slug}/`} aria-current={entry.id === slug ? 'page' : undefined}>{label}</a>
+						))}
+					</nav>
+				</div>
+			))}
+		</aside>
+		<article class="docs-article">
+			<header class="docs-article-header">
+				<h1>{entry.data.title}</h1>
+				<p>{entry.data.description}</p>
+			</header>
+			<div class="docs-prose"><Content /></div>
+		</article>
+	</div>
+</SiteLayout>

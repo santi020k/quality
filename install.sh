@@ -28,6 +28,7 @@ case "$system:$machine" in
     Darwin:arm64|Darwin:aarch64) target=aarch64-apple-darwin ;;
     Darwin:x86_64|Darwin:amd64) target=x86_64-apple-darwin ;;
     Linux:x86_64|Linux:amd64) target=x86_64-unknown-linux-gnu ;;
+    Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-gnu ;;
     *)
         echo "No prebuilt quality binary is available for $system/$machine." >&2
         echo "Install with Cargo or download a release archive manually." >&2
@@ -76,4 +77,3 @@ case ":${PATH}:" in
     *":$install_directory:"*) ;;
     *) echo "Add $install_directory to PATH to run quality from any directory." ;;
 esac
-

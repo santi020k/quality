@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - crates/*
+  - packages/*
 
 allowBuilds:
   esbuild: true

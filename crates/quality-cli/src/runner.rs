@@ -10,6 +10,7 @@ use regex::Regex;
 use serde::Serialize;
 
 use crate::changes::ChangeSet;
+use crate::cli::Severity;
 use crate::config::{Config, DiagnosticParser};
 use crate::project::Project;
 use crate::tools::{self, Invocation};
@@ -80,6 +81,22 @@ impl RunReport {
                 || (matches!(result.status, Status::Missing) && result.guidance.is_some())
         })
     }
+
+    pub fn failed_at(&self, level: Severity) -> bool {
+        self.results
+            .iter()
+            .any(|result| Self::result_failed_at(result, level))
+    }
+
+    pub fn result_failed_at(result: &ToolResult, level: Severity) -> bool {
+        (matches!(result.status, Status::Missing) && result.guidance.is_some())
+            || (matches!(result.status, Status::Failed)
+                && (result.diagnostics.is_empty()
+                    || result
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| level.includes(&diagnostic.severity))))
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -91,6 +108,7 @@ pub struct DoctorEntry {
     pub available: bool,
     pub required: bool,
     pub command: String,
+    pub working_directory: String,
     pub guidance: Option<String>,
 }
 
@@ -112,33 +130,64 @@ impl DoctorReport {
 pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
     let mut entries: Vec<_> = tools::catalog()
         .into_iter()
-        .map(|tool| {
+        .flat_map(|tool| {
             let tool_config = config.tool(tool.id);
             let detected = tool.detect(project);
             let enabled = tool_config.enabled.unwrap_or(detected);
             let required = tool_config.required.unwrap_or(true);
-            let invocation = tool.invocation(project, &tool_config, Operation::Check, None);
-            let command = invocation
-                .as_ref()
-                .map(|value| value.command.display().to_string())
-                .unwrap_or_else(|| tool.executable.to_owned());
-            let available = !enabled
-                || command_available(
-                    &project.root,
-                    invocation.as_ref().map(|value| &value.command),
-                );
-            DoctorEntry {
-                tool: tool.id.to_owned(),
-                name: tool.name.to_owned(),
-                detected,
-                enabled,
-                available,
-                required,
-                command,
-                guidance: (enabled && !available).then(|| tool.install_hint.to_owned()),
+            let invocations = tool.invocations(project, &tool_config, Operation::Check, None);
+            if invocations.is_empty() {
+                return vec![DoctorEntry {
+                    tool: tool.id.to_owned(),
+                    name: tool.name.to_owned(),
+                    detected,
+                    enabled,
+                    available: !enabled,
+                    required,
+                    command: tool.executable.to_owned(),
+                    working_directory: project.root.display().to_string(),
+                    guidance: None,
+                }];
             }
+            invocations
+                .into_iter()
+                .map(|invocation| {
+                    let available = !enabled
+                        || command_available(
+                            &invocation.working_directory,
+                            Some(&invocation.command),
+                        );
+                    DoctorEntry {
+                        tool: invocation.id,
+                        name: invocation.name,
+                        detected,
+                        enabled,
+                        available,
+                        required,
+                        command: invocation.command.display().to_string(),
+                        working_directory: invocation.working_directory.display().to_string(),
+                        guidance: (enabled && !available).then(|| tool.install_hint.to_owned()),
+                    }
+                })
+                .collect()
         })
         .collect();
+    entries.extend(config.tasks.iter().map(|(id, task_config)| {
+        let invocation = tools::task_invocation(id, task_config, project, Operation::Check, None)
+            .expect("check tasks always create an invocation");
+        let available = command_available(&invocation.working_directory, Some(&invocation.command));
+        DoctorEntry {
+            tool: invocation.id,
+            name: invocation.name,
+            detected: true,
+            enabled: true,
+            available,
+            required: task_config.required,
+            command: invocation.command.display().to_string(),
+            working_directory: invocation.working_directory.display().to_string(),
+            guidance: (!available && task_config.required).then_some(invocation.install_hint),
+        }
+    }));
     entries.extend(config.custom_tools.iter().map(|(id, tool_config)| {
         let detected = tools::external_detects(project, tool_config);
         let enabled = tool_config.enabled && detected;
@@ -151,7 +200,10 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             .unwrap_or_else(|| tool_config.command.display().to_string());
         let available = !enabled
             || command_available(
-                &project.root,
+                invocation
+                    .as_ref()
+                    .map(|value| value.working_directory.as_path())
+                    .unwrap_or(&project.root),
                 invocation.as_ref().map(|value| &value.command),
             );
         DoctorEntry {
@@ -162,6 +214,10 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             available,
             required,
             command,
+            working_directory: invocation
+                .as_ref()
+                .map(|value| value.working_directory.display().to_string())
+                .unwrap_or_else(|| project.root.display().to_string()),
             guidance: (enabled && !available).then(|| {
                 tool_config.install_hint.clone().unwrap_or_else(|| {
                     format!("Install or configure the `{id}` command declared in quality.yml.")
@@ -189,8 +245,11 @@ pub fn execute(
 ) -> Result<RunReport> {
     let mut invocations: Vec<_> = tools::catalog()
         .into_iter()
-        .filter_map(|tool| tool.invocation(project, &config.tool(tool.id), operation, changes))
+        .flat_map(|tool| tool.invocations(project, &config.tool(tool.id), operation, changes))
         .collect();
+    invocations.extend(config.tasks.iter().filter_map(|(id, task_config)| {
+        tools::task_invocation(id, task_config, project, operation, changes)
+    }));
     invocations.extend(config.custom_tools.iter().filter_map(|(id, tool_config)| {
         tools::external_invocation(id, tool_config, project, operation, changes)
     }));
@@ -242,7 +301,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
     let output = Command::new(&invocation.command)
         .args(&invocation.args)
         .envs(&invocation.env)
-        .current_dir(root)
+        .current_dir(&invocation.working_directory)
         .env("NO_COLOR", "1")
         .output();
 
@@ -254,10 +313,11 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
             } else {
                 Status::Failed
             };
-            let (diagnostics, baseline_safe) = parse_diagnostics(
+            let (diagnostics, baseline_safe) = parse_diagnostics_at(
                 invocation.parser,
                 &invocation.id,
                 root,
+                &invocation.working_directory,
                 &combined,
                 !output.status.success(),
             );
@@ -323,6 +383,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
     }
 }
 
+#[cfg(test)]
 fn parse_diagnostics(
     parser: DiagnosticParser,
     tool: &str,
@@ -330,10 +391,23 @@ fn parse_diagnostics(
     output: &str,
     synthesize_failure: bool,
 ) -> (Vec<Diagnostic>, bool) {
+    parse_diagnostics_at(parser, tool, root, root, output, synthesize_failure)
+}
+
+fn parse_diagnostics_at(
+    parser: DiagnosticParser,
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+    synthesize_failure: bool,
+) -> (Vec<Diagnostic>, bool) {
     let structured = match parser {
-        DiagnosticParser::EslintJson => parse_eslint_json(tool, root, output),
-        DiagnosticParser::SwiftlintJson => parse_swiftlint_json(tool, root, output),
-        DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, output),
+        DiagnosticParser::EslintJson => parse_eslint_json(tool, root, working_directory, output),
+        DiagnosticParser::SwiftlintJson => {
+            parse_swiftlint_json(tool, root, working_directory, output)
+        }
+        DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, output),
         DiagnosticParser::Generic => None,
     };
     if let Some(structured) = structured {
@@ -354,7 +428,7 @@ fn parse_diagnostics(
             tool: tool.to_owned(),
             path: captures
                 .name("path")
-                .map(|value| normalize_path(root, value.as_str())),
+                .map(|value| normalize_path(root, working_directory, value.as_str())),
             line: captures
                 .name("line")
                 .and_then(|value| value.as_str().parse().ok()),
@@ -402,7 +476,12 @@ fn diagnostic_pattern() -> &'static Regex {
     })
 }
 
-fn parse_eslint_json(tool: &str, root: &std::path::Path, output: &str) -> Option<Vec<Diagnostic>> {
+fn parse_eslint_json(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
     let Ok(files) = serde_json::from_str::<serde_json::Value>(output) else {
         return None;
     };
@@ -418,7 +497,7 @@ fn parse_eslint_json(tool: &str, root: &std::path::Path, output: &str) -> Option
                     .flatten()
                     .map(move |message| Diagnostic {
                         tool: tool.to_owned(),
-                        path: path.map(|path| normalize_path(root, path)),
+                        path: path.map(|path| normalize_path(root, working_directory, path)),
                         line: message.get("line").and_then(|value| value.as_u64()),
                         column: message.get("column").and_then(|value| value.as_u64()),
                         severity: match message.get("severity").and_then(|value| value.as_u64()) {
@@ -445,6 +524,7 @@ fn parse_eslint_json(tool: &str, root: &std::path::Path, output: &str) -> Option
 fn parse_swiftlint_json(
     tool: &str,
     root: &std::path::Path,
+    working_directory: &std::path::Path,
     output: &str,
 ) -> Option<Vec<Diagnostic>> {
     let Ok(findings) = serde_json::from_str::<serde_json::Value>(output) else {
@@ -459,7 +539,7 @@ fn parse_swiftlint_json(
                 path: finding
                     .get("file")
                     .and_then(|value| value.as_str())
-                    .map(|path| normalize_path(root, path)),
+                    .map(|path| normalize_path(root, working_directory, path)),
                 line: finding.get("line").and_then(|value| value.as_u64()),
                 column: finding.get("character").and_then(|value| value.as_u64()),
                 severity: finding
@@ -481,7 +561,12 @@ fn parse_swiftlint_json(
     )
 }
 
-fn parse_ktlint_json(tool: &str, root: &std::path::Path, output: &str) -> Option<Vec<Diagnostic>> {
+fn parse_ktlint_json(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
     let documents = if let Ok(value) = serde_json::from_str::<serde_json::Value>(output) {
         match value {
             serde_json::Value::Array(values) => values,
@@ -512,7 +597,7 @@ fn parse_ktlint_json(tool: &str, root: &std::path::Path, output: &str) -> Option
                     .flatten()
                     .map(move |error| Diagnostic {
                         tool: tool.to_owned(),
-                        path: path.map(|path| normalize_path(root, path)),
+                        path: path.map(|path| normalize_path(root, working_directory, path)),
                         line: error.get("line").and_then(|value| value.as_u64()),
                         column: error.get("column").and_then(|value| value.as_u64()),
                         severity: "warning".to_owned(),
@@ -532,10 +617,19 @@ fn parse_ktlint_json(tool: &str, root: &std::path::Path, output: &str) -> Option
     )
 }
 
-fn normalize_path(root: &std::path::Path, value: &str) -> String {
+fn normalize_path(
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    value: &str,
+) -> String {
     let path = std::path::Path::new(value);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        working_directory.join(path)
+    };
     path.strip_prefix(root)
-        .unwrap_or(path)
+        .unwrap_or(&path)
         .to_string_lossy()
         .to_string()
 }
