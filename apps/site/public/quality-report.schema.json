@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-report.schema.json",
+  "title": "quality run report",
+  "description": "Versioned JSON output from quality check, format, and fix commands.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "results", "summary", "suppressed"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/toolResult" }
+    },
+    "summary": { "$ref": "#/$defs/summary" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "suppressed": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "nullableString": { "type": ["string", "null"] },
+    "nullableInteger": { "type": ["integer", "null"], "minimum": 0 },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "path", "line", "column", "severity", "message", "rule"],
+      "properties": {
+        "tool": { "type": "string" },
+        "path": { "$ref": "#/$defs/nullableString" },
+        "line": { "$ref": "#/$defs/nullableInteger" },
+        "column": { "$ref": "#/$defs/nullableInteger" },
+        "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+        "message": { "type": "string" },
+        "rule": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "toolResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "name", "status", "duration_ms", "command", "diagnostics"],
+      "properties": {
+        "tool": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["passed", "failed", "missing"] },
+        "failure_kind": { "type": "string", "enum": ["code", "environment", "toolchain"] },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "command": { "type": "string" },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diagnostic" }
+        },
+        "output": { "type": "string" },
+        "output_truncated": { "type": "boolean" },
+        "guidance": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tools", "passed", "failed", "missing", "diagnostics", "errors", "warnings", "info", "files", "rules"],
+      "properties": {
+        "tools": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "diagnostics": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "info": { "type": "integer", "minimum": 0 },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "rules": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string" },
+        "base": { "type": "string" },
+        "files": { "type": "integer", "minimum": 0 },
+        "only": { "type": "array", "items": { "type": "string" } },
+        "exclude": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

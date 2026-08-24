@@ -22,11 +22,21 @@ description: Supported analyzers and the extension model for additional tools.
 | Content | Typos | ✓ | fix |
 | JavaScript/TypeScript | Knip | ✓ | — |
 | GitHub Actions | Actionlint | ✓ | — |
+| Web metadata | `@santi020k/og` | ✓ | — |
 
 Cargo workspaces, Astro applications, Swift packages, Xcode projects, and
 Android Gradle wrappers are located independently. In a monorepo, each adapter
 runs from the workspace it belongs to and diagnostics remain relative to the
 repository root.
+
+The `santi-og` adapter is enabled when a workspace declares
+`@santi020k/og`. It runs `santi-og check --json`, converts every missing or
+stale generated asset into a normalized diagnostic, and leaves regeneration to
+the explicit `santi-og generate` command. In changed-file mode, any change in
+that workspace triggers the package's fast, content-aware integrity check. Run
+only this adapter with `quality check --only santi-og`; see the
+[`@santi020k/og` package guide](https://og.santi020k.com/docs/) for generation,
+caching, and built-site auditing.
 
 ## External adapters
 
@@ -53,7 +63,7 @@ custom:
 Use `file_mode: append` to append changed source paths to configured arguments. Use `project` for analyzers that must inspect the whole repository.
 
 Supported parsers are `generic`, `codespell`, `eslint-json`, `swiftlint-json`,
-`ktlint-json`, and `typos-json`. Generic diagnostics use:
+`ktlint-json`, `santi-og-json`, and `typos-json`. Generic diagnostics use:
 
 ```text
 path/to/file:line:column: warning: Message (rule-id)

@@ -7,6 +7,7 @@ import {
   checkArguments,
   actionFailureMessage,
   checksumFromFile,
+  releaseBaseUrl,
   releaseRepository,
   releaseTarget,
   resolveProjectPath,
@@ -27,7 +28,7 @@ async function installQuality(version: string): Promise<string> {
   );
   const release = version === "latest" ? "releases/latest/download" : `releases/download/${version}`;
   const asset = `quality-${target}.${windows ? "zip" : "tar.gz"}`;
-  const base = `https://github.com/${repository}/${release}`;
+  const base = `${releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL)}/${release}`;
 
   core.info(`Installing quality ${version} for ${target}`);
   const archive = await cache.downloadTool(`${base}/${asset}`);

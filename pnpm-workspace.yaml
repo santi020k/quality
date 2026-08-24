@@ -9,6 +9,7 @@ allowBuilds:
   workerd: true
 
 minimumReleaseAgeExclude:
+  - '@santi020k/og'
   - '@santi020k/lumen-astro@1.4.0'
   - '@santi020k/lumen-core@1.4.0'
   - '@santi020k/lumen@1.4.0'
@@ -34,3 +35,4 @@ minimumReleaseAgeExclude:
   - cspell-lib@10.1.0
   - cspell-trie-lib@10.1.0
   - cspell@10.1.0
+  - satori@0.33.4

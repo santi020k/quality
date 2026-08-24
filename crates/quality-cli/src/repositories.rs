@@ -11,6 +11,7 @@ use crate::{runner, tools};
 
 #[derive(Debug, Serialize)]
 struct AdoptionReport {
+    schema_version: u8,
     parent: String,
     repositories: Vec<RepositoryEntry>,
     summary: AdoptionSummary,
@@ -85,6 +86,7 @@ fn inspect(parent: &Path, apply: bool, dry_run: bool) -> Result<AdoptionReport> 
         created: entries.iter().filter(|entry| entry.created).count(),
     };
     Ok(AdoptionReport {
+        schema_version: runner::REPORT_SCHEMA_VERSION,
         parent: parent.display().to_string(),
         repositories: entries,
         summary,

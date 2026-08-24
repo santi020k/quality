@@ -893,13 +893,13 @@ fn javascript_support_files(profile: PresetProfile) -> Vec<PresetFile> {
         PresetFile {
             path: PathBuf::from("prettier.config.mjs"),
             contents: format!(
-                "export default {{\n  endOfLine: 'lf',\n  printWidth: {print_width},\n  singleQuote: true,\n  trailingComma: 'all',\n}}\n"
+                "export default {{\n  endOfLine: 'lf',\n  printWidth: {print_width},\n  semi: false,\n  singleQuote: true,\n  trailingComma: 'none'\n}}\n"
             ),
             ownership: FileOwnership::Replace,
         },
         PresetFile {
             path: PathBuf::from("knip.json"),
-            contents: "{\n  \"$schema\": \"https://unpkg.com/knip@6/schema.json\"\n}\n".to_owned(),
+            contents: "{\n  \"$schema\": \"https://unpkg.com/knip@6/schema.json\",\n  \"ignoreDependencies\": [\"cspell\", \"prettier\"]\n}\n".to_owned(),
             ownership: FileOwnership::Replace,
         },
     ]
@@ -928,7 +928,7 @@ fn selected_spelling_adapter(
 fn cspell_config() -> PresetFile {
     PresetFile {
         path: PathBuf::from("cspell.config.yaml"),
-        contents: "version: '0.2'\nuseGitignore: true\nignorePaths:\n  - .quality-baseline.json\n  - coverage\n  - dist\n  - node_modules\n".to_owned(),
+        contents: "version: '0.2'\nuseGitignore: true\nwords:\n  - knip\n  - santi\n  - unrs\nignorePaths:\n  - .quality-baseline.json\n  - '*-lock.*'\n  - bun.lock\n  - bun.lockb\n  - coverage\n  - dist\n  - node_modules\n  - package-lock.json\n  - pnpm-lock.yaml\n  - yarn.lock\n".to_owned(),
         ownership: FileOwnership::Replace,
     }
 }
@@ -936,7 +936,7 @@ fn cspell_config() -> PresetFile {
 fn codespell_config() -> PresetFile {
     PresetFile {
         path: PathBuf::from(".codespellrc"),
-        contents: "[codespell]\nquiet-level = 2\nskip = .git,.quality-baseline.json,.quality-preset.json,coverage,dist,node_modules,target\n".to_owned(),
+        contents: "[codespell]\nquiet-level = 2\nskip = .git,.quality-baseline.json,.quality-preset.json,.venv,coverage,dist,node_modules,target,venv\n".to_owned(),
         ownership: FileOwnership::Replace,
     }
 }

@@ -3,23 +3,23 @@
   "type": "module",
   "version": "0.0.2",
   "scripts": {
-    "prebuild": "node scripts/generate-og-images.mjs",
+    "prebuild": "santi-og generate --config scripts/generate-og-images.mjs",
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build",
     "check": "astro check",
-    "generate:og": "node scripts/generate-og-images.mjs",
-    "postbuild": "node scripts/validate-seo.mjs",
+    "generate:og": "santi-og generate --config scripts/generate-og-images.mjs",
+    "postbuild": "santi-og audit --config og.audit.config.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
     "@santi020k/lumen-astro": "^1.4.0",
-    "astro": "^7.2.4",
-    "sharp": "^0.35.3"
+    "astro": "^7.2.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
+    "@santi020k/og": "1.0.0",
     "typescript": "^6.0.3"
   }
 }

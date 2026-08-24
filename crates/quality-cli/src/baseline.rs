@@ -190,6 +190,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("baseline.json");
         let initial = RunReport {
+            schema_version: crate::runner::REPORT_SCHEMA_VERSION,
             results: vec![result(vec![diagnostic(2)])],
             summary: Default::default(),
             scope: None,
@@ -198,6 +199,7 @@ mod tests {
         create(&initial, &path, false).unwrap();
 
         let mut current = RunReport {
+            schema_version: crate::runner::REPORT_SCHEMA_VERSION,
             results: vec![result(vec![diagnostic(4), diagnostic(8)])],
             summary: Default::default(),
             scope: None,

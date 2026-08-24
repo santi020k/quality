@@ -48,6 +48,8 @@ words:
   - temurin
   - tlsv
   - unconfigured
+  - unrs
+  - venv
   - walkdir
   - wordmark
   - workerd
@@ -62,6 +64,7 @@ words:
   - Knip
   - pnpm
   - rustfmt
+  - santi
   - santi020k
   - SwiftFormat
   - SwiftLint
@@ -75,3 +78,4 @@ words:
   - slidev
   - tanstack
   - vite
+  - webp

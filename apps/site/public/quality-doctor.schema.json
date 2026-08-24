@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-doctor.schema.json",
+  "title": "quality doctor report",
+  "description": "Versioned JSON output from quality doctor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "root", "config", "tools"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "root": { "type": "string" },
+    "config": { "type": "string" },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tool" }
+    },
+    "preset": { "$ref": "#/$defs/preset" }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "name", "detected", "enabled", "check_enabled", "format_or_fix_available", "available", "required", "command", "working_directory", "guidance"],
+      "properties": {
+        "tool": { "type": "string" },
+        "name": { "type": "string" },
+        "detected": { "type": "boolean" },
+        "enabled": { "type": "boolean" },
+        "check_enabled": { "type": "boolean" },
+        "format_or_fix_available": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "required": { "type": "boolean" },
+        "command": { "type": "string" },
+        "working_directory": { "type": "string" },
+        "guidance": { "type": ["string", "null"] }
+      }
+    },
+    "preset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "catalog_version", "current_catalog_version", "state", "issues"],
+      "properties": {
+        "profile": { "type": "string" },
+        "catalog_version": { "type": "integer", "minimum": 0 },
+        "current_catalog_version": { "type": "integer", "minimum": 0 },
+        "state": { "type": "string", "enum": ["current", "update-available", "incompatible"] },
+        "issues": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

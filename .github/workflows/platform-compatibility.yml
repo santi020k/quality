@@ -1,0 +1,56 @@
+name: Platform Compatibility
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/quality-cli/**"
+      - "packages/action/**"
+      - action.yml
+      - Cargo.lock
+      - Cargo.toml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - ".github/workflows/platform-compatibility.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-compatibility-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, windows-2022]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
+        with:
+          components: clippy, rustfmt
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Test portable CLI behavior
+        run: cargo test --locked --package quality-cli --test cross_platform
+      - name: Test GitHub Action logic
+        run: pnpm --filter @quality/action test
+      - name: Type-check GitHub Action
+        run: pnpm --filter @quality/action check

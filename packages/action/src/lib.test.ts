@@ -4,8 +4,16 @@ import {
   actionFailureMessage,
   checksumFromFile,
   releaseRepository,
+  releaseBaseUrl,
   releaseTarget,
 } from "./lib.js";
+
+it("uses GitHub releases by default and normalizes a release base override", () => {
+  expect(releaseBaseUrl("acme/quality", undefined)).toBe("https://github.com/acme/quality");
+  expect(releaseBaseUrl("acme/quality", "http://127.0.0.1:8080///")).toBe(
+    "http://127.0.0.1:8080",
+  );
+});
 
 describe("releaseTarget", () => {
   it("maps supported runners", () => {

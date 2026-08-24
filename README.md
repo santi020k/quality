@@ -8,6 +8,7 @@ Website and documentation: <https://quality.santi020k.com>
 
 [Documentation](https://quality.santi020k.com) ·
 [GitHub Action](#github-action) ·
+[Compatibility](https://quality.santi020k.com/compatibility/) ·
 [Releases](https://github.com/santi020k/quality/releases) ·
 [Changelog](CHANGELOG.md) ·
 [Issues](https://github.com/santi020k/quality/issues) ·
@@ -178,6 +179,7 @@ quality check --format github --report artifacts/quality.sarif
 | Content | Typos | yes | fix |
 | JavaScript/TypeScript | Knip | yes | — |
 | GitHub Actions | Actionlint | yes | — |
+| Web metadata | `@santi020k/og` | yes | — |
 
 ## Language-aware presets
 
@@ -271,8 +273,8 @@ custom:
 With `file_mode: append`, changed source paths are appended to the configured
 arguments. Use `project` for analyzers that must always inspect the whole
 project. Supported parsers are `generic`, `codespell`, `eslint-json`,
-`swiftlint-json`, `ktlint-json`, and `typos-json`. Generic diagnostics use the
-familiar format:
+`swiftlint-json`, `ktlint-json`, `santi-og-json`, and `typos-json`. Generic
+diagnostics use the familiar format:
 
 ```text
 path/to/file:line:column: warning: Message (rule-id)
@@ -281,6 +283,19 @@ path/to/file:line:column: warning: Message (rule-id)
 External adapters participate in `doctor`, concurrent execution, changed-file
 filtering, JSON/SARIF reports, GitHub annotations, and baselines. Commands are
 executed directly without a shell, so arguments remain explicit and portable.
+
+When a JavaScript workspace declares `@santi020k/og`, the built-in `santi-og`
+adapter runs its deterministic `check --json` command. Missing or stale social
+images become normalized diagnostics; generation remains an explicit
+`santi-og generate` operation that never runs as part of `quality check`.
+Run only this adapter with:
+
+```bash
+quality check --only santi-og
+```
+
+See the [`@santi020k/og` package guide](https://og.santi020k.com/docs/) for
+generation, caching, and built-site auditing.
 
 ## Configuration
 

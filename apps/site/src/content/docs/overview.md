@@ -5,7 +5,7 @@ description: Understand what quality does and where it fits in your development 
 
 `quality` is a fast command-line orchestrator for code-quality tools across Swift, Android/Kotlin, Python, JavaScript, and TypeScript projects.
 
-It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, Prettier, CSpell, Codespell, Typos, Knip, or Actionlint, it gives them a shared workflow:
+It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, Prettier, CSpell, Codespell, Typos, Knip, Actionlint, or `@santi020k/og`, it gives them a shared workflow:
 
 1. Detect the ecosystems present in a repository.
 2. Resolve repository-local tools before global installations.
@@ -56,6 +56,11 @@ hooks:
         command: pnpm
         args: [run, validate]
 ```
+
+When the pre-push validation includes `quality check`, detected
+`@santi020k/og` workspaces are checked for missing or stale generated assets.
+Keep `santi-og generate` explicit instead of placing it in a hook: verification
+should block on stale output without silently modifying tracked files.
 
 This design lets teams add repository-specific steps without editing generated
 hook files or depending on Node.js. Steps run sequentially and stop at the

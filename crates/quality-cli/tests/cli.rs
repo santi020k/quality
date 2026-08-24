@@ -46,6 +46,91 @@ fn initialize_git(root: &std::path::Path) {
     git(root, &["config", "user.name", "Quality Tests"]);
 }
 
+fn assert_matches_published_schema(value: &serde_json::Value, schema_text: &str) {
+    let schema: serde_json::Value = serde_json::from_str(schema_text).unwrap();
+    assert_matches_schema_node(value, &schema, &schema, "$");
+}
+
+fn assert_matches_schema_node(
+    value: &serde_json::Value,
+    schema: &serde_json::Value,
+    root: &serde_json::Value,
+    location: &str,
+) {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        let pointer = reference
+            .strip_prefix('#')
+            .expect("test schemas only use local references");
+        let target = root
+            .pointer(pointer)
+            .unwrap_or_else(|| panic!("missing schema reference {reference}"));
+        assert_matches_schema_node(value, target, root, location);
+        return;
+    }
+    if let Some(expected) = schema.get("const") {
+        assert_eq!(value, expected, "schema const mismatch at {location}");
+    }
+    if let Some(values) = schema.get("enum").and_then(serde_json::Value::as_array) {
+        assert!(values.contains(value), "schema enum mismatch at {location}");
+    }
+    if let Some(expected_type) = schema.get("type") {
+        let types = expected_type
+            .as_array()
+            .map(|values| values.iter().collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![expected_type]);
+        assert!(
+            types.iter().any(|kind| schema_type_matches(value, kind)),
+            "schema type mismatch at {location}: {value}"
+        );
+    }
+    if let Some(object) = value.as_object() {
+        let properties = schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object);
+        if let Some(required) = schema.get("required").and_then(serde_json::Value::as_array) {
+            for key in required.iter().filter_map(serde_json::Value::as_str) {
+                assert!(
+                    object.contains_key(key),
+                    "missing required field {location}.{key}"
+                );
+            }
+        }
+        for (key, child) in object {
+            if let Some(child_schema) = properties.and_then(|properties| properties.get(key)) {
+                assert_matches_schema_node(child, child_schema, root, &format!("{location}.{key}"));
+            } else if schema.get("additionalProperties") == Some(&serde_json::Value::Bool(false)) {
+                panic!("unexpected field {location}.{key}");
+            } else if let Some(additional) = schema
+                .get("additionalProperties")
+                .filter(|value| value.is_object())
+            {
+                assert_matches_schema_node(child, additional, root, &format!("{location}.{key}"));
+            }
+        }
+    }
+    if let (Some(values), Some(items)) = (
+        value.as_array(),
+        schema.get("items").filter(|items| items.is_object()),
+    ) {
+        for (index, child) in values.iter().enumerate() {
+            assert_matches_schema_node(child, items, root, &format!("{location}[{index}]"));
+        }
+    }
+}
+
+fn schema_type_matches(value: &serde_json::Value, expected: &serde_json::Value) -> bool {
+    match expected.as_str() {
+        Some("array") => value.is_array(),
+        Some("boolean") => value.is_boolean(),
+        Some("integer") => value.as_i64().is_some() || value.as_u64().is_some(),
+        Some("null") => value.is_null(),
+        Some("number") => value.is_number(),
+        Some("object") => value.is_object(),
+        Some("string") => value.is_string(),
+        _ => false,
+    }
+}
+
 #[test]
 fn init_detects_a_mixed_mobile_project() {
     let temp = tempfile::tempdir().unwrap();
@@ -400,6 +485,11 @@ fn check_normalizes_a_tool_failure_to_json_and_sarif() {
     let json_output = quality(temp.path(), &["check", "--format", "json"]);
     assert_eq!(json_output.status.code(), Some(1));
     let report: serde_json::Value = serde_json::from_slice(&json_output.stdout).unwrap();
+    assert_eq!(report["schema_version"], 1);
+    assert_matches_published_schema(
+        &report,
+        include_str!("../../../apps/site/public/quality-report.schema.json"),
+    );
     assert_eq!(report["results"][0]["diagnostics"][0]["line"], 4);
     assert_eq!(
         report["results"][0]["diagnostics"][0]["rule"],
@@ -633,6 +723,55 @@ fn changed_mode_runs_full_analyzer_when_configuration_is_deleted() {
 
 #[cfg(unix)]
 #[test]
+fn santi_og_reports_stale_outputs_from_a_nested_workspace() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let site = temp.path().join("apps/site");
+    let bin = site.join("node_modules/.bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(
+        site.join("package.json"),
+        r#"{"devDependencies":{"@santi020k/og":"1.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: json\ntools: {}\n",
+    )
+    .unwrap();
+    fs::write(site.join("og.config.mjs"), "export default {};\n").unwrap();
+    let canonical_site = site.canonicalize().unwrap();
+    let fake = bin.join("santi-og");
+    fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nprintf '%s' '{{\"command\":\"check\",\"config\":\"{}\",\"stale\":[\"index.webp\"]}}'\nexit 1\n",
+            canonical_site.join("og.config.mjs").display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+
+    let output = quality(temp.path(), &["check"]);
+
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["results"][0]["tool"], "santi-og@apps/site");
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["path"],
+        "apps/site/og.config.mjs"
+    );
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["rule"],
+        "og-output-stale"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn changed_mode_never_passes_deleted_sources_to_file_scoped_tools() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -762,6 +901,11 @@ fn nested_android_workspace_uses_its_wrapper_and_rebases_diagnostics() {
     let doctor = quality_with_path(temp.path(), &["doctor", "--format", "json"], &fake_bin);
     assert!(doctor.status.success());
     let report: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    assert_eq!(report["schema_version"], 1);
+    assert_matches_published_schema(
+        &report,
+        include_str!("../../../apps/site/public/quality-doctor.schema.json"),
+    );
     let android_entry = report["tools"]
         .as_array()
         .unwrap()
@@ -1245,6 +1389,11 @@ fn repositories_audit_and_apply_emit_an_adoption_report() {
     );
     assert!(audit.status.success());
     let report: serde_json::Value = serde_json::from_slice(&audit.stdout).unwrap();
+    assert_eq!(report["schema_version"], 1);
+    assert_matches_published_schema(
+        &report,
+        include_str!("../../../apps/site/public/quality-repositories.schema.json"),
+    );
     assert_eq!(report["summary"]["total"], 2);
     assert_eq!(report["summary"]["needs_configuration"], 1);
     assert_eq!(report["summary"]["missing_toolchains"], 1);
@@ -1695,6 +1844,13 @@ fn preset_profiles_map_to_eslint_config_modes() {
         } else {
             assert!(config.contains("prettier:"));
             assert!(temp.path().join("knip.json").exists());
+            let prettier = fs::read_to_string(temp.path().join("prettier.config.mjs")).unwrap();
+            assert!(prettier.contains("semi: false"));
+            assert!(prettier.contains("trailingComma: 'none'"));
+            let knip = fs::read_to_string(temp.path().join("knip.json")).unwrap();
+            assert!(knip.contains("\"ignoreDependencies\": [\"cspell\", \"prettier\"]"));
+            let cspell = fs::read_to_string(temp.path().join("cspell.config.yaml")).unwrap();
+            assert!(cspell.contains("  - pnpm-lock.yaml"));
         }
     }
 }
@@ -1716,6 +1872,7 @@ fn presets_select_one_spelling_adapter_for_each_repository() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Ecosystems: python"));
     assert!(stdout.contains("--- .codespellrc"));
+    assert!(stdout.contains(".venv,coverage,dist,node_modules,target,venv"));
     assert!(stdout.contains("\n  codespell:"));
     assert!(!stdout.contains("\n  cspell:"));
     assert!(!stdout.contains("\n  typos:"));

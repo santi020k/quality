@@ -18,6 +18,10 @@ export function releaseRepository(
   return repository;
 }
 
+export function releaseBaseUrl(repository: string, override: string | undefined): string {
+  return (override || `https://github.com/${repository}`).replace(/\/+$/u, "");
+}
+
 export function releaseTarget(platform: NodeJS.Platform, arch: string): Platform {
   if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
   if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";

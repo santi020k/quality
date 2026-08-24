@@ -40,7 +40,8 @@
         "codespell": { "$ref": "#/$defs/builtInTool" },
         "typos": { "$ref": "#/$defs/builtInTool" },
         "knip": { "$ref": "#/$defs/builtInTool" },
-        "actionlint": { "$ref": "#/$defs/builtInTool" }
+        "actionlint": { "$ref": "#/$defs/builtInTool" },
+        "santi-og": { "$ref": "#/$defs/builtInTool" }
       },
       "default": {}
     },
@@ -141,6 +142,7 @@
         "eslint-json",
         "swiftlint-json",
         "ktlint-json",
+        "santi-og-json",
         "typos-json"
       ],
       "default": "generic"

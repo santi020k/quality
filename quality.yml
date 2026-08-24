@@ -26,6 +26,9 @@ tools:
     enabled: false
   prettier:
     enabled: false
+  santi-og:
+    enabled: true
+    required: true
 tasks:
   action-typecheck:
     name: GitHub Action type-check

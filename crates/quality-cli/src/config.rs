@@ -72,6 +72,7 @@ pub enum DiagnosticParser {
     EslintJson,
     SwiftlintJson,
     KtlintJson,
+    SantiOgJson,
     TyposJson,
 }
 

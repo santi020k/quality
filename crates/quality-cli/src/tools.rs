@@ -147,7 +147,7 @@ impl Tool {
             }
             if matches!(
                 self.id,
-                "eslint" | "prettier" | "astro-check" | "cspell" | "knip"
+                "eslint" | "prettier" | "astro-check" | "cspell" | "knip" | "santi-og"
             ) {
                 let local = working_directory
                     .join("node_modules/.bin")
@@ -188,6 +188,7 @@ impl Tool {
                 "eslint" => DiagnosticParser::EslintJson,
                 "swiftlint" => DiagnosticParser::SwiftlintJson,
                 "ktlint" => DiagnosticParser::KtlintJson,
+                "santi-og" => DiagnosticParser::SantiOgJson,
                 "typos" => DiagnosticParser::TyposJson,
                 _ => DiagnosticParser::Generic,
             },
@@ -207,6 +208,7 @@ impl Tool {
             "swiftlint" | "swiftformat" => swift_workspaces(project),
             "cargo-fmt" | "cargo-clippy" => cargo_workspaces(project),
             "astro-check" => astro_workspaces(project),
+            "santi-og" => santi_og_workspaces(project),
             _ => vec![PathBuf::new()],
         };
         relative
@@ -302,6 +304,9 @@ impl Tool {
                 matches!(extension, "yml" | "yaml")
                     && path.starts_with(Path::new(".github/workflows"))
             }
+            // The package's content-aware cache decides whether a changed project
+            // input actually invalidates an output, so changed mode stays conservative.
+            "santi-og" => true,
             _ => false,
         }
     }
@@ -379,6 +384,14 @@ impl Tool {
                     name,
                     "actionlint.yaml" | "actionlint.yml" | ".actionlint.yaml" | ".actionlint.yml"
                 )
+            }
+            "santi-og" => {
+                name == "package.json"
+                    || name == ".og-cache.json"
+                    || name.starts_with("og.config.")
+                    || name.starts_with("og.audit.config.")
+                    || name.starts_with("generate-og-images.")
+                    || javascript_workspace_configuration(name)
             }
             _ => false,
         }
@@ -790,6 +803,16 @@ pub fn catalog() -> Vec<Tool> {
             format_args: None,
             fix_args: None,
         },
+        Tool {
+            id: "santi-og",
+            name: "santi-og",
+            executable: "santi-og",
+            install_hint: "Install @santi020k/og in the workspace (`pnpm add --save-dev @santi020k/og`).",
+            detector: detects_santi_og,
+            check_args: &["check", "--json"],
+            format_args: None,
+            fix_args: None,
+        },
     ]
 }
 
@@ -973,6 +996,10 @@ fn detects_actionlint(project: &Project) -> bool {
             })
 }
 
+fn detects_santi_og(project: &Project) -> bool {
+    package_manifest_uses(project, "@santi020k/og")
+}
+
 fn package_manifest_uses(project: &Project, tool: &str) -> bool {
     project
         .paths_named("package.json")
@@ -1109,6 +1136,16 @@ fn astro_workspaces(project: &Project) -> Vec<PathBuf> {
     .filter_map(Path::parent)
     .map(Path::to_path_buf);
     unique_workspaces(roots)
+}
+
+fn santi_og_workspaces(project: &Project) -> Vec<PathBuf> {
+    unique_workspaces(
+        project
+            .paths_named("package.json")
+            .filter(|path| package_json_uses(&project.root.join(path), "@santi020k/og"))
+            .filter_map(Path::parent)
+            .map(Path::to_path_buf),
+    )
 }
 
 fn unique_workspaces(roots: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
@@ -1267,6 +1304,75 @@ mod tests {
         assert!(detected.contains(&"typos"));
         assert!(detected.contains(&"knip"));
         assert!(detected.contains(&"actionlint"));
+    }
+
+    #[test]
+    fn detects_santi_og_and_runs_each_declaring_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        for workspace in ["apps/docs", "apps/store"] {
+            std::fs::create_dir_all(temp.path().join(workspace)).unwrap();
+            std::fs::write(
+                temp.path().join(workspace).join("package.json"),
+                r#"{"devDependencies":{"@santi020k/og":"1.0.0"}}"#,
+            )
+            .unwrap();
+        }
+        std::fs::write(temp.path().join("package.json"), r#"{"private":true}"#).unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let tool = catalog()
+            .into_iter()
+            .find(|tool| tool.id == "santi-og")
+            .unwrap();
+
+        assert!(tool.detect(&project));
+        let invocations =
+            tool.invocations(&project, &ToolConfig::default(), Operation::Check, None);
+        assert_eq!(invocations.len(), 2);
+        assert_eq!(
+            invocations[0].working_directory,
+            temp.path().join("apps/docs")
+        );
+        assert_eq!(
+            invocations[1].working_directory,
+            temp.path().join("apps/store")
+        );
+        assert_eq!(invocations[0].args, vec!["check", "--json"]);
+        assert!(matches!(
+            invocations[0].parser,
+            DiagnosticParser::SantiOgJson
+        ));
+    }
+
+    #[test]
+    fn changed_santi_og_inputs_recheck_the_complete_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("package.json"),
+            r#"{"devDependencies":{"@santi020k/og":"1.0.0"}}"#,
+        )
+        .unwrap();
+        std::fs::write(temp.path().join("article.md"), "# Article\n").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let changes = ChangeSet {
+            base: "HEAD".to_owned(),
+            files: vec![PathBuf::from("article.md")],
+            deleted: Default::default(),
+        };
+        let tool = catalog()
+            .into_iter()
+            .find(|tool| tool.id == "santi-og")
+            .unwrap();
+
+        let invocation = tool
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changes),
+            )
+            .unwrap();
+
+        assert_eq!(invocation.args, vec!["check", "--json"]);
     }
 
     #[test]

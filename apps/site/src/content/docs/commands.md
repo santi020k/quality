@@ -87,8 +87,10 @@ quality check --exclude cargo-clippy
 
 `--report-level` controls which diagnostics are displayed and written to SARIF. `--fail-level` independently controls which severities fail the command.
 
-JSON output includes an aggregate `summary` with tool states, severity counts,
-affected files, and counts by rule.
+JSON output includes `schema_version: 1` and an aggregate `summary` with tool
+states, severity counts, affected files, and counts by rule. The published
+[`quality` report schema](/quality-report.schema.json) defines the complete
+machine-readable contract.
 
 Use repeatable `--only ID` or `--exclude ID` flags to select built-in adapters,
 repository tasks, or custom tools. Comma-separated IDs are also accepted. The
@@ -215,3 +217,6 @@ files for every repository. Pretty output prints missing IDs below the affected
 repository, while JSON exposes them through `missing_toolchains`.
 
 All commands accept `--root PATH` when the target repository is not the current directory.
+
+See [compatibility and support](/compatibility/) for stable-contract rules,
+published JSON schemas, platform coverage, and the documented exit codes.

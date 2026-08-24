@@ -19,6 +19,8 @@ use crate::tools::{self, Invocation};
 type CapturedOutput = (Vec<u8>, bool);
 type OutputReader = thread::JoinHandle<io::Result<CapturedOutput>>;
 
+pub const REPORT_SCHEMA_VERSION: u8 = 1;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Operation {
     Check,
@@ -95,6 +97,7 @@ impl Default for ExecutionSettings {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct RunReport {
+    pub schema_version: u8,
     pub results: Vec<ToolResult>,
     pub summary: RunSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,6 +137,7 @@ pub struct RunScope {
 impl RunReport {
     pub fn new(results: Vec<ToolResult>, scope: Option<RunScope>) -> Self {
         let mut report = Self {
+            schema_version: REPORT_SCHEMA_VERSION,
             results,
             summary: RunSummary::default(),
             scope,
@@ -238,6 +242,7 @@ pub struct DoctorEntry {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DoctorReport {
+    pub schema_version: u8,
     pub root: String,
     pub config: String,
     pub tools: Vec<DoctorEntry>,
@@ -370,6 +375,7 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
         }
     }));
     DoctorReport {
+        schema_version: REPORT_SCHEMA_VERSION,
         root: project.root.display().to_string(),
         config: if project.root.join("quality.yml").exists() {
             "quality.yml".to_owned()
@@ -719,6 +725,7 @@ fn parse_diagnostics_at(
             parse_swiftlint_json(tool, root, working_directory, output)
         }
         DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, output),
+        DiagnosticParser::SantiOgJson => parse_santi_og_json(tool, root, working_directory, output),
         DiagnosticParser::TyposJson => parse_typos_json(tool, root, working_directory, output),
         DiagnosticParser::Generic => None,
     };
@@ -1019,6 +1026,37 @@ fn parse_ktlint_json(
     )
 }
 
+fn parse_santi_og_json(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
+    let result = serde_json::from_str::<serde_json::Value>(output).ok()?;
+    if result.get("command").and_then(serde_json::Value::as_str) != Some("check") {
+        return None;
+    }
+    let config = result.get("config").and_then(serde_json::Value::as_str);
+    let stale = result.get("stale")?.as_array()?;
+    Some(
+        stale
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(|output| Diagnostic {
+                tool: tool.to_owned(),
+                path: config.map(|path| normalize_path(root, working_directory, path)),
+                line: None,
+                column: None,
+                severity: "error".to_owned(),
+                message: format!(
+                    "Open Graph output `{output}` is missing or stale; run `santi-og generate`."
+                ),
+                rule: Some("og-output-stale".to_owned()),
+            })
+            .collect(),
+    )
+}
+
 fn normalize_path(
     root: &std::path::Path,
     working_directory: &std::path::Path,
@@ -1189,6 +1227,25 @@ mod tests {
         assert_eq!(found[0].line, Some(3));
         assert_eq!(found[0].column, Some(5));
         assert_eq!(found[0].rule.as_deref(), Some("spelling"));
+        assert!(baseline_safe);
+    }
+
+    #[test]
+    fn parses_santi_og_stale_outputs_against_the_workspace_config() {
+        let (found, baseline_safe) = parse_diagnostics_at(
+            DiagnosticParser::SantiOgJson,
+            "santi-og@apps/site",
+            std::path::Path::new("/project"),
+            std::path::Path::new("/project/apps/site"),
+            r#"{"command":"check","config":"/project/apps/site/og.config.mjs","stale":["index.webp","docs.webp"]}"#,
+            true,
+        );
+
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].path.as_deref(), Some("apps/site/og.config.mjs"));
+        assert_eq!(found[0].severity, "error");
+        assert_eq!(found[0].rule.as_deref(), Some("og-output-stale"));
+        assert!(found[0].message.contains("index.webp"));
         assert!(baseline_safe);
     }
 

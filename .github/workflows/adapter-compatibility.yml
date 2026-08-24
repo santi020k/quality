@@ -1,0 +1,112 @@
+name: Adapter Compatibility
+
+on:
+  schedule:
+    - cron: "31 6 1 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  repository:
+    name: Repository adapters
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
+        with:
+          components: clippy, rustfmt
+      - name: Install actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: pnpm install --frozen-lockfile
+      - name: Exercise pinned real adapters
+        run: pnpm check
+
+  javascript:
+    name: JavaScript preset adapters
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.22.0
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
+      - name: Build quality
+        run: cargo build --locked --package quality-cli
+      - name: Create fixture and install pinned preset tools
+        shell: bash
+        run: |
+          mkdir -p compatibility/javascript/src
+          printf '%s\n' '{"name":"compatibility-javascript","private":true,"type":"module","packageManager":"pnpm@11.22.0"}' > compatibility/javascript/package.json
+          printf '%s\n' 'allowBuilds:' '  unrs-resolver: true' > compatibility/javascript/pnpm-workspace.yaml
+          printf '%s\n' 'export const answer = 42' > compatibility/javascript/src/index.ts
+          target/debug/quality --root compatibility/javascript preset apply recommended --only javascript --install
+          target/debug/quality --root compatibility/javascript format
+      - name: Run real JavaScript adapters
+        run: target/debug/quality --root compatibility/javascript check --require-checks
+
+  python:
+    name: Python spelling adapter
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Build quality and install the pinned adapter
+        run: |
+          cargo build --locked --package quality-cli
+          python -m pip install codespell==2.4.3
+      - name: Create fixture
+        run: |
+          mkdir -p compatibility/python
+          printf '%s\n' 'value = "quality"' > compatibility/python/app.py
+          target/debug/quality --root compatibility/python preset apply recommended --only python
+      - name: Run real Python adapter
+        run: target/debug/quality --root compatibility/python check --require-checks
+
+  swift:
+    name: Swift adapters
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.85.0
+      - name: Install representative analyzers
+        run: brew install swiftformat swiftlint
+      - name: Build quality and create fixture
+        run: |
+          cargo build --locked --package quality-cli
+          mkdir -p compatibility/swift
+          printf '%s\n' 'struct Example {}' > compatibility/swift/Example.swift
+          target/debug/quality --root compatibility/swift preset apply recommended --only swift
+          target/debug/quality --root compatibility/swift format
+      - name: Run real Swift adapters
+        run: target/debug/quality --root compatibility/swift check --require-checks

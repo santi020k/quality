@@ -1,0 +1,215 @@
+{
+  "generatorVersion": "1.0.0",
+  "routes": {
+    "/": {
+      "alt": "One command. Every tool. — quality code-quality CLI",
+      "description": "Run trusted code-quality tools across programming ecosystems through one deterministic workflow.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "index.webp",
+          "primary": true,
+          "url": "/og/pages/index.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/",
+      "schemaTypes": [
+        "SoftwareApplication"
+      ],
+      "title": "One command. Every tool."
+    },
+    "/adapters/": {
+      "alt": "Built-in and custom adapters — quality code-quality CLI",
+      "description": "Supported analyzers and the extension model for additional tools.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "adapters.webp",
+          "primary": true,
+          "url": "/og/pages/adapters.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/adapters/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Built-in and custom adapters"
+    },
+    "/ai-agents/": {
+      "alt": "AI coding agents — quality code-quality CLI",
+      "description": "Give coding agents a deterministic quality workflow without adding an AI service.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "ai-agents.webp",
+          "primary": true,
+          "url": "/og/pages/ai-agents.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/ai-agents/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "AI coding agents"
+    },
+    "/changed-files-and-baselines/": {
+      "alt": "Changed files and baselines — quality code-quality CLI",
+      "description": "Keep local and pull-request feedback focused without hiding failures.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "changed-files-and-baselines.webp",
+          "primary": true,
+          "url": "/og/pages/changed-files-and-baselines.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/changed-files-and-baselines/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Changed files and baselines"
+    },
+    "/commands/": {
+      "alt": "Commands — quality code-quality CLI",
+      "description": "Command reference for the quality CLI.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "commands.webp",
+          "primary": true,
+          "url": "/og/pages/commands.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/commands/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Commands"
+    },
+    "/compatibility/": {
+      "alt": "Compatibility and support — quality code-quality CLI",
+      "description": "Understand quality's stable contracts, exit codes, supported platforms, and upgrade policy.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "compatibility.webp",
+          "primary": true,
+          "url": "/og/pages/compatibility.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/compatibility/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Compatibility and support"
+    },
+    "/configuration/": {
+      "alt": "Configuration — quality code-quality CLI",
+      "description": "Configure built-in and external quality analyzers.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "configuration.webp",
+          "primary": true,
+          "url": "/og/pages/configuration.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/configuration/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Configuration"
+    },
+    "/getting-started/": {
+      "alt": "Getting started — quality code-quality CLI",
+      "description": "Install quality and run the first repository check.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "getting-started.webp",
+          "primary": true,
+          "url": "/og/pages/getting-started.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/getting-started/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Getting started"
+    },
+    "/github-actions/": {
+      "alt": "GitHub Actions — quality code-quality CLI",
+      "description": "Run changed-file checks with annotations, summaries, and SARIF.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "github-actions.webp",
+          "primary": true,
+          "url": "/og/pages/github-actions.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/github-actions/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "GitHub Actions"
+    },
+    "/overview/": {
+      "alt": "Overview — quality code-quality CLI",
+      "description": "Understand what quality does and where it fits in your development workflow.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "overview.webp",
+          "primary": true,
+          "url": "/og/pages/overview.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/overview/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Overview"
+    },
+    "/presets/": {
+      "alt": "Language-aware presets — quality code-quality CLI",
+      "description": "Generate, inspect, upgrade, and safely merge analyzer configuration across supported ecosystems.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "presets.webp",
+          "primary": true,
+          "url": "/og/pages/presets.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/presets/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Language-aware presets"
+    }
+  },
+  "version": 1
+}
