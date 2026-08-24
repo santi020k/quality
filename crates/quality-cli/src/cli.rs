@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -32,6 +34,11 @@ pub enum Command {
         #[arg(long, value_enum, default_value_t = GateProfile::Auto)]
         gate: GateProfile,
     },
+    /// Inspect or apply language-aware quality presets.
+    Preset {
+        #[command(subcommand)]
+        command: PresetCommand,
+    },
     /// Check installed tools and project configuration.
     Doctor {
         #[arg(long, value_enum, default_value_t = OutputFormat::Pretty)]
@@ -41,6 +48,8 @@ pub enum Command {
     Check {
         #[command(flatten)]
         adapters: AdapterSelection,
+        #[command(flatten)]
+        execution: ExecutionOptions,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
         /// Also write a SARIF report without changing console output.
@@ -58,11 +67,16 @@ pub enum Command {
         /// Lowest diagnostic severity that makes the command fail.
         #[arg(long, value_enum, default_value_t = Severity::Info)]
         fail_level: Severity,
+        /// Fail when no check adapters are configured, while allowing changed scopes to skip work.
+        #[arg(long)]
+        require_checks: bool,
     },
     /// Format the project or verify formatting without changing files.
     Format {
         #[command(flatten)]
         adapters: AdapterSelection,
+        #[command(flatten)]
+        execution: ExecutionOptions,
         /// Only check formatting; do not change files.
         #[arg(long)]
         check: bool,
@@ -79,6 +93,8 @@ pub enum Command {
     Fix {
         #[command(flatten)]
         adapters: AdapterSelection,
+        #[command(flatten)]
+        execution: ExecutionOptions,
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
         /// Also write a SARIF report without changing console output.
@@ -119,9 +135,140 @@ pub enum Command {
         #[command(subcommand)]
         command: RepositoriesCommand,
     },
+    /// Install and run package-manager-independent Git hooks.
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
 }
 
-#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+#[derive(Debug, Subcommand)]
+pub enum PresetCommand {
+    /// List the built-in preset profiles.
+    List,
+    /// Explain a preset and preview its language policy.
+    Show {
+        #[arg(value_enum)]
+        profile: PresetProfile,
+    },
+    /// Generate configs for the languages detected in this repository.
+    Apply {
+        #[arg(value_enum)]
+        profile: PresetProfile,
+        /// Preview every file and dependency command without changing the repository.
+        #[arg(long)]
+        dry_run: bool,
+        /// Replace preset-owned files that already contain different content.
+        #[arg(long)]
+        force: bool,
+        /// Install pinned JavaScript development dependencies with the detected package manager.
+        #[arg(long)]
+        install: bool,
+        /// Limit generation to ecosystems. Repeat or comma-separate values.
+        #[arg(long, value_enum, value_name = "ECOSYSTEM", value_delimiter = ',')]
+        only: Vec<PresetEcosystem>,
+        /// Choose which repository script becomes the generated canonical gate.
+        #[arg(long, value_enum, default_value_t = GateProfile::Auto)]
+        gate: GateProfile,
+    },
+    /// Compare the applied preset with the current built-in catalog.
+    Diff,
+    /// Refresh an applied preset while preserving user-owned changes.
+    Update {
+        /// Preview changes without writing files or installing dependencies.
+        #[arg(long)]
+        dry_run: bool,
+        /// Replace generated files that were edited after the preset was applied.
+        #[arg(long)]
+        force: bool,
+        /// Install missing or outdated JavaScript development dependencies.
+        #[arg(long)]
+        install: bool,
+    },
+    /// Explain or install native tools required by the applied preset.
+    Setup {
+        /// Run supported setup commands instead of only printing them.
+        #[arg(long)]
+        install: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum PresetProfile {
+    Minimal,
+    Recommended,
+    Strict,
+}
+
+impl std::fmt::Display for PresetProfile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Minimal => "minimal",
+            Self::Recommended => "recommended",
+            Self::Strict => "strict",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum PresetEcosystem {
+    #[value(name = "javascript")]
+    JavaScript,
+    Python,
+    Rust,
+    Swift,
+    Kotlin,
+    GithubActions,
+}
+
+impl std::fmt::Display for PresetEcosystem {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::JavaScript => "javascript",
+            Self::Python => "python",
+            Self::Rust => "rust",
+            Self::Swift => "swift",
+            Self::Kotlin => "kotlin",
+            Self::GithubActions => "github-actions",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Args)]
+pub struct ExecutionOptions {
+    /// Maximum analyzer processes to run concurrently.
+    #[arg(long, value_name = "COUNT")]
+    pub jobs: Option<NonZeroUsize>,
+    /// Override every configured adapter timeout.
+    #[arg(long, value_name = "SECONDS")]
+    pub timeout_seconds: Option<NonZeroU64>,
+    /// Maximum bytes retained from each analyzer's combined output.
+    #[arg(long, value_name = "BYTES", default_value = "1048576")]
+    pub max_output_bytes: NonZeroUsize,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum HooksCommand {
+    /// Install small managed hook launchers for the events in quality.yml.
+    Install,
+    /// Report whether every configured hook is installed.
+    Status,
+    /// Remove only hook launchers managed by quality.
+    Uninstall,
+    /// Run the configured steps for one Git hook event.
+    Run {
+        /// Git hook name, such as pre-commit, commit-msg, or pre-push.
+        event: String,
+        /// Arguments supplied by Git to the hook.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 pub enum GateProfile {
     #[default]
     Auto,
@@ -135,6 +282,9 @@ pub enum RepositoriesCommand {
     Audit {
         #[arg(long, value_enum, default_value_t = AdoptionFormat::Pretty)]
         format: AdoptionFormat,
+        /// Exit unsuccessfully when a selected condition is found. Repeat or comma-separate values.
+        #[arg(long, value_enum, value_name = "CONDITION", value_delimiter = ',')]
+        fail_on: Vec<AuditFailureCondition>,
     },
     /// Create quality.yml in repositories that do not have one.
     Apply {
@@ -144,6 +294,13 @@ pub enum RepositoriesCommand {
         #[arg(long, value_enum, default_value_t = AdoptionFormat::Pretty)]
         format: AdoptionFormat,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum AuditFailureCondition {
+    Invalid,
+    MissingConfiguration,
+    MissingToolchain,
 }
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]

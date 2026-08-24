@@ -5,7 +5,9 @@ import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   checkArguments,
+  actionFailureMessage,
   checksumFromFile,
+  releaseBaseUrl,
   releaseRepository,
   releaseTarget,
   resolveProjectPath,
@@ -26,7 +28,7 @@ async function installQuality(version: string): Promise<string> {
   );
   const release = version === "latest" ? "releases/latest/download" : `releases/download/${version}`;
   const asset = `quality-${target}.${windows ? "zip" : "tar.gz"}`;
-  const base = `https://github.com/${repository}/${release}`;
+  const base = `${releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL)}/${release}`;
 
   core.info(`Installing quality ${version} for ${target}`);
   const archive = await cache.downloadTool(`${base}/${asset}`);
@@ -77,6 +79,10 @@ async function run(): Promise<void> {
       reportLevel: core.getInput("report-level", { required: true }),
       failLevel: core.getInput("fail-level", { required: true }),
       sarif,
+      requireChecks: core.getBooleanInput("require-checks"),
+      jobs: core.getInput("jobs"),
+      timeoutSeconds: core.getInput("timeout-seconds"),
+      maxOutputBytes: core.getInput("max-output-bytes"),
     });
     const result = await exec.getExecOutput(binary, args, {
       cwd: workingDirectory,
@@ -98,7 +104,7 @@ async function run(): Promise<void> {
     core.setOutput("duration-ms", Date.now() - started);
 
     if (result.exitCode !== 0) {
-      core.setFailed(`quality found diagnostics at or above the configured failure level`);
+      core.setFailed(actionFailureMessage(result.exitCode, result.stderr));
     }
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : String(error));

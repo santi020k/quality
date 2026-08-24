@@ -1,0 +1,18 @@
+{
+  "$schema": "https://quality.santi020k.com/quality-preset.schema.json",
+  "schema_version": 1,
+  "catalog_version": 1,
+  "profile": "recommended",
+  "ecosystems": [
+    "rust",
+    "github-actions"
+  ],
+  "gate": "auto",
+  "managed_files": {
+    ".clippy.toml": "fnv1a64:6715afa5b588232c",
+    ".github/actionlint.yaml": "fnv1a64:088e60f425535b2d",
+    "quality.yml": "fnv1a64:2b10ddaeeada9232",
+    "rustfmt.toml": "fnv1a64:38c4112bd4404975"
+  },
+  "dependencies": {}
+}

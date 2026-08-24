@@ -17,6 +17,8 @@ pub struct Config {
     pub tools: BTreeMap<String, ToolConfig>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tasks: BTreeMap<String, TaskConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub hooks: BTreeMap<String, HookConfig>,
     #[serde(rename = "custom", skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_tools: BTreeMap<String, ExternalToolConfig>,
 }
@@ -29,6 +31,7 @@ impl Default for Config {
             baseline: PathBuf::from(".quality-baseline.json"),
             tools: BTreeMap::new(),
             tasks: BTreeMap::new(),
+            hooks: BTreeMap::new(),
             custom_tools: BTreeMap::new(),
         }
     }
@@ -55,6 +58,9 @@ pub struct ToolConfig {
     pub format_args: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix_args: Option<Vec<String>>,
+    /// Maximum runtime for each invocation of this adapter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -62,9 +68,12 @@ pub struct ToolConfig {
 pub enum DiagnosticParser {
     #[default]
     Generic,
+    Codespell,
     EslintJson,
     SwiftlintJson,
     KtlintJson,
+    SantiOgJson,
+    TyposJson,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
@@ -105,6 +114,8 @@ pub struct ExternalToolConfig {
     pub fix_args: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub install_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
 }
 
 /// A repository-defined quality gate. Tasks run for `quality check` only and
@@ -127,6 +138,29 @@ pub struct TaskConfig {
     pub config_files: Vec<String>,
     #[serde(default)]
     pub parser: DiagnosticParser,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
+}
+
+/// Version-controlled behavior for one Git hook event.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HookConfig {
+    pub steps: Vec<HookStepConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HookStepConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub command: PathBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<PathBuf>,
+    #[serde(default)]
+    pub pass_hook_args: bool,
 }
 
 fn enabled_by_default() -> bool {
@@ -218,6 +252,7 @@ impl Config {
             if let Some(directory) = &tool.working_directory {
                 validate_working_directory(id, directory)?;
             }
+            validate_timeout(id, tool.timeout_seconds)?;
         }
         for (id, task) in &self.tasks {
             if supported.contains(&id.as_str()) || self.custom_tools.contains_key(id) {
@@ -231,6 +266,7 @@ impl Config {
                 validate_working_directory(id, directory)?;
             }
             validate_extensions(id, "task", &task.extensions)?;
+            validate_timeout(id, task.timeout_seconds)?;
         }
         for (id, tool) in &self.custom_tools {
             if supported.contains(&id.as_str()) {
@@ -246,9 +282,59 @@ impl Config {
                 validate_working_directory(id, directory)?;
             }
             validate_extensions(id, "custom tool", &tool.extensions)?;
+            validate_timeout(id, tool.timeout_seconds)?;
+        }
+        for (event, hook) in &self.hooks {
+            validate_hook_event(event)?;
+            if hook.steps.is_empty() {
+                anyhow::bail!("hook `{event}` must define at least one step");
+            }
+            for (index, step) in hook.steps.iter().enumerate() {
+                if step.command.as_os_str().is_empty() {
+                    anyhow::bail!(
+                        "step {} in hook `{event}` must define a non-empty command",
+                        index + 1
+                    );
+                }
+                if let Some(directory) = &step.working_directory {
+                    validate_working_directory(event, directory)?;
+                }
+            }
         }
         Ok(())
     }
+}
+
+fn validate_hook_event(event: &str) -> Result<()> {
+    const EVENTS: &[&str] = &[
+        "applypatch-msg",
+        "commit-msg",
+        "fsmonitor-watchman",
+        "post-applypatch",
+        "post-checkout",
+        "post-commit",
+        "post-merge",
+        "post-receive",
+        "post-rewrite",
+        "post-update",
+        "pre-applypatch",
+        "pre-auto-gc",
+        "pre-commit",
+        "pre-merge-commit",
+        "pre-push",
+        "pre-rebase",
+        "pre-receive",
+        "prepare-commit-msg",
+        "proc-receive",
+        "push-to-checkout",
+        "reference-transaction",
+        "sendemail-validate",
+        "update",
+    ];
+    if !EVENTS.contains(&event) {
+        anyhow::bail!("unsupported Git hook `{event}`");
+    }
+    Ok(())
 }
 
 fn validate_custom_id(id: &str, kind: &str) -> Result<()> {
@@ -286,6 +372,13 @@ fn validate_working_directory(id: &str, directory: &Path) -> Result<()> {
         anyhow::bail!(
             "working directory for `{id}` must stay inside the repository and be relative"
         );
+    }
+    Ok(())
+}
+
+fn validate_timeout(id: &str, timeout_seconds: Option<u64>) -> Result<()> {
+    if timeout_seconds == Some(0) {
+        anyhow::bail!("timeout_seconds for `{id}` must be greater than zero");
     }
     Ok(())
 }
@@ -336,7 +429,8 @@ pub fn write_initial_with_gate(
     }
 
     let text = initial_text_with_gate(project, gate)?;
-    fs::write(path, text).with_context(|| format!("could not write {}", path.display()))?;
+    crate::atomic::write(path, text.as_bytes())
+        .with_context(|| format!("could not write {}", path.display()))?;
     Ok(())
 }
 
@@ -345,17 +439,74 @@ pub fn initial_text(project: &Project) -> Result<String> {
 }
 
 pub fn initial_text_with_gate(project: &Project, gate: GateProfile) -> Result<String> {
+    let detected = crate::tools::catalog()
+        .into_iter()
+        .filter(|tool| tool.detect(project))
+        .map(|tool| tool.id.to_owned())
+        .collect::<BTreeSet<_>>();
+    policy_text_with_tools(project, gate, &detected, None)
+}
+
+pub fn merge_preset_text_with_gate(
+    project: &Project,
+    gate: GateProfile,
+    selected_tools: &BTreeSet<String>,
+    profile: crate::cli::PresetProfile,
+) -> Result<String> {
+    let mut config = Config::load_or_default(&project.root)?;
+    let canonical_script_detected = detect_repository_check(project, gate).is_some();
+    for id in selected_tools {
+        let mut tool = config.tools.get(id).cloned().unwrap_or_default();
+        tool.enabled = Some(true);
+        tool.required = Some(true);
+        if !config.tools.contains_key(id) && canonical_script_detected {
+            tool.check = Some(false);
+        }
+        config.tools.insert(id.clone(), tool);
+    }
+    if config.tasks.is_empty() {
+        if let Some(task) = detect_repository_check(project, gate) {
+            config.tasks.insert("repository-check".to_owned(), task);
+        } else if let Some(task) = detect_typecheck(project) {
+            config.tasks.insert("typecheck".to_owned(), task);
+        }
+    }
+    if !config.hooks.contains_key("commit-msg") {
+        if let Some(hook) = detect_commitprompt_hook(project) {
+            config.hooks.insert("commit-msg".to_owned(), hook);
+        }
+    }
+    let mut text = String::from(
+        "# yaml-language-server: $schema=https://quality.santi020k.com/quality.schema.json\n\
+         # cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint\n\
+         # quality.yml — one code-quality workflow for this repository\n\
+         # Preset-managed tools are merged with repository-owned tasks, hooks, and custom adapters.\n",
+    );
+    text.push_str(&format!(
+        "# Generated from the `{profile}` preset; rerun `quality preset update` to refresh it.\n"
+    ));
+    text.push_str(&serde_yaml::to_string(&config).context("could not serialize configuration")?);
+    Ok(text)
+}
+
+fn policy_text_with_tools(
+    project: &Project,
+    gate: GateProfile,
+    selected_tools: &BTreeSet<String>,
+    preset: Option<crate::cli::PresetProfile>,
+) -> Result<String> {
     let repository_task = detect_repository_check(project, gate);
     let canonical_script_detected = repository_task.is_some();
     let mut tools = BTreeMap::new();
     for tool in crate::tools::catalog() {
-        if tool.detect(project) {
+        if selected_tools.contains(tool.id) {
             tools.insert(
                 tool.id.to_owned(),
                 ToolConfig {
                     enabled: Some(true),
                     check: canonical_script_detected.then_some(false),
                     required: Some(true),
+                    timeout_seconds: None,
                     ..ToolConfig::default()
                 },
             );
@@ -367,19 +518,29 @@ pub fn initial_text_with_gate(project: &Project, gate: GateProfile) -> Result<St
     } else if let Some(task) = detect_typecheck(project) {
         tasks.insert("typecheck".to_owned(), task);
     }
+    let mut hooks = BTreeMap::new();
+    if let Some(hook) = detect_commitprompt_hook(project) {
+        hooks.insert("commit-msg".to_owned(), hook);
+    }
     let config = Config {
         tools,
         tasks,
+        hooks,
         ..Config::default()
     };
     let mut text = String::from(
-        "# yaml-language-server: $schema=https://quality-cli.santi020k.chatgpt.site/quality.schema.json\n\
+        "# yaml-language-server: $schema=https://quality.santi020k.com/quality.schema.json\n\
          # cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint\n\
          # quality.yml — one code-quality workflow for this repository\n\
          # Tools are auto-detected; entries below make the selected policy explicit.\n\
          # A canonical repository script replaces analyzer checks when one is detected,\n\
          # while the analyzers remain available to `quality format` and `quality fix`.\n",
     );
+    if let Some(profile) = preset {
+        text.push_str(&format!(
+            "# Generated from the `{profile}` preset; rerun `quality preset apply {profile}` to refresh it.\n"
+        ));
+    }
     text.push_str(&serde_yaml::to_string(&config).context("could not serialize configuration")?);
     Ok(text)
 }
@@ -428,6 +589,7 @@ fn detect_repository_check(project: &Project, gate: GateProfile) -> Option<TaskC
         extensions: Vec::new(),
         config_files: Vec::new(),
         parser: DiagnosticParser::Generic,
+        timeout_seconds: None,
     })
 }
 
@@ -464,6 +626,46 @@ fn detect_typecheck(project: &Project) -> Option<TaskConfig> {
             "package-lock.json".to_owned(),
         ],
         parser: DiagnosticParser::Generic,
+        timeout_seconds: None,
+    })
+}
+
+fn detect_commitprompt_hook(project: &Project) -> Option<HookConfig> {
+    let path = project.root.join("package.json");
+    let text = fs::read_to_string(path).ok()?;
+    let manifest = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    let installed = [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ]
+    .into_iter()
+    .filter_map(|field| manifest.get(field).and_then(serde_json::Value::as_object))
+    .any(|dependencies| dependencies.contains_key("@santi020k/commitprompt"));
+    if !installed {
+        return None;
+    }
+
+    let manager = package_manager(project, &manifest);
+    let mut args = match manager {
+        "npm" => vec!["exec", "--", "commitprompt"],
+        "bun" => vec!["x", "commitprompt"],
+        _ => vec!["exec", "commitprompt"],
+    }
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    args.extend(["validate", "--input"].map(str::to_owned));
+
+    Some(HookConfig {
+        steps: vec![HookStepConfig {
+            name: Some("Validate commit message".to_owned()),
+            command: PathBuf::from(manager),
+            args,
+            working_directory: None,
+            pass_hook_args: true,
+        }],
     })
 }
 

@@ -1,1 +1,0 @@
-commitprompt validate --input "$1"

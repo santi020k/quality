@@ -86,7 +86,7 @@ pub fn create(report: &RunReport, path: &Path, force: bool) -> Result<BaselineSu
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create baseline directory {}", parent.display()))?;
     }
-    fs::write(path, serde_json::to_vec_pretty(&baseline)?)
+    crate::atomic::write(path, &serde_json::to_vec_pretty(&baseline)?)
         .with_context(|| format!("could not write baseline to {}", path.display()))?;
     Ok(BaselineSummary {
         findings: baseline.findings.len(),
@@ -190,6 +190,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("baseline.json");
         let initial = RunReport {
+            schema_version: crate::runner::REPORT_SCHEMA_VERSION,
             results: vec![result(vec![diagnostic(2)])],
             summary: Default::default(),
             scope: None,
@@ -198,6 +199,7 @@ mod tests {
         create(&initial, &path, false).unwrap();
 
         let mut current = RunReport {
+            schema_version: crate::runner::REPORT_SCHEMA_VERSION,
             results: vec![result(vec![diagnostic(4), diagnostic(8)])],
             summary: Default::default(),
             scope: None,
@@ -219,6 +221,7 @@ mod tests {
             command: "swiftlint".to_owned(),
             diagnostics,
             output: String::new(),
+            output_truncated: false,
             guidance: None,
             baseline_safe: true,
         }

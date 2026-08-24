@@ -1,20 +1,25 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::io;
-use std::process::Command;
-use std::sync::OnceLock;
-use std::sync::mpsc;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::io::{self, Read};
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use regex::Regex;
 use serde::Serialize;
+use wait_timeout::ChildExt;
 
 use crate::changes::ChangeSet;
 use crate::cli::{AdapterSelection, Severity};
 use crate::config::{Config, DiagnosticParser};
 use crate::project::Project;
 use crate::tools::{self, Invocation};
+
+type CapturedOutput = (Vec<u8>, bool);
+type OutputReader = thread::JoinHandle<io::Result<CapturedOutput>>;
+
+pub const REPORT_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Operation {
@@ -63,14 +68,36 @@ pub struct ToolResult {
     pub diagnostics: Vec<Diagnostic>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub output: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub output_truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guidance: Option<String>,
     #[serde(skip)]
     pub baseline_safe: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ExecutionSettings {
+    pub jobs: usize,
+    pub timeout_seconds: Option<u64>,
+    pub max_output_bytes: usize,
+    pub require_checks: bool,
+}
+
+impl Default for ExecutionSettings {
+    fn default() -> Self {
+        Self {
+            jobs: thread::available_parallelism().map_or(1, usize::from),
+            timeout_seconds: None,
+            max_output_bytes: 1024 * 1024,
+            require_checks: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct RunReport {
+    pub schema_version: u8,
     pub results: Vec<ToolResult>,
     pub summary: RunSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,6 +137,7 @@ pub struct RunScope {
 impl RunReport {
     pub fn new(results: Vec<ToolResult>, scope: Option<RunScope>) -> Self {
         let mut report = Self {
+            schema_version: REPORT_SCHEMA_VERSION,
             results,
             summary: RunSummary::default(),
             scope,
@@ -214,9 +242,12 @@ pub struct DoctorEntry {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DoctorReport {
+    pub schema_version: u8,
     pub root: String,
     pub config: String,
     pub tools: Vec<DoctorEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset: Option<crate::presets::PresetDoctorStatus>,
 }
 
 impl DoctorReport {
@@ -344,6 +375,7 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
         }
     }));
     DoctorReport {
+        schema_version: REPORT_SCHEMA_VERSION,
         root: project.root.display().to_string(),
         config: if project.root.join("quality.yml").exists() {
             "quality.yml".to_owned()
@@ -351,6 +383,7 @@ pub fn doctor(project: &Project, config: &Config) -> DoctorReport {
             "automatic defaults (run `quality init` to make them explicit)".to_owned()
         },
         tools: entries,
+        preset: crate::presets::doctor_status(project),
     }
 }
 
@@ -361,7 +394,72 @@ pub fn execute(
     fail_fast: bool,
     changes: Option<&ChangeSet>,
     selection: &AdapterSelection,
+    settings: ExecutionSettings,
 ) -> Result<RunReport> {
+    if settings.require_checks
+        && collect_invocations(project, config, operation, None, selection).is_empty()
+    {
+        anyhow::bail!(
+            "no configured adapters can run this operation; configure a check or remove `--require-checks`"
+        );
+    }
+    let invocations = collect_invocations(project, config, operation, changes, selection);
+    let scope = (changes.is_some() || !selection.is_empty()).then(|| RunScope {
+        mode: changes.map(|_| "changed"),
+        base: changes.map(|changes| changes.base.clone()),
+        files: changes.map(|changes| changes.files.len()),
+        only: selection.only.clone(),
+        exclude: selection.exclude.clone(),
+    });
+
+    if fail_fast {
+        let mut results = Vec::new();
+        for invocation in invocations {
+            let result = run_one(&project.root, invocation, settings);
+            let failed = RunReport::result_failed_at(&result, Severity::Info);
+            results.push(result);
+            if failed {
+                break;
+            }
+        }
+        return Ok(RunReport::new(results, scope));
+    }
+
+    let count = invocations.len();
+    if count == 0 {
+        return Ok(RunReport::new(Vec::new(), scope));
+    }
+    let queue = Arc::new(Mutex::new(VecDeque::from(invocations)));
+    let (sender, receiver) = mpsc::channel();
+    for _ in 0..count.min(settings.jobs.max(1)) {
+        let sender = sender.clone();
+        let root = project.root.clone();
+        let queue = Arc::clone(&queue);
+        thread::spawn(move || {
+            loop {
+                let invocation = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                let Some(invocation) = invocation else {
+                    break;
+                };
+                if sender.send(run_one(&root, invocation, settings)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    drop(sender);
+    let mut results: Vec<_> = receiver.iter().take(count).collect();
+    results.sort_by(|left, right| left.tool.cmp(&right.tool));
+    Ok(RunReport::new(results, scope))
+}
+
+fn collect_invocations(
+    project: &Project,
+    config: &Config,
+    operation: Operation,
+    changes: Option<&ChangeSet>,
+    selection: &AdapterSelection,
+) -> Vec<Invocation> {
     let mut invocations: Vec<_> = tools::catalog()
         .into_iter()
         .flat_map(|tool| tool.invocations(project, &config.tool(tool.id), operation, changes))
@@ -376,56 +474,80 @@ pub fn execute(
         let adapter = invocation.id.split('@').next().unwrap_or(&invocation.id);
         selection.includes(adapter)
     });
-    let scope = (changes.is_some() || !selection.is_empty()).then(|| RunScope {
-        mode: changes.map(|_| "changed"),
-        base: changes.map(|changes| changes.base.clone()),
-        files: changes.map(|changes| changes.files.len()),
-        only: selection.only.clone(),
-        exclude: selection.exclude.clone(),
-    });
-
-    if fail_fast {
-        let mut results = Vec::new();
-        for invocation in invocations {
-            let result = run_one(&project.root, invocation);
-            let failed = matches!(result.status, Status::Failed | Status::Missing);
-            results.push(result);
-            if failed {
-                break;
-            }
-        }
-        return Ok(RunReport::new(results, scope));
-    }
-
-    let (sender, receiver) = mpsc::channel();
-    let count = invocations.len();
-    for invocation in invocations {
-        let sender = sender.clone();
-        let root = project.root.clone();
-        thread::spawn(move || {
-            let _ = sender.send(run_one(&root, invocation));
-        });
-    }
-    drop(sender);
-    let mut results: Vec<_> = receiver.iter().take(count).collect();
-    results.sort_by(|left, right| left.tool.cmp(&right.tool));
-    Ok(RunReport::new(results, scope))
+    invocations
 }
 
-fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
+fn run_one(
+    root: &std::path::Path,
+    invocation: Invocation,
+    settings: ExecutionSettings,
+) -> ToolResult {
     let started = Instant::now();
     let command_display = format_command(&invocation);
-    let output = Command::new(&invocation.command)
+    let child = Command::new(&invocation.command)
         .args(&invocation.args)
         .envs(&invocation.env)
         .current_dir(&invocation.working_directory)
         .env("NO_COLOR", "1")
-        .output();
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
 
-    match output {
-        Ok(output) => {
-            let combined = combine_output(&output.stdout, &output.stderr);
-            let status = if output.status.success() {
+    match child {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().map(|stdout| {
+                let limit = settings.max_output_bytes;
+                thread::spawn(move || read_limited(stdout, limit))
+            });
+            let stderr = child.stderr.take().map(|stderr| {
+                let limit = settings.max_output_bytes;
+                thread::spawn(move || read_limited(stderr, limit))
+            });
+            let timeout = settings.timeout_seconds.or(invocation.timeout_seconds);
+            let (status, timed_out) = match timeout {
+                Some(seconds) => match child.wait_timeout(Duration::from_secs(seconds)) {
+                    Ok(Some(status)) => (Ok(status), false),
+                    Ok(None) => {
+                        let _ = child.kill();
+                        (child.wait(), true)
+                    }
+                    Err(error) => (Err(error), false),
+                },
+                None => (child.wait(), false),
+            };
+            let stdout = join_output(stdout);
+            let stderr = join_output(stderr);
+            let (combined, output_truncated) =
+                combine_limited_output(stdout, stderr, settings.max_output_bytes);
+            if timed_out {
+                let seconds = timeout.unwrap_or_default();
+                return ToolResult {
+                    tool: invocation.id.clone(),
+                    name: invocation.name,
+                    status: Status::Failed,
+                    failure_kind: Some(FailureKind::Environment),
+                    duration_ms: started.elapsed().as_millis(),
+                    command: command_display,
+                    diagnostics: vec![Diagnostic {
+                        tool: invocation.id,
+                        path: None,
+                        line: None,
+                        column: None,
+                        severity: "error".to_owned(),
+                        message: format!("tool exceeded its {seconds}-second timeout"),
+                        rule: Some("tool-timeout".to_owned()),
+                    }],
+                    output: combined,
+                    output_truncated,
+                    guidance: None,
+                    baseline_safe: false,
+                };
+            }
+            let status = match status {
+                Ok(status) => status,
+                Err(error) => return execution_error(invocation, command_display, started, error),
+            };
+            let result_status = if status.success() {
                 Status::Passed
             } else {
                 Status::Failed
@@ -436,17 +558,18 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
                 root,
                 &invocation.working_directory,
                 &combined,
-                !output.status.success(),
+                !status.success(),
             );
             ToolResult {
                 tool: invocation.id,
                 name: invocation.name,
-                status,
-                failure_kind: (!output.status.success()).then(|| classify_failure(&combined)),
+                status: result_status,
+                failure_kind: (!status.success()).then(|| classify_failure(&combined)),
                 duration_ms: started.elapsed().as_millis(),
                 command: command_display,
                 diagnostics,
                 output: combined,
+                output_truncated,
                 guidance: None,
                 baseline_safe,
             }
@@ -476,6 +599,7 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
                 command: command_display,
                 diagnostics,
                 output: String::new(),
+                output_truncated: false,
                 guidance,
                 baseline_safe: false,
             }
@@ -497,10 +621,82 @@ fn run_one(root: &std::path::Path, invocation: Invocation) -> ToolResult {
                 rule: None,
             }],
             output: error.to_string(),
+            output_truncated: false,
             guidance: None,
             baseline_safe: false,
         },
     }
+}
+
+fn execution_error(
+    invocation: Invocation,
+    command_display: String,
+    started: Instant,
+    error: io::Error,
+) -> ToolResult {
+    ToolResult {
+        tool: invocation.id.clone(),
+        name: invocation.name,
+        status: Status::Failed,
+        failure_kind: Some(FailureKind::Environment),
+        duration_ms: started.elapsed().as_millis(),
+        command: command_display,
+        diagnostics: vec![Diagnostic {
+            tool: invocation.id,
+            path: None,
+            line: None,
+            column: None,
+            severity: "error".to_owned(),
+            message: error.to_string(),
+            rule: None,
+        }],
+        output: error.to_string(),
+        output_truncated: false,
+        guidance: None,
+        baseline_safe: false,
+    }
+}
+
+fn read_limited(mut reader: impl Read, limit: usize) -> io::Result<CapturedOutput> {
+    let mut retained = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    let mut truncated = false;
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(retained.len());
+        let keep = read.min(remaining);
+        retained.extend_from_slice(&buffer[..keep]);
+        truncated |= keep < read;
+    }
+    Ok((retained, truncated))
+}
+
+fn join_output(handle: Option<OutputReader>) -> CapturedOutput {
+    handle
+        .and_then(|handle| handle.join().ok())
+        .and_then(Result::ok)
+        .unwrap_or_else(|| (Vec::new(), false))
+}
+
+fn combine_limited_output(
+    stdout: (Vec<u8>, bool),
+    stderr: (Vec<u8>, bool),
+    limit: usize,
+) -> (String, bool) {
+    let mut bytes = stdout.0;
+    bytes.extend_from_slice(&stderr.0);
+    let truncated = stdout.1 || stderr.1 || bytes.len() > limit;
+    bytes.truncate(limit);
+    let mut output = String::from_utf8_lossy(&bytes).to_string();
+    if truncated {
+        output.push_str(&format!(
+            "\n[quality: output truncated after {limit} bytes]\n"
+        ));
+    }
+    (output, truncated)
 }
 
 #[cfg(test)]
@@ -523,11 +719,14 @@ fn parse_diagnostics_at(
     synthesize_failure: bool,
 ) -> (Vec<Diagnostic>, bool) {
     let structured = match parser {
+        DiagnosticParser::Codespell => parse_codespell(tool, root, working_directory, output),
         DiagnosticParser::EslintJson => parse_eslint_json(tool, root, working_directory, output),
         DiagnosticParser::SwiftlintJson => {
             parse_swiftlint_json(tool, root, working_directory, output)
         }
         DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, output),
+        DiagnosticParser::SantiOgJson => parse_santi_og_json(tool, root, working_directory, output),
+        DiagnosticParser::TyposJson => parse_typos_json(tool, root, working_directory, output),
         DiagnosticParser::Generic => None,
     };
     if let Some(structured) = structured {
@@ -597,6 +796,93 @@ fn diagnostic_pattern() -> &'static Regex {
         )
         .expect("valid diagnostic regular expression")
     })
+}
+
+fn parse_codespell(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    let pattern = PATTERN.get_or_init(|| {
+        Regex::new(r"^(?P<path>.*?):(?P<line>\d+):\s*(?P<typo>\S+)\s+==>\s+(?P<corrections>.+)$")
+            .expect("valid Codespell diagnostic regular expression")
+    });
+    let lines = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return Some(Vec::new());
+    }
+    let mut diagnostics = Vec::with_capacity(lines.len());
+    for line in lines {
+        let captures = pattern.captures(line)?;
+        let typo = captures.name("typo")?.as_str();
+        let corrections = captures.name("corrections")?.as_str();
+        diagnostics.push(Diagnostic {
+            tool: tool.to_owned(),
+            path: captures
+                .name("path")
+                .map(|value| normalize_path(root, working_directory, value.as_str())),
+            line: captures
+                .name("line")
+                .and_then(|value| value.as_str().parse().ok()),
+            column: None,
+            severity: "warning".to_owned(),
+            message: format!("Possible misspelling `{typo}`; suggested: {corrections}"),
+            rule: Some("spelling".to_owned()),
+        });
+    }
+    Some(diagnostics)
+}
+
+fn parse_typos_json(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
+    let lines = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let mut diagnostics = Vec::with_capacity(lines.len());
+    for line in lines {
+        let finding = serde_json::from_str::<serde_json::Value>(line).ok()?;
+        if finding.get("type").and_then(serde_json::Value::as_str) != Some("typo") {
+            return None;
+        }
+        let path = finding.get("path")?.as_str()?;
+        let typo = finding.get("typo")?.as_str()?;
+        let corrections = finding
+            .get("corrections")
+            .and_then(serde_json::Value::as_array)?
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>();
+        let suggestion = if corrections.is_empty() {
+            "no unambiguous correction".to_owned()
+        } else {
+            format!("suggested: {}", corrections.join(", "))
+        };
+        diagnostics.push(Diagnostic {
+            tool: tool.to_owned(),
+            path: Some(normalize_path(root, working_directory, path)),
+            line: finding.get("line_num").and_then(serde_json::Value::as_u64),
+            column: finding
+                .get("byte_offset")
+                .and_then(serde_json::Value::as_u64)
+                .map(|offset| offset.saturating_add(1)),
+            severity: "warning".to_owned(),
+            message: format!("Possible misspelling `{typo}`; {suggestion}"),
+            rule: Some("spelling".to_owned()),
+        });
+    }
+    Some(diagnostics)
 }
 
 fn parse_eslint_json(
@@ -740,6 +1026,37 @@ fn parse_ktlint_json(
     )
 }
 
+fn parse_santi_og_json(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
+    let result = serde_json::from_str::<serde_json::Value>(output).ok()?;
+    if result.get("command").and_then(serde_json::Value::as_str) != Some("check") {
+        return None;
+    }
+    let config = result.get("config").and_then(serde_json::Value::as_str);
+    let stale = result.get("stale")?.as_array()?;
+    Some(
+        stale
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(|output| Diagnostic {
+                tool: tool.to_owned(),
+                path: config.map(|path| normalize_path(root, working_directory, path)),
+                line: None,
+                column: None,
+                severity: "error".to_owned(),
+                message: format!(
+                    "Open Graph output `{output}` is missing or stale; run `santi-og generate`."
+                ),
+                rule: Some("og-output-stale".to_owned()),
+            })
+            .collect(),
+    )
+}
+
 fn normalize_path(
     root: &std::path::Path,
     working_directory: &std::path::Path,
@@ -755,17 +1072,6 @@ fn normalize_path(
         .unwrap_or(&path)
         .to_string_lossy()
         .to_string()
-}
-
-fn combine_output(stdout: &[u8], stderr: &[u8]) -> String {
-    [
-        String::from_utf8_lossy(stdout),
-        String::from_utf8_lossy(stderr),
-    ]
-    .into_iter()
-    .filter(|value| !value.trim().is_empty())
-    .collect::<Vec<_>>()
-    .join("\n")
 }
 
 fn classify_failure(output: &str) -> FailureKind {
@@ -887,6 +1193,59 @@ mod tests {
         );
         assert_eq!(found[0].path.as_deref(), Some("App.swift"));
         assert_eq!(found[0].severity, "warning");
+        assert!(baseline_safe);
+    }
+
+    #[test]
+    fn parses_codespell_findings() {
+        let (found, baseline_safe) = parse_diagnostics(
+            DiagnosticParser::Codespell,
+            "codespell",
+            std::path::Path::new("/project"),
+            "docs/guide.md:7: teh ==> the",
+            true,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path.as_deref(), Some("docs/guide.md"));
+        assert_eq!(found[0].line, Some(7));
+        assert_eq!(found[0].rule.as_deref(), Some("spelling"));
+        assert!(found[0].message.contains("suggested: the"));
+        assert!(baseline_safe);
+    }
+
+    #[test]
+    fn parses_typos_json_lines() {
+        let (found, baseline_safe) = parse_diagnostics(
+            DiagnosticParser::TyposJson,
+            "typos",
+            std::path::Path::new("/project"),
+            r#"{"type":"typo","path":"./src/lib.rs","line_num":3,"byte_offset":4,"typo":"retrive","corrections":["retrieve"]}"#,
+            true,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(found[0].line, Some(3));
+        assert_eq!(found[0].column, Some(5));
+        assert_eq!(found[0].rule.as_deref(), Some("spelling"));
+        assert!(baseline_safe);
+    }
+
+    #[test]
+    fn parses_santi_og_stale_outputs_against_the_workspace_config() {
+        let (found, baseline_safe) = parse_diagnostics_at(
+            DiagnosticParser::SantiOgJson,
+            "santi-og@apps/site",
+            std::path::Path::new("/project"),
+            std::path::Path::new("/project/apps/site"),
+            r#"{"command":"check","config":"/project/apps/site/og.config.mjs","stale":["index.webp","docs.webp"]}"#,
+            true,
+        );
+
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].path.as_deref(), Some("apps/site/og.config.mjs"));
+        assert_eq!(found[0].severity, "error");
+        assert_eq!(found[0].rule.as_deref(), Some("og-output-stale"));
+        assert!(found[0].message.contains("index.webp"));
         assert!(baseline_safe);
     }
 

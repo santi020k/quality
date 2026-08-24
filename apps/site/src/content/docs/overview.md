@@ -3,9 +3,9 @@ title: Overview
 description: Understand what quality does and where it fits in your development workflow.
 ---
 
-`quality` is a fast command-line orchestrator for code-quality tools across Swift, Android/Kotlin, JavaScript, and TypeScript projects.
+`quality` is a fast command-line orchestrator for code-quality tools across Swift, Android/Kotlin, Python, JavaScript, and TypeScript projects.
 
-It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, Prettier, CSpell, Knip, or Actionlint, it gives them a shared workflow:
+It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, Prettier, CSpell, Codespell, Typos, Knip, Actionlint, or `@santi020k/og`, it gives them a shared workflow:
 
 1. Detect the ecosystems present in a repository.
 2. Resolve repository-local tools before global installations.
@@ -29,24 +29,19 @@ quality format --check
 
 The checking path is intentionally deterministic. Future AI integrations can consume normalized diagnostics to explain findings or propose changes, but analyzer execution and pass/fail behavior do not depend on an AI service.
 
-## Planned: native Git hooks
+## Native Git hooks
 
-`quality` is planned to provide an optional, package-manager-independent Git
-hook runner. A small managed hook will delegate to `quality`, while the
-version-controlled behavior remains in `quality.yml`:
+`quality` provides an optional, package-manager-independent Git hook runner. A
+small managed hook delegates to `quality`, while the version-controlled behavior
+remains in `quality.yml`:
 
 ```yaml
 hooks:
   pre-commit:
     steps:
       - name: Check staged code
-        quality:
-          operation: check
-          scope: staged
-
-      - name: Check generated files
         command: pnpm
-        args: [run, check:generated]
+        args: [exec, lint-staged]
 
   commit-msg:
     steps:
@@ -57,27 +52,32 @@ hooks:
 
   pre-push:
     steps:
-      - name: Check pushed changes
-        quality:
-          operation: check
-          scope: branch
-
-      - name: Run tests
+      - name: Run repository checks
         command: pnpm
-        args: [test]
+        args: [run, validate]
 ```
+
+When the pre-push validation includes `quality check`, detected
+`@santi020k/og` workspaces are checked for missing or stale generated assets.
+Keep `santi-og generate` explicit instead of placing it in a hook: verification
+should block on stale output without silently modifying tracked files.
 
 This design lets teams add repository-specific steps without editing generated
 hook files or depending on Node.js. Steps run sequentially and stop at the
-first failure by default. The planned lifecycle is `quality hooks install`,
+first failure. The lifecycle is `quality hooks install`,
 `quality hooks status`, and `quality hooks uninstall`; changing steps will not
 require reinstalling the managed hooks.
 
-Installation will be explicit and conflict-safe. `quality` will not overwrite
-hooks owned by Husky, Lefthook, or another manager. When an existing manager is
-detected, it will instead provide the appropriate `quality hooks run <event>`
-integration command. Local hooks remain an early feedback mechanism; protected
-CI checks remain the authoritative quality gate.
+When `@santi020k/commitprompt` is already installed, `quality init` and the
+language-aware presets add this `commit-msg` policy automatically. An existing
+`commit-msg` configuration is always preserved.
+
+Installation is explicit and conflict-safe. `quality` does not overwrite
+hooks owned by Husky, Lefthook, or another manager. Remove the previous
+manager's `core.hooksPath` setting before installing, or invoke
+`quality hooks run <event>` from that manager manually. Local hooks remain an
+early feedback mechanism; protected CI checks remain the authoritative quality
+gate.
 
 ## Supported output
 

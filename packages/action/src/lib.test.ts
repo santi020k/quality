@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   checkArguments,
+  actionFailureMessage,
   checksumFromFile,
   releaseRepository,
+  releaseBaseUrl,
   releaseTarget,
 } from "./lib.js";
+
+it("uses GitHub releases by default and normalizes a release base override", () => {
+  expect(releaseBaseUrl("acme/quality", undefined)).toBe("https://github.com/acme/quality");
+  expect(releaseBaseUrl("acme/quality", "http://127.0.0.1:8080///")).toBe(
+    "http://127.0.0.1:8080",
+  );
+});
 
 describe("releaseTarget", () => {
   it("maps supported runners", () => {
@@ -43,6 +52,10 @@ it("builds a changed-file check without shell interpolation", () => {
       reportLevel: "warning",
       failLevel: "error",
       sarif: "/tmp/quality.sarif",
+      requireChecks: true,
+      jobs: "2",
+      timeoutSeconds: "30",
+      maxOutputBytes: "4096",
     }),
   ).toEqual([
     "check",
@@ -52,9 +65,23 @@ it("builds a changed-file check without shell interpolation", () => {
     "warning",
     "--fail-level",
     "error",
+    "--require-checks",
+    "--jobs",
+    "2",
+    "--timeout-seconds",
+    "30",
+    "--max-output-bytes",
+    "4096",
     "--report",
     "/tmp/quality.sarif",
     "--changed",
     "origin/main",
   ]);
+});
+
+it("distinguishes diagnostics from operational CLI failures", () => {
+  expect(actionFailureMessage(1, "")).toContain("found diagnostics");
+  expect(actionFailureMessage(2, "quality: invalid configuration\n")).toBe(
+    "quality could not complete (exit 2): quality: invalid configuration",
+  );
 });

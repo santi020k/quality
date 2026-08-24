@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-repositories.schema.json",
+  "title": "quality repositories report",
+  "description": "Versioned JSON output from quality repositories audit and apply.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "parent", "repositories", "summary"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "parent": { "type": "string" },
+    "repositories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repository" }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "configured", "created", "status", "detected_adapters", "generated_tasks", "doctor_errors", "missing_toolchains"],
+      "properties": {
+        "path": { "type": "string" },
+        "configured": { "type": "boolean" },
+        "created": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["ready", "needs_configuration", "invalid", "missing_toolchains"] },
+        "detected_adapters": { "type": "array", "items": { "type": "string" } },
+        "generated_tasks": { "type": "array", "items": { "type": "string" } },
+        "doctor_errors": { "type": "integer", "minimum": 0 },
+        "missing_toolchains": { "type": "array", "items": { "type": "string" } },
+        "error": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "configured", "needs_configuration", "invalid", "missing_toolchains", "created"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "configured": { "type": "integer", "minimum": 0 },
+        "needs_configuration": { "type": "integer", "minimum": 0 },
+        "invalid": { "type": "integer", "minimum": 0 },
+        "missing_toolchains": { "type": "integer", "minimum": 0 },
+        "created": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,5 +1,17 @@
 ---
 import { ButtonLink, SkipLink, ThemeToggle, UIPrimitives } from '@santi020k/lumen-astro';
+import MetadataHead from '@santi020k/og/astro/head';
+import {
+	articleSchema,
+	breadcrumbSchema,
+	composeJsonLd,
+	offerSchema,
+	organizationSchema,
+	serializeJsonLd,
+	softwareApplicationSchema,
+	webSiteSchema,
+} from '@santi020k/og/schema';
+import { defineSite } from '@santi020k/og/site';
 import { getSocialImagePath } from '../lib/social-image';
 import '../styles/global.css';
 
@@ -18,76 +30,78 @@ const {
 	sectionName,
 	socialImageAlt = `${sectionName ?? title} — quality code-quality CLI`,
 } = Astro.props;
-const canonical = new URL(Astro.url.pathname, Astro.site);
-const socialImage = new URL(getSocialImagePath(Astro.url.pathname), Astro.site);
+const publicSiteUrl = Astro.site ?? new URL('https://quality.santi020k.com');
+const canonical = new URL(Astro.url.pathname, publicSiteUrl);
+const socialImage = new URL(getSocialImagePath(Astro.url.pathname), publicSiteUrl);
 const isDocs = Astro.url.pathname !== '/';
-const websiteId = new URL('/#website', Astro.site).href;
-const softwareId = new URL('/#software', Astro.site).href;
-const graph: Record<string, unknown>[] = [
-	{
-		'@type': 'WebSite',
-		'@id': websiteId,
-		url: new URL('/', Astro.site).href,
-		name: 'quality',
-		description: 'A deterministic, multi-ecosystem code-quality CLI.',
-		inLanguage: 'en',
-	},
-	{
-		'@type': 'SoftwareApplication',
-		'@id': softwareId,
-		name: 'quality',
-		alternateName: 'quality CLI',
-		url: new URL('/', Astro.site).href,
-		description: 'A deterministic CLI that orchestrates code-quality tools across multiple programming ecosystems.',
-		applicationCategory: 'DeveloperApplication',
-		applicationSubCategory: 'Code quality tool',
-		operatingSystem: ['Linux', 'macOS', 'Windows'],
-		isAccessibleForFree: true,
-		license: 'https://opensource.org/license/mit',
-		codeRepository: 'https://github.com/santi020k/quality',
-		downloadUrl: 'https://github.com/santi020k/quality/releases',
-		offers: {
-			'@type': 'Offer',
-			price: 0,
-			priceCurrency: 'USD',
-		},
-	},
-];
-
-if (pageType === 'article') {
-	graph.push(
-		{
-			'@type': 'TechArticle',
-			'@id': `${canonical.href}#article`,
-			headline: sectionName ?? title,
+const websiteId = new URL('/#website', publicSiteUrl).href;
+const softwareId = new URL('/#software', publicSiteUrl).href;
+const publisher = organizationSchema({ id: new URL('/#publisher', publicSiteUrl).href, name: 'quality contributors' });
+const website = webSiteSchema({
+	description: 'A deterministic, multi-ecosystem code-quality CLI.',
+	id: websiteId,
+	inLanguage: 'en',
+	name: 'quality',
+	publisher,
+	url: new URL('/', publicSiteUrl),
+});
+const software = softwareApplicationSchema({
+	applicationCategory: 'DeveloperApplication',
+	author: publisher,
+	description: 'A deterministic CLI that orchestrates code-quality tools across multiple programming ecosystems.',
+	downloadUrl: 'https://github.com/santi020k/quality/releases',
+	id: softwareId,
+	isAccessibleForFree: true,
+	name: 'quality',
+	offers: offerSchema({ currency: 'USD', price: 0 }),
+	operatingSystem: ['Linux', 'macOS', 'Windows'],
+	url: new URL('/', publicSiteUrl),
+}, {
+	alternateName: 'quality CLI',
+	applicationSubCategory: 'Code quality tool',
+	codeRepository: 'https://github.com/santi020k/quality',
+	license: 'https://opensource.org/license/mit',
+});
+const article = pageType === 'article'
+	? articleSchema({
 			description,
-			url: canonical.href,
-			mainEntityOfPage: canonical.href,
-			isPartOf: { '@id': websiteId },
-			about: { '@id': softwareId },
+			headline: sectionName ?? title,
+			id: `${canonical.href}#article`,
 			inLanguage: 'en',
-		},
-		{
-			'@type': 'BreadcrumbList',
-			itemListElement: [
-				{
-					'@type': 'ListItem',
-					position: 1,
-					name: 'quality',
-					item: new URL('/', Astro.site).href,
-				},
-				{
-					'@type': 'ListItem',
-					position: 2,
-					name: sectionName ?? title,
-					item: canonical.href,
-				},
-			],
-		},
-	);
-}
-
-const structuredData = { '@context': 'https://schema.org', '@graph': graph };
+			isPartOf: website,
+			name: sectionName ?? title,
+			type: 'TechArticle',
+			url: canonical,
+		}, {
+			about: { '@id': softwareId, '@type': 'SoftwareApplication' },
+			mainEntityOfPage: canonical.href,
+		})
+	: undefined;
+const breadcrumbs = pageType === 'article'
+	? breadcrumbSchema([
+			{ name: 'quality', url: new URL('/', publicSiteUrl) },
+			{ name: sectionName ?? title, url: canonical },
+		])
+	: undefined;
+const structuredData = serializeJsonLd(composeJsonLd(publisher, website, software, article, breadcrumbs));
+const site = defineSite({
+	locale: 'en_US',
+	publicImagePath: '/og/pages',
+	siteName: 'quality',
+	siteUrl: publicSiteUrl,
+	twitter: { creator: '@santi020k', site: '@santi020k' },
+});
+const page = site.page({
+	...(pageType === 'article' ? { article: { section: 'Documentation' } } : {}),
+	authors: ['quality contributors'],
+	canonical,
+	description,
+	image: { alt: socialImageAlt, type: 'image/webp', url: socialImage },
+	pathname: Astro.url.pathname,
+	robots: { index: true, maxImagePreview: 'large', maxSnippet: -1, maxVideoPreview: -1 },
+	title,
+	type: pageType,
+});
 ---
 
 <!doctype html>
@@ -96,39 +110,15 @@ const structuredData = { '@context': 'https://schema.org', '@graph': graph };
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
-		<meta name="title" content={title} />
-		<meta name="description" content={description} />
+		<MetadataHead {page} site={site.options} />
 		<meta name="author" content="quality contributors" />
 		<meta name="color-scheme" content="light dark" />
-		<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-		<link rel="canonical" href={canonical} />
 		<link rel="sitemap" href="/sitemap.xml" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<meta name="theme-color" content="#2563eb" />
-		<meta property="og:type" content={pageType} />
-		<meta property="og:site_name" content="quality" />
-		<meta property="og:locale" content="en_US" />
-		<meta property="og:url" content={canonical} />
-		<meta property="og:title" content={title} />
-		<meta property="og:description" content={description} />
-		<meta property="og:image" content={socialImage} />
 		<meta property="og:image:secure_url" content={socialImage} />
-		<meta property="og:image:type" content="image/webp" />
-		<meta property="og:image:width" content="1200" />
-		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content={socialImageAlt} />
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:url" content={canonical} />
-		<meta name="twitter:title" content={title} />
-		<meta name="twitter:description" content={description} />
-		<meta name="twitter:image" content={socialImage} />
-		<meta name="twitter:image:alt" content={socialImageAlt} />
-		<meta name="twitter:site" content="@santi020k" />
-		<meta name="twitter:creator" content="@santi020k" />
-		{pageType === 'article' && <meta property="article:section" content="Documentation" />}
-		<script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
-		<title>{title}</title>
+		<script is:inline type="application/ld+json" set:html={structuredData} />
 		<script is:inline>
 			const theme = localStorage.getItem('quality-theme');
 			if (theme) document.documentElement.dataset.theme = theme;
@@ -162,6 +152,8 @@ const structuredData = { '@context': 'https://schema.org', '@graph': graph };
 					<div class="footer-links">
 						<a href="/getting-started/">Documentation</a>
 						<a href="https://github.com/santi020k/quality">Source</a>
+						<a href="https://santi020k.com">santi020k</a>
+						<a href="https://lumen.santi020k.com">Lumen</a>
 					</div>
 				</div>
 			</footer>

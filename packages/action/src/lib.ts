@@ -18,6 +18,10 @@ export function releaseRepository(
   return repository;
 }
 
+export function releaseBaseUrl(repository: string, override: string | undefined): string {
+  return (override || `https://github.com/${repository}`).replace(/\/+$/u, "");
+}
+
 export function releaseTarget(platform: NodeJS.Platform, arch: string): Platform {
   if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
   if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";
@@ -45,6 +49,10 @@ export function checkArguments(inputs: {
   reportLevel: string;
   failLevel: string;
   sarif: string;
+  requireChecks: boolean;
+  jobs: string;
+  timeoutSeconds: string;
+  maxOutputBytes: string;
 }): string[] {
   const args = [
     "check",
@@ -55,9 +63,24 @@ export function checkArguments(inputs: {
     "--fail-level",
     inputs.failLevel,
   ];
+  if (inputs.requireChecks) args.push("--require-checks");
+  if (inputs.jobs) args.push("--jobs", inputs.jobs);
+  if (inputs.timeoutSeconds) args.push("--timeout-seconds", inputs.timeoutSeconds);
+  if (inputs.maxOutputBytes) args.push("--max-output-bytes", inputs.maxOutputBytes);
   if (inputs.sarif) args.push("--report", inputs.sarif);
   if (inputs.changedOnly && inputs.base) args.push("--changed", inputs.base);
   return args;
+}
+
+export function actionFailureMessage(exitCode: number, stderr: string): string {
+  if (exitCode === 1) return "quality found diagnostics at or above the configured failure level";
+  const detail = stderr
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return detail
+    ? `quality could not complete (exit ${exitCode}): ${detail}`
+    : `quality could not complete (exit ${exitCode})`;
 }
 
 export function resolveProjectPath(workspace: string, requested: string): string {

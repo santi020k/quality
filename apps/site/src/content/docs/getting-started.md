@@ -10,7 +10,7 @@ On macOS or Linux:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.3.0
+  | sh -s -- santi020k/quality v0.3.1
 ```
 
 Install from a local checkout when developing the CLI itself:
@@ -31,6 +31,23 @@ quality init
 quality doctor
 quality check
 ```
+
+To bootstrap analyzer configuration as well as `quality.yml`, apply the
+balanced preset:
+
+```bash
+quality preset apply recommended --dry-run
+quality preset apply recommended --install
+quality preset diff
+quality doctor
+quality check
+```
+
+Use `minimal` for essential checks or `strict` for tighter limits and
+warning-free policies. Presets generate ordinary ecosystem configuration
+files; checks remain deterministic and use repository-local tools.
+The generated `.quality-preset.json` lets future releases safely preview and
+apply catalog upgrades with `quality preset update`.
 
 Preview the generated policy without writing a file with `quality init
 --dry-run`.

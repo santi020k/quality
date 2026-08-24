@@ -9,4 +9,4 @@ Allow: /
 User-agent: GPTBot
 Allow: /
 
-Sitemap: https://quality-cli.santi020k.chatgpt.site/sitemap.xml
+Sitemap: https://quality.santi020k.com/sitemap.xml

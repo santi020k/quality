@@ -6,4 +6,14 @@ release notes are generated from the same versioned changes.
 
 ## Unreleased
 
-- Prepare the first `0.1.0` preview release.
+- Version native JSON report contracts, publish report schemas and compatibility
+  policy, add cross-platform and real-adapter CI, and verify staged release
+  artifacts through the bundled Action before publication.
+- Add built-in Codespell and Typos adapters with normalized diagnostics, fixes,
+  changed-file scoping, and single-spell-checker language-aware presets.
+- Add bounded analyzer execution, timeout and output controls, optional empty-policy
+  enforcement, complete discovery, atomic generated writes, and clearer Action
+  failure reporting.
+- Add package-manager-independent Git hooks whose version-controlled steps live
+  in `quality.yml`, including conflict-safe install, status, run, and uninstall
+  commands.
