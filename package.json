@@ -31,7 +31,7 @@
   "devDependencies": {
     "@changesets/changelog-github": "1.0.0",
     "@changesets/cli": "3.0.1",
-    "@santi020k/commitprompt": "1.0.0",
+    "@santi020k/commitprompt": "1.1.0",
     "cspell": "10.1.0",
     "turbo": "2.10.11",
     "wrangler": "4.125.0"
