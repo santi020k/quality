@@ -183,7 +183,7 @@ jobs:
             --output /dev/null
       - name: Run bundled Action against staged binary
         env:
-          GITHUB_ACTION_REPOSITORY: ${{ github.repository }}
+          QUALITY_ACTION_REPOSITORY: ${{ github.repository }}
           QUALITY_RELEASE_BASE_URL: http://127.0.0.1:8765
           INPUT_VERSION: ${{ needs.prepare.outputs.tag }}
           INPUT_WORKING-DIRECTORY: smoke
