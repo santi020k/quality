@@ -1,5 +1,22 @@
 # @quality/action
 
+## 0.4.0
+
+### Minor Changes
+
+- [#24](https://github.com/santi020k/quality/pull/24) [`c7ddf51`](https://github.com/santi020k/quality/commit/c7ddf513ad1ff3022e2b1f8b18ae7bdbf4927698) Thanks [@santi020k](https://github.com/santi020k)! - Add bounded analyzer concurrency, configurable timeouts, retained-output limits,
+  empty-policy protection, reliable fail-fast semantics, complete project
+  discovery, atomic generated-file writes, and clearer GitHub Action operational
+  failures.
+
+- [#24](https://github.com/santi020k/quality/pull/24) [`c7ddf51`](https://github.com/santi020k/quality/commit/c7ddf513ad1ff3022e2b1f8b18ae7bdbf4927698) Thanks [@santi020k](https://github.com/santi020k)! - Add minimal, recommended, and strict language-aware configuration presets for JavaScript, Rust, Swift, Kotlin, and GitHub Actions, including versioned upgrade metadata, safe diffs and updates, managed configuration merging, explicit framework packs, doctor compatibility reporting, and native setup guidance.
+
+- [#24](https://github.com/santi020k/quality/pull/24) [`c7ddf51`](https://github.com/santi020k/quality/commit/c7ddf513ad1ff3022e2b1f8b18ae7bdbf4927698) Thanks [@santi020k](https://github.com/santi020k)! - Version native JSON reports and publish their schemas, document stable contracts
+  and exit codes, test portable behavior across Linux, macOS, and Windows, exercise
+  representative real analyzers on a schedule, and verify the bundled Action
+  against staged release assets before publication. Keep generated JavaScript
+  presets internally consistent across ESLint, Prettier, CSpell, and Knip.
+
 ## 0.3.1
 
 ### Patch Changes

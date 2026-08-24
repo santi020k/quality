@@ -1,7 +1,7 @@
 {
   "name": "@quality/site",
   "type": "module",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "scripts": {
     "prebuild": "santi-og generate --config scripts/generate-og-images.mjs",
     "dev": "astro dev",
