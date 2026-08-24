@@ -19,7 +19,7 @@ Website and documentation: <https://quality.santi020k.com>
 [![GitHub release](https://img.shields.io/github/v/release/santi020k/quality)](https://github.com/santi020k/quality/releases/latest)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Status: `0.3.x` preview. The configuration format may change before the first
+> Status: `0.4.x` preview. The configuration format may change before the first
 > stable release.
 
 ## GitHub Action
@@ -29,9 +29,9 @@ Website and documentation: <https://quality.santi020k.com>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v0.3.1
+- uses: santi020k/quality@v0.4.0
   with:
-    version: v0.3.1
+    version: v0.4.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -86,7 +86,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v0.3.1
+  | sh -s -- santi020k/quality v0.4.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -402,7 +402,7 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v0.3.1` is pushed.
+macOS, and Windows whenever a version tag such as `v0.4.0` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -412,7 +412,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.3.1 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.4.0 --locked'
 ```
 
 ## Design direction

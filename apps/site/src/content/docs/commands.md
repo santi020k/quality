@@ -179,7 +179,7 @@ Generate a GitHub Actions workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v0.3.1 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v0.4.0 --locked'
 ```
 
 The generator selects Linux or macOS from the detected platforms and adds
