@@ -34,6 +34,7 @@ jobs:
           version-script: pnpm run version-packages
           commit-message: "chore(release): version packages"
           pr-title: "chore(release): version packages"
+          push-with-git-cli: true
         env:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.CHANGESETS_TOKEN || github.token }}
