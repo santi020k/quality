@@ -116,7 +116,6 @@ jobs:
           mkdir -p release/package
           cp "target/${TARGET}/release/quality" release/package/quality
           cp LICENSE README.md release/package/
-          test "$(release/package/quality --version)" = "quality ${VERSION}"
           tar -C release/package -czf "release/${asset}" quality LICENSE README.md
           (
             cd release
@@ -126,6 +125,41 @@ jobs:
               shasum -a 256 "$asset" > "${asset}.sha256"
             fi
           )
+          mkdir -p release/extracted release/init-smoke release/check-smoke
+          tar -xzf "release/${asset}" -C release/extracted
+          binary="$PWD/release/extracted/quality"
+          test "$($binary --version)" = "quality ${VERSION}"
+
+          "$binary" --root release/init-smoke init
+          "$binary" --root release/init-smoke doctor --format json \
+            > release/init-smoke/doctor.json
+          jq -e '.schema_version == 1' release/init-smoke/doctor.json >/dev/null
+
+          cat > release/check-smoke/quality.yml <<YAML
+          version: 1
+          output: pretty
+          tools: {}
+          tasks:
+            archive:
+              name: Extracted archive
+              command: $binary
+              args: [--version]
+          YAML
+          "$binary" --root release/check-smoke check --format json \
+            --report "$PWD/release/check-smoke/quality.sarif" \
+            > release/check-smoke/pass.json
+          jq -e '.schema_version == 1' release/check-smoke/pass.json >/dev/null
+          jq -e '.version == "2.1.0"' release/check-smoke/quality.sarif >/dev/null
+
+          sed -i.bak 's/args: \[--version\]/args: [--invalid-release-smoke-flag]/' \
+            release/check-smoke/quality.yml
+          set +e
+          "$binary" --root release/check-smoke check --format json \
+            > release/check-smoke/fail.json
+          smoke_exit=$?
+          set -e
+          test "$smoke_exit" -eq 1
+          jq -e '.schema_version == 1' release/check-smoke/fail.json >/dev/null
 
       - name: Package and smoke-test Windows binary
         if: matrix.format == 'zip'
@@ -138,13 +172,56 @@ jobs:
           New-Item -ItemType Directory -Force release/package | Out-Null
           Copy-Item "target/$env:TARGET/release/quality.exe" release/package/quality.exe
           Copy-Item LICENSE,README.md release/package/
-          $actualVersion = & release/package/quality.exe --version
-          if ($actualVersion -ne "quality $env:VERSION") {
-            throw "Unexpected version: $actualVersion"
-          }
           Compress-Archive -Path release/package/* -DestinationPath "release/$asset"
           $hash = (Get-FileHash "release/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
           [System.IO.File]::WriteAllText("release/$asset.sha256", "$hash  $asset`n")
+
+          Expand-Archive -Path "release/$asset" -DestinationPath release/extracted
+          $binary = (Resolve-Path release/extracted/quality.exe).Path
+          $actualVersion = & $binary --version
+          if ($actualVersion -ne "quality $env:VERSION") {
+            throw "Unexpected version: $actualVersion"
+          }
+
+          New-Item -ItemType Directory -Force release/init-smoke,release/check-smoke | Out-Null
+          & $binary --root release/init-smoke init
+          & $binary --root release/init-smoke doctor --format json |
+            Set-Content -Encoding utf8NoBOM release/init-smoke/doctor.json
+          if ((Get-Content -Raw release/init-smoke/doctor.json | ConvertFrom-Json).schema_version -ne 1) {
+            throw "Doctor report schema version is not 1"
+          }
+
+          @"
+          version: 1
+          output: pretty
+          tools: {}
+          tasks:
+            archive:
+              name: Extracted archive
+              command: $($binary -replace '\\', '/')
+              args: [--version]
+          "@ | Set-Content -Encoding utf8NoBOM release/check-smoke/quality.yml
+          $reportPath = (Join-Path (Get-Location) "release/check-smoke/quality.sarif")
+          & $binary --root release/check-smoke check --format json --report $reportPath |
+            Set-Content -Encoding utf8NoBOM release/check-smoke/pass.json
+          if ($LASTEXITCODE -ne 0) { throw "Passing archive check failed" }
+          if ((Get-Content -Raw release/check-smoke/pass.json | ConvertFrom-Json).schema_version -ne 1) {
+            throw "Check report schema version is not 1"
+          }
+          if ((Get-Content -Raw $reportPath | ConvertFrom-Json).version -ne "2.1.0") {
+            throw "SARIF version is not 2.1.0"
+          }
+
+          (Get-Content -Raw release/check-smoke/quality.yml).Replace(
+            "args: [--version]",
+            "args: [--invalid-release-smoke-flag]"
+          ) | Set-Content -Encoding utf8NoBOM release/check-smoke/quality.yml
+          & $binary --root release/check-smoke check --format json |
+            Set-Content -Encoding utf8NoBOM release/check-smoke/fail.json
+          if ($LASTEXITCODE -ne 1) { throw "Failing archive check did not exit 1" }
+          if ((Get-Content -Raw release/check-smoke/fail.json | ConvertFrom-Json).schema_version -ne 1) {
+            throw "Failure report schema version is not 1"
+          }
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

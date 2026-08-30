@@ -6,7 +6,7 @@ version=${2:-latest}
 
 usage() {
     echo "Usage: install.sh OWNER/REPOSITORY [VERSION]" >&2
-    echo "Example: install.sh your-org/quality v0.1.0" >&2
+    echo "Example: install.sh your-org/quality v0.4.0" >&2
     exit 2
 }
 
