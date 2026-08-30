@@ -1,5 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+import { replaceReleaseVersionReferences } from "./release-version-reference.mjs";
+
 const checkOnly = process.argv.includes("--check");
 const actionPackage = JSON.parse(await readFile("packages/action/package.json", "utf8"));
 const cliPackage = JSON.parse(await readFile("crates/quality-cli/package.json", "utf8"));
@@ -45,7 +47,7 @@ const releaseReferenceFiles = [
 
 for (const path of releaseReferenceFiles) {
   await synchronize(path, (contents) =>
-    contents.replace(/v\d+\.\d+\.\d+/g, `v${targetVersion}`),
+    replaceReleaseVersionReferences(contents, targetVersion),
   );
 }
 
