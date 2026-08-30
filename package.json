@@ -14,7 +14,7 @@
     "check:packages": "turbo run check",
     "check:action-dist": "pnpm --filter @quality/action run build && git diff --exit-code -- packages/action/dist && test -z \"$(git ls-files --others --exclude-standard packages/action/dist)\"",
     "check:security": "pnpm audit --audit-level low",
-    "check:versions": "node scripts/sync-release-version.mjs --check",
+    "check:versions": "node --test scripts/release-version-reference.test.mjs && node scripts/sync-release-version.mjs --check",
     "changeset": "changeset",
     "commit": "commitprompt",
     "test": "turbo run test && pnpm playground:verify",

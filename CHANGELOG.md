@@ -6,14 +6,7 @@ release notes are generated from the same versioned changes.
 
 ## Unreleased
 
-- Version native JSON report contracts, publish report schemas and compatibility
-  policy, add cross-platform and real-adapter CI, and verify staged release
-  artifacts through the bundled Action before publication.
-- Add built-in Codespell and Typos adapters with normalized diagnostics, fixes,
-  changed-file scoping, and single-spell-checker language-aware presets.
-- Add bounded analyzer execution, timeout and output controls, optional empty-policy
-  enforcement, complete discovery, atomic generated writes, and clearer Action
-  failure reporting.
-- Add package-manager-independent Git hooks whose version-controlled steps live
-  in `quality.yml`, including conflict-safe install, status, run, and uninstall
-  commands.
+- Graduate the documented CLI, `quality.yml`, report-schema, exit-code, and
+  GitHub Action contracts to the stable 1.x compatibility policy.
+- Synchronize release examples and support language automatically when package
+  versions change, and exercise every native archive before publication.

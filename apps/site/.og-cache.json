@@ -1,73 +1,73 @@
 {
-  "cacheKey": "preset-v2",
+  "cacheKey": "preset-v4",
   "entries": {
     "index.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "d67b4df23ea151c5ba59d1ad0d3ac207c05a093c0afbf5da484170663db31507",
-      "fingerprint": "73d89beb2f91308b7532ce002f1eec65c64b37ed07c766996906e825c4561dd0",
+      "fingerprint": "1ca74afa864e924a99055a55755a37f4b2a63b2c09415df6457cacd31aeb338b",
       "output": "index.webp"
     },
     "adapters.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "bf0cdd5e44c666d9ebc7e5561f26deb6faf60248bee7f5e416c8bfdddfe41ec6",
-      "fingerprint": "cfc0358f70a13d577960e59a1986f8c7b41e00e422c1b67611c8d248819ab2e1",
+      "fingerprint": "48aec8da51f2fa8c4528d03f01a69cdeaaf2d435bcd32bd74c388144f4037812",
       "output": "adapters.webp"
     },
     "ai-agents.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "4ddb34dc96695e606c54a8c9465e4f30798296e771ec8c1fca6494944e41d729",
-      "fingerprint": "ce1d9da44ff3490b447cf6e4f7bbc8f519e8f1a91d89432f1c84335ca9856f22",
+      "fingerprint": "0898860d2d8afaa2ff69537f9c453ca1bb29c2a03d1379322bcff81643a9b36c",
       "output": "ai-agents.webp"
     },
     "changed-files-and-baselines.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "dcb88d9bf1b7a540406f698022b96f85d3e1be8e8f175b13141c1081ff004b25",
-      "fingerprint": "8503115ca18ffedf2578b9be79b509f9477cd1820cabddc8fcfa65ea4b007212",
+      "fingerprint": "4f954b789b85f16beb9d75e1fc6fc23d9d4bc3d6778f2002ca518ddde6ee9689",
       "output": "changed-files-and-baselines.webp"
     },
     "commands.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "3095dc39f5e24c5ca74ac1d30ff42ce5f48ccbe3791c24b9dcdc21863048b988",
-      "fingerprint": "cc3afbd050f0d24f6f8fda5f3a1f825011d9ca16fda4adef0d305aac1f4d25e4",
+      "fingerprint": "7afd264c72470d308cf56b013af7d69e58931de7b0415b6235470bdd42b7374d",
       "output": "commands.webp"
     },
     "compatibility.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "a04cb5ea76b6e83092d56a2eaa7caf81697f4e52dcbb7c07ec7cdf9b8d3327da",
-      "fingerprint": "b01fc38d04ace71d76584476ea8d24a476fa909e47eb7b950212f64240bfbc1e",
+      "fingerprint": "a834cac3b4e74fed37e37bfed4ca35950cbe60a0fea107feaaec090f23aefbf2",
       "output": "compatibility.webp"
     },
     "configuration.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "51f5538be9748a8623478b467f0006fa1cd702eba32ee0b9282d025b19983401",
-      "fingerprint": "abfaa8d523387cd358d2413a4ebe35fd762ffc5dd0cdaf6d42ee601980d03148",
+      "fingerprint": "5e44a57d8665fc0c603a8f0861b5b6e2546caa76a44fbc3d5dbaf093f41275b5",
       "output": "configuration.webp"
     },
     "getting-started.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "430683ea1a78b175eee4e1c45bb501220f1a90555dd1a5e82b2081f5ca3b0cc7",
-      "fingerprint": "67332f804fab7ba811e8563ee67c4c9dafd821a611b06b9fc8abb2c5d17fdd14",
+      "fingerprint": "8ed854399b1b3aa45f5456b617effb0aa081f9f8d2c41e30b4fe9f6a69c6b0ca",
       "output": "getting-started.webp"
     },
     "github-actions.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "59fc75c41539d9dc915ff464f4afea9033eeb8b1dbe3238efec3736ec8ba91ab",
-      "fingerprint": "f79a29cb11cdcbc84161766f7e150932ba9b6093215d20e86300807240435420",
+      "fingerprint": "14267dc4e500e18624d468001a36711812ed12429f3bb7bd1fcd963a6e1530dc",
       "output": "github-actions.webp"
     },
     "overview.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "48ddaa98f17911dbd671a46b2821baa15b7942948d9b3e7da9041a4a9699a96b",
-      "fingerprint": "763f40f8dd3f349732b54afa79e0fdbf7278f73a7e74b248b6f293a8b39a7909",
+      "fingerprint": "195066c416fe9fd8efbe7901dbdaf4c2eb35852621dddf1f26696d1e573436e8",
       "output": "overview.webp"
     },
     "presets.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "925b28e51e3820a8de58a12d061d28daaf2e8786818431449e17f8357b7b1194",
-      "fingerprint": "5f24f6180388c2351fb1e2d01deb783e1088eafa27215d9860c18e5628625d44",
+      "fingerprint": "16836d4acc5919b606f1f394ace52cd2539a865af8460d03bb8929147ba4cb2f",
       "output": "presets.webp"
     }
   },
-  "generatorVersion": "1.0.0",
+  "generatorVersion": "1.1.1",
   "version": 3
 }
