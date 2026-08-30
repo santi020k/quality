@@ -1,5 +1,5 @@
 {
-  "generatorVersion": "1.0.0",
+  "generatorVersion": "1.1.1",
   "routes": {
     "/": {
       "alt": "One command. Every tool. — quality code-quality CLI",

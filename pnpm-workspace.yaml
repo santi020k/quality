@@ -10,9 +10,9 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - '@santi020k/og'
-  - '@santi020k/lumen-astro@1.4.0'
-  - '@santi020k/lumen-core@1.4.0'
-  - '@santi020k/lumen@1.4.0'
+  - '@santi020k/lumen-astro@2.1.0'
+  - '@santi020k/lumen-core@2.1.0'
+  - '@santi020k/lumen@2.1.0'
   - '@cspell/cspell-bundled-dicts@10.1.0'
   - '@cspell/cspell-json-reporter@10.1.0'
   - '@cspell/cspell-performance-monitor@10.1.0'
@@ -36,3 +36,4 @@ minimumReleaseAgeExclude:
   - cspell-trie-lib@10.1.0
   - cspell@10.1.0
   - satori@0.33.4
+  - '@lucide/icons@1.37.0'

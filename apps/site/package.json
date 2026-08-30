@@ -14,12 +14,12 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@santi020k/lumen-astro": "^1.4.0",
+    "@santi020k/lumen-astro": "^2.1.0",
     "astro": "^7.2.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@santi020k/og": "1.0.0",
+    "@santi020k/og": "1.1.1",
     "typescript": "^6.0.3"
   }
 }

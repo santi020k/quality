@@ -30,8 +30,8 @@ importers:
   apps/site:
     dependencies:
       '@santi020k/lumen-astro':
-        specifier: ^1.4.0
-        version: 1.4.0(astro@7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0))
+        specifier: ^2.1.0
+        version: 2.1.0(astro@7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0))
       astro:
         specifier: ^7.2.4
         version: 7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0)
@@ -40,8 +40,8 @@ importers:
         specifier: ^0.9.10
         version: 0.9.10(prettier@3.9.6)(typescript@6.0.3)
       '@santi020k/og':
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@26.2.0)
+        specifier: 1.1.1
+        version: 1.1.1(@types/node@26.2.0)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1362,8 +1362,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@lucide/icons@1.33.0':
-    resolution: {integrity: sha512-bsWF96tciAoxzPBEA7NZcTZhPqIivX3tynCwfLYF+QxcfEtseS6sX1dJ+aFvpgLihsESLlHWOKKBaQV+SsMDlA==}
+  '@lucide/icons@1.37.0':
+    resolution: {integrity: sha512-8+CVT7P2cLY7hid5jTlnxNsgXoUy5gL52gOoU6a5U1IWt8gUWyEUiVkABlN7Pg4is5rPKL1D/qrOiV/sq5vhdg==}
 
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
@@ -1587,23 +1587,24 @@ packages:
     engines: {node: '>=22.18.0'}
     hasBin: true
 
-  '@santi020k/lumen-astro@1.4.0':
-    resolution: {integrity: sha512-bZwHKpemGjSH5cLnc19ODTGwBXW7tWe6B1Y770xMXO76rYcZJUaMeCvgspTiBDHHnKyNGXhM3uRMemmX808K3Q==}
+  '@santi020k/lumen-astro@2.1.0':
+    resolution: {integrity: sha512-VCDFddXuT20rAPQxUH8VU9Jvqgog3rAzz2DpEo/AKFhEW/CMFbVacM21GUqTp9tn/In282aZa0fIoDhw4bFC+w==}
     engines: {node: '>=22.12.0'}
+    hasBin: true
     peerDependencies:
       astro: '>=5'
 
-  '@santi020k/lumen-core@1.4.0':
-    resolution: {integrity: sha512-46s3CLyCa4LpERMnygExLAGF5Hhei5vjHT8tH1cC38DCedvklrCtOUq2rS/FdflEVvNrsAHjx1vPzugwgH8Heg==}
+  '@santi020k/lumen-core@2.1.0':
+    resolution: {integrity: sha512-Qgb3I/thLCb8dJwLF995ECgYsHhy2IjlNoKwk5ONNPUawo9lD6BQafjyqDYdCaiDGVaotrEH3ufQZb798zXhJA==}
     engines: {node: '>=22.12.0'}
 
-  '@santi020k/lumen@1.4.0':
-    resolution: {integrity: sha512-UQloTduJzrJft0MstvYR0ne24XVqKmq+rMHegyZvU6tVHKMrgHzidO1oVOGqqzDexjpd4Qcja0dW6TdnjDypAw==}
+  '@santi020k/lumen@2.1.0':
+    resolution: {integrity: sha512-vPm4dhcgl1lAnftjIE8URjxCH/YWFqO3JeOiOMWrsYWgstNhmL7Q8h9bTCev8NjI8b1U5X/GV6ImaItpVcjIHQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@santi020k/og@1.0.0':
-    resolution: {integrity: sha512-wQ2a6ff7QmvJW801DdoIamoSuj0CaMKs2Ybn/MscfLAcaLBrkcyJWHOsol+7MlC1ONNU/onNLwPccpzCgk9lqw==}
+  '@santi020k/og@1.1.1':
+    resolution: {integrity: sha512-9v+5oC6qgmNQb9S5gR1xQeB9DqaXDRTxrZ7Miakdc4kf1IXOEKCkO4MmZzyBN+INuEwnfU5/ViWu5uyZzZqCMw==}
     engines: {node: '>=22.18.0'}
     hasBin: true
 
@@ -2579,6 +2580,9 @@ packages:
 
   launch-editor@2.14.1:
     resolution: {integrity: sha512-QWBrQsMpH7gPr965dsKD/3cKWiNoTjpATQf++Xq63N6sKRGMwlVXz41O1IZTMfZQgBctD/K5Zt06+/I6pP6+HA==}
+
+  libphonenumber-js@1.13.12:
+    resolution: {integrity: sha512-uLVeV1c9OTk6qkdqnj+mpMD+ZdnZ0szVyWu58HwMmpwkHA1gCEkyjd3veZQXDnuw9KEwSRjcc9B1pS9XKIN1fA==}
 
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
@@ -4713,7 +4717,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lucide/icons@1.33.0': {}
+  '@lucide/icons@1.37.0': {}
 
   '@manypkg/find-root@3.1.0':
     dependencies:
@@ -4871,23 +4875,24 @@ snapshots:
       - '@types/node'
       - typescript
 
-  '@santi020k/lumen-astro@1.4.0(astro@7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0))':
+  '@santi020k/lumen-astro@2.1.0(astro@7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0))':
     dependencies:
-      '@santi020k/lumen': 1.4.0
-      '@santi020k/lumen-core': 1.4.0
+      '@santi020k/lumen': 2.1.0
+      '@santi020k/lumen-core': 2.1.0
       astro: 7.2.4(@astrojs/markdown-remark@7.2.4(supports-color@10.2.2))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.0)
       uqr: 0.1.3
 
-  '@santi020k/lumen-core@1.4.0':
+  '@santi020k/lumen-core@2.1.0':
     dependencies:
-      '@lucide/icons': 1.33.0
+      '@lucide/icons': 1.37.0
+      libphonenumber-js: 1.13.12
 
-  '@santi020k/lumen@1.4.0':
+  '@santi020k/lumen@2.1.0':
     dependencies:
-      '@santi020k/lumen-core': 1.4.0
+      '@santi020k/lumen-core': 2.1.0
       semver: 7.8.5
 
-  '@santi020k/og@1.0.0(@types/node@26.2.0)':
+  '@santi020k/og@1.1.1(@types/node@26.2.0)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@resvg/resvg-js': 2.6.2
@@ -5974,6 +5979,8 @@ snapshots:
     dependencies:
       picocolors: 1.1.1
       shell-quote: 1.10.0
+
+  libphonenumber-js@1.13.12: {}
 
   lightningcss-android-arm64@1.33.0:
     optional: true
