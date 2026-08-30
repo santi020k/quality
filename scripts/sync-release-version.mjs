@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import {
-  hasReleaseHeading,
+  ensureReleaseHeading,
   replaceReleaseVersionReferences,
 } from "./release-version-reference.mjs";
 
@@ -76,14 +76,10 @@ await synchronize("apps/site/src/content/docs/compatibility.md", (contents) => {
   return contents.replace(previewPolicy, expectedPolicy).replace(stablePolicy, expectedPolicy);
 });
 
-if (!checkOnly && cargoVersion !== targetVersion) {
-  await synchronize("CHANGELOG.md", (contents) => {
-    if (hasReleaseHeading(contents, targetVersion)) return contents;
-    return contents.replace(
-      "## Unreleased\n\n",
-      `## Unreleased\n\n- No changes yet.\n\n## ${targetVersion}\n\n`,
-    );
-  });
+if (majorVersion >= 1) {
+  await synchronize("CHANGELOG.md", (contents) =>
+    ensureReleaseHeading(contents, targetVersion),
+  );
 }
 
 if (checkOnly) {
