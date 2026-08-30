@@ -1,5 +1,16 @@
 # @quality/site
 
+## 0.0.4
+
+### Patch Changes
+
+- [#29](https://github.com/santi020k/quality/pull/29) [`974f82d`](https://github.com/santi020k/quality/commit/974f82d88e90939189fc3804024b199f3d6aed6e) Thanks [@santi020k](https://github.com/santi020k)! - Update installation, GitHub Action, and generated workflow examples to use the
+  current 0.4.0 release.
+
+- [#30](https://github.com/santi020k/quality/pull/30) [`e0e2881`](https://github.com/santi020k/quality/commit/e0e2881572c5a6d6ffab295a8b93feb9ce1872fc) Thanks [@santi020k](https://github.com/santi020k)! - Graduate quality to its first stable major release. Version 1 commits to the
+  documented CLI, `quality.yml`, native report-schema, exit-code, and GitHub
+  Action contracts while retaining the deterministic, AI-free checking path.
+
 ## 0.0.3
 
 ### Patch Changes

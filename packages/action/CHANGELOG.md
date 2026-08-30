@@ -1,5 +1,13 @@
 # @quality/action
 
+## 1.0.0
+
+### Major Changes
+
+- [#30](https://github.com/santi020k/quality/pull/30) [`e0e2881`](https://github.com/santi020k/quality/commit/e0e2881572c5a6d6ffab295a8b93feb9ce1872fc) Thanks [@santi020k](https://github.com/santi020k)! - Graduate quality to its first stable major release. Version 1 commits to the
+  documented CLI, `quality.yml`, native report-schema, exit-code, and GitHub
+  Action contracts while retaining the deterministic, AI-free checking path.
+
 ## 0.4.0
 
 ### Minor Changes
