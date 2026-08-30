@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { replaceReleaseVersionReferences } from "./release-version-reference.mjs";
+import {
+  hasReleaseHeading,
+  replaceReleaseVersionReferences,
+} from "./release-version-reference.mjs";
 
 test("replaces stable, prerelease, and build-metadata version references", () => {
   const contents = [
@@ -18,4 +21,11 @@ test("replaces stable, prerelease, and build-metadata version references", () =>
       "build v1.1.0-next.1",
     ].join("\n"),
   );
+});
+
+test("matches only an exact release heading", () => {
+  const prereleaseChangelog = "## Unreleased\n\n## 1.0.0-next.0\n";
+
+  assert.equal(hasReleaseHeading(prereleaseChangelog, "1.0.0"), false);
+  assert.equal(hasReleaseHeading(prereleaseChangelog, "1.0.0-next.0"), true);
 });

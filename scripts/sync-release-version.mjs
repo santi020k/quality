@@ -1,6 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-import { replaceReleaseVersionReferences } from "./release-version-reference.mjs";
+import {
+  hasReleaseHeading,
+  replaceReleaseVersionReferences,
+} from "./release-version-reference.mjs";
 
 const checkOnly = process.argv.includes("--check");
 const actionPackage = JSON.parse(await readFile("packages/action/package.json", "utf8"));
@@ -75,7 +78,7 @@ await synchronize("apps/site/src/content/docs/compatibility.md", (contents) => {
 
 if (!checkOnly && cargoVersion !== targetVersion) {
   await synchronize("CHANGELOG.md", (contents) => {
-    if (contents.includes(`## ${targetVersion}`)) return contents;
+    if (hasReleaseHeading(contents, targetVersion)) return contents;
     return contents.replace(
       "## Unreleased\n\n",
       `## Unreleased\n\n- No changes yet.\n\n## ${targetVersion}\n\n`,

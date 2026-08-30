@@ -8,3 +8,7 @@ const releaseVersionReference = new RegExp(
 export function replaceReleaseVersionReferences(contents, targetVersion) {
   return contents.replace(releaseVersionReference, `v${targetVersion}`);
 }
+
+export function hasReleaseHeading(contents, targetVersion) {
+  return contents.split("\n").some((line) => line === `## ${targetVersion}`);
+}
