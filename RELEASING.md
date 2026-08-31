@@ -9,9 +9,10 @@ settings without exposing their values:
   GitHub Actions to create and approve pull requests** in the repository's
   Actions settings or provide a fine-grained `CHANGESETS_TOKEN` Actions secret
   with Contents and Pull requests read/write access.
-- `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` exist as Actions secrets
-  with only the permissions needed to deploy `quality-site`. The site workflow
-  fails closed when either is missing.
+- The repository's Infisical OIDC identity can read the `prod` environment at
+  `/github/deploy-site`, where `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_API_TOKEN` are shared secrets with only the permissions needed to
+  deploy `quality-site`. The site workflow fails closed when either is missing.
 
 ## Prepare a release
 
