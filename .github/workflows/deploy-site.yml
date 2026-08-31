@@ -67,10 +67,9 @@ jobs:
       - name: Install lockfile-pinned deploy toolchain
         run: |
           pnpm --frozen-lockfile --ignore-scripts \
-            --filter @quality-preset-e2e/quality-monorepo \
-            deploy --legacy --dev deploy-toolchain
-          test "$(deploy-toolchain/node_modules/.bin/wrangler --version)" = "4.125.0"
-          tar -C deploy-toolchain -czf wrangler-toolchain.tgz package.json node_modules
+            --filter @quality-preset-e2e/quality-monorepo install
+          test "$(node_modules/.bin/wrangler --version)" = "4.125.0"
+          tar -czf wrangler-toolchain.tgz package.json node_modules
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-deploy-toolchain
