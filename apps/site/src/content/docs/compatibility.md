@@ -54,8 +54,8 @@ analyzers retain their own platform requirements; for example, Swift checks
 normally require macOS and Android checks require a compatible JDK and Android
 toolchain.
 
-The latest stable release receives fixes. During the pre-1.0 preview, only the
-latest preview release is supported. Analyzer compatibility is exercised by
+The latest stable major release receives fixes. Older major releases may receive
+critical security fixes when explicitly announced. Analyzer compatibility is exercised by
 the repository's real-adapter CI using pinned representative versions, while
 repository-local command and argument overrides remain available when an
 upstream analyzer requires a different invocation.

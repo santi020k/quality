@@ -6,6 +6,10 @@ release notes are generated from the same versioned changes.
 
 ## Unreleased
 
+- No changes yet.
+
+## 1.0.0
+
 - Graduate the documented CLI, `quality.yml`, report-schema, exit-code, and
   GitHub Action contracts to the stable 1.x compatibility policy.
 - Synchronize release examples and support language automatically when package
