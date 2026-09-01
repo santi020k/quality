@@ -15,11 +15,11 @@
   },
   "dependencies": {
     "@santi020k/lumen-astro": "^2.1.0",
-    "astro": "^7.2.4"
+    "astro": "^7.2.9"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@santi020k/og": "1.1.1",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }
