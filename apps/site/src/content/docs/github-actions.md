@@ -97,7 +97,8 @@ caller matrix to shard browser jobs.
 Deployment credentials, database migrations, environment approvals, tagging and
 production smoke tests stay in the consuming repository. Deployment jobs can use
 `santi020k/quality/actions/setup-pnpm` to remove repeated setup steps without moving
-those safeguards into shared code.
+those safeguards into shared code. Package-release jobs can pass `registry-url` and
+`always-auth`; authentication tokens remain scoped to the consuming workflow's environment.
 
 ## Cost-aware CI
 

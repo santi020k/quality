@@ -18,6 +18,12 @@ inputs:
   cache-dependency-path:
     description: Repository-relative lockfile path used for the pnpm cache key.
     default: pnpm-lock.yaml
+  registry-url:
+    description: Optional package registry URL forwarded to actions/setup-node for publishing workflows.
+    default: ""
+  always-auth:
+    description: Whether actions/setup-node should always authenticate to the configured registry.
+    default: "false"
   install:
     description: Install dependencies with the frozen lockfile after setting up Node.js.
     default: "true"
@@ -48,12 +54,16 @@ runs:
         node-version-file: ${{ inputs.node-version-file }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        registry-url: ${{ inputs.registry-url }}
+        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js from version file
       if: inputs.node-version-file != '' && inputs.cache != 'true'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version-file: ${{ inputs.node-version-file }}
+        registry-url: ${{ inputs.registry-url }}
+        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js version with cache
       if: inputs.node-version-file == '' && inputs.cache == 'true'
@@ -62,12 +72,16 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        registry-url: ${{ inputs.registry-url }}
+        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js version
       if: inputs.node-version-file == '' && inputs.cache != 'true'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version }}
+        registry-url: ${{ inputs.registry-url }}
+        always-auth: ${{ inputs.always-auth }}
 
     - name: Install frozen workspace dependencies
       if: inputs.install == 'true'
