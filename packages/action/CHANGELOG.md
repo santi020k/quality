@@ -1,5 +1,11 @@
 # @quality/action
 
+## 1.1.0
+
+### Minor Changes
+
+- [#40](https://github.com/santi020k/quality/pull/40) [`ab680e7`](https://github.com/santi020k/quality/commit/ab680e798348d377ab43eb85e2bc677d3c46a985) Thanks [@santi020k](https://github.com/santi020k)! - Add a reusable pnpm CI workflow, a composite pnpm workspace setup action and a CLI generator mode for thin, version-pinned caller workflows.
+
 ## 1.0.0
 
 ### Major Changes

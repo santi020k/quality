@@ -8,6 +8,10 @@ release notes are generated from the same versioned changes.
 
 - No changes yet.
 
+## 1.1.0
+
+- No changes yet.
+
 ## 1.0.0
 
 - Graduate the documented CLI, `quality.yml`, report-schema, exit-code, and

@@ -29,10 +29,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: santi020k/quality@v1.0.0
+      - uses: santi020k/quality@v1.1.0
         id: quality
         with:
-          version: v1.0.0
+          version: v1.1.0
           changed-only: true
           report-level: warning
           fail-level: warning
@@ -62,7 +62,7 @@ Generate a workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.0.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v1.1.0 --locked'
 ```
 
 The generated workflow:
