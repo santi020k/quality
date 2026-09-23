@@ -105,13 +105,14 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles(inputs.cache-dependency-path) }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ inputs.playwright-browsers }}-${{ hashFiles(inputs.cache-dependency-path) }}
 
       - name: Install Playwright browsers
         if: inputs.playwright-browsers != '' && steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: ${{ inputs.working-directory }}
         env:
           PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        shell: bash
         run: |
           read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
           pnpm exec playwright install --with-deps "${browsers[@]}"
@@ -121,6 +122,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         env:
           PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        shell: bash
         run: |
           read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
           pnpm exec playwright install-deps "${browsers[@]}"
