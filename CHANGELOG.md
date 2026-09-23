@@ -8,6 +8,13 @@ release notes are generated from the same versioned changes.
 
 - No changes yet.
 
+## 1.1.1
+
+### Patch Changes
+
+- Allow the shared pnpm setup action to configure package registries while keeping publishing credentials in consumer workflows.
+- Generate root release notes from the versioned package changelog so future releases cannot publish an empty summary.
+
 ## 1.1.0
 
 - Add a reusable, cross-platform pnpm CI workflow with optional Playwright setup,

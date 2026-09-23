@@ -21,9 +21,6 @@ inputs:
   registry-url:
     description: Optional package registry URL forwarded to actions/setup-node for publishing workflows.
     default: ""
-  always-auth:
-    description: Whether actions/setup-node should always authenticate to the configured registry.
-    default: "false"
   install:
     description: Install dependencies with the frozen lockfile after setting up Node.js.
     default: "true"
@@ -55,7 +52,6 @@ runs:
         cache: pnpm
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
         registry-url: ${{ inputs.registry-url }}
-        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js from version file
       if: inputs.node-version-file != '' && inputs.cache != 'true'
@@ -63,7 +59,6 @@ runs:
       with:
         node-version-file: ${{ inputs.node-version-file }}
         registry-url: ${{ inputs.registry-url }}
-        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js version with cache
       if: inputs.node-version-file == '' && inputs.cache == 'true'
@@ -73,7 +68,6 @@ runs:
         cache: pnpm
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
         registry-url: ${{ inputs.registry-url }}
-        always-auth: ${{ inputs.always-auth }}
 
     - name: Set up Node.js version
       if: inputs.node-version-file == '' && inputs.cache != 'true'
@@ -81,7 +75,6 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         registry-url: ${{ inputs.registry-url }}
-        always-auth: ${{ inputs.always-auth }}
 
     - name: Install frozen workspace dependencies
       if: inputs.install == 'true'

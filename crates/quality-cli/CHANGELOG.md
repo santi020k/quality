@@ -1,5 +1,11 @@
 # @quality/cli
 
+## 1.1.1
+
+### Patch Changes
+
+- [#45](https://github.com/santi020k/quality/pull/45) [`79b24cb`](https://github.com/santi020k/quality/commit/79b24cb89f9ad25b0abd4d411aaaa3d227745081) Thanks [@santi020k](https://github.com/santi020k)! - Allow the shared pnpm setup action to configure a package registry without moving publishing credentials out of the consuming workflow.
+
 ## 1.1.0
 
 ### Minor Changes

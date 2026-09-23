@@ -29,10 +29,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: santi020k/quality@v1.1.0
+      - uses: santi020k/quality@v1.1.1
         id: quality
         with:
-          version: v1.1.0
+          version: v1.1.1
           changed-only: true
           report-level: warning
           fail-level: warning
@@ -62,7 +62,7 @@ Generate a workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.1.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v1.1.1 --locked'
 ```
 
 The generated workflow:
@@ -97,8 +97,8 @@ caller matrix to shard browser jobs.
 Deployment credentials, database migrations, environment approvals, tagging and
 production smoke tests stay in the consuming repository. Deployment jobs can use
 `santi020k/quality/actions/setup-pnpm` to remove repeated setup steps without moving
-those safeguards into shared code. Package-release jobs can pass `registry-url` and
-`always-auth`; authentication tokens remain scoped to the consuming workflow's environment.
+those safeguards into shared code. Package-release jobs can pass `registry-url`;
+authentication tokens remain scoped to the consuming workflow's environment.
 
 ## Cost-aware CI
 
