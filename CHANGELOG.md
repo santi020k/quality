@@ -8,6 +8,10 @@ release notes are generated from the same versioned changes.
 
 - No changes yet.
 
+## 1.1.1
+
+- No changes yet.
+
 ## 1.1.0
 
 - Add a reusable, cross-platform pnpm CI workflow with optional Playwright setup,
