@@ -10,7 +10,17 @@ release notes are generated from the same versioned changes.
 
 ## 1.1.0
 
-- No changes yet.
+- Add a reusable, cross-platform pnpm CI workflow with optional Playwright setup,
+  browser caching, failure artifacts, and immutable caller references.
+- Add a composite pnpm workspace setup action so projects can remove repeated
+  pnpm, Node.js cache, and frozen-install boilerplate without centralizing
+  deployment credentials or production safeguards.
+- Add `quality ci github --shared-ref --command` for generating compact shared
+  workflow callers while preserving the existing standalone generator.
+- Refresh vulnerable transitive dependencies; the release audit reports no known
+  vulnerabilities.
+- Keep playground verification isolated when release gates run from a linked Git
+  worktree.
 
 ## 1.0.0
 
