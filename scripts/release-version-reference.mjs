@@ -13,11 +13,20 @@ export function hasReleaseHeading(contents, targetVersion) {
   return contents.split("\n").some((line) => line === `## ${targetVersion}`);
 }
 
-export function ensureReleaseHeading(contents, targetVersion) {
+export function releaseNotesForVersion(contents, targetVersion) {
+  const heading = `## ${targetVersion}\n`;
+  const start = contents.indexOf(heading);
+  if (start === -1) return "";
+  const bodyStart = start + heading.length;
+  const nextHeading = contents.indexOf("\n## ", bodyStart);
+  return contents.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading).trim();
+}
+
+export function ensureReleaseHeading(contents, targetVersion, releaseNotes = "- No changes yet.") {
   if (hasReleaseHeading(contents, targetVersion)) return contents;
 
-  return contents.replace(
-    "## Unreleased\n\n",
-    `## Unreleased\n\n- No changes yet.\n\n## ${targetVersion}\n\n`,
+  const unreleased = /## Unreleased\n\n(?<notes>[\s\S]*?)(?=\n## )/;
+  return contents.replace(unreleased, (section) =>
+    `${section.trimEnd()}\n\n## ${targetVersion}\n\n${releaseNotes.trim()}\n`,
   );
 }

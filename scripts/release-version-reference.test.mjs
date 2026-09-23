@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ensureReleaseHeading,
   hasReleaseHeading,
+  releaseNotesForVersion,
   replaceReleaseVersionReferences,
 } from "./release-version-reference.mjs";
 
@@ -32,10 +33,23 @@ test("matches only an exact release heading", () => {
 });
 
 test("inserts a missing release heading and remains idempotent", () => {
-  const prereleaseChangelog = "## Unreleased\n\n## 1.0.0-next.0\n";
+  const prereleaseChangelog = "## Unreleased\n\n- No changes yet.\n\n## 1.0.0-next.0\n";
   const expected =
-    "## Unreleased\n\n- No changes yet.\n\n## 1.0.0\n\n## 1.0.0-next.0\n";
+    "## Unreleased\n\n- No changes yet.\n\n## 1.0.0\n\n- Stable release.\n\n## 1.0.0-next.0\n";
 
-  assert.equal(ensureReleaseHeading(prereleaseChangelog, "1.0.0"), expected);
-  assert.equal(ensureReleaseHeading(expected, "1.0.0"), expected);
+  assert.equal(
+    ensureReleaseHeading(prereleaseChangelog, "1.0.0", "- Stable release."),
+    expected,
+  );
+  assert.equal(ensureReleaseHeading(expected, "1.0.0", "- Stable release."), expected);
+});
+
+test("extracts release notes from a package changelog", () => {
+  const changelog = "# Package\n\n## 1.1.1\n\n### Patch Changes\n\n- Added registry support.\n\n## 1.1.0\n";
+
+  assert.equal(
+    releaseNotesForVersion(changelog, "1.1.1"),
+    "### Patch Changes\n\n- Added registry support.",
+  );
+  assert.equal(releaseNotesForVersion(changelog, "2.0.0"), "");
 });

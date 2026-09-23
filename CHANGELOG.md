@@ -10,7 +10,10 @@ release notes are generated from the same versioned changes.
 
 ## 1.1.1
 
-- No changes yet.
+### Patch Changes
+
+- Allow the shared pnpm setup action to configure package registries while keeping publishing credentials in consumer workflows.
+- Generate root release notes from the versioned package changelog so future releases cannot publish an empty summary.
 
 ## 1.1.0
 
