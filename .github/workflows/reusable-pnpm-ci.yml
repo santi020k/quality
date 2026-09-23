@@ -1,0 +1,130 @@
+name: Reusable pnpm CI
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        description: Trusted repository command to execute after dependency installation.
+        required: true
+        type: string
+      node-version:
+        description: Node.js version used when node-version-file is empty.
+        default: "24"
+        type: string
+      node-version-file:
+        description: Repository-relative Node.js version file. Leave empty to use node-version.
+        default: ""
+        type: string
+      working-directory:
+        description: Directory used for dependency installation and the command.
+        default: .
+        type: string
+      cache-dependency-path:
+        description: Repository-relative pnpm lockfile path.
+        default: pnpm-lock.yaml
+        type: string
+      fetch-depth:
+        description: Git history depth. Use zero when the command performs change detection.
+        default: 1
+        type: number
+      runner:
+        description: GitHub-hosted runner label.
+        default: ubuntu-latest
+        type: string
+      timeout-minutes:
+        description: Maximum job runtime.
+        default: 30
+        type: number
+      playwright-browsers:
+        description: Space-separated Playwright browsers to install, or empty to skip browser setup.
+        default: ""
+        type: string
+      artifact-name:
+        description: Diagnostic artifact name. Leave empty to disable artifact upload.
+        default: ""
+        type: string
+      artifact-path:
+        description: Newline-separated diagnostic paths uploaded when the command fails.
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: pnpm CI
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+
+      - name: Set up Node.js from version file
+        if: inputs.node-version-file != ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+      - name: Set up Node.js version
+        if: inputs.node-version-file == ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+      - name: Install frozen workspace dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Playwright browsers
+        if: inputs.playwright-browsers != ''
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles(inputs.cache-dependency-path) }}
+
+      - name: Install Playwright browsers
+        if: inputs.playwright-browsers != '' && steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        run: |
+          read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
+          pnpm exec playwright install --with-deps "${browsers[@]}"
+
+      - name: Install Playwright system dependencies
+        if: inputs.playwright-browsers != '' && steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          PLAYWRIGHT_BROWSERS: ${{ inputs.playwright-browsers }}
+        run: |
+          read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
+          pnpm exec playwright install-deps "${browsers[@]}"
+
+      - name: Run repository command
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          QUALITY_CI_COMMAND: ${{ inputs.command }}
+        run: bash -euo pipefail -c "$QUALITY_CI_COMMAND"
+
+      - name: Upload failure diagnostics
+        if: failure() && inputs.artifact-name != '' && inputs.artifact-path != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7

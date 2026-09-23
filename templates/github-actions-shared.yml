@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Quality gate
+    uses: santi020k/quality/.github/workflows/reusable-pnpm-ci.yml@__QUALITY_SHARED_REF__
+    with:
+      fetch-depth: 0
+__QUALITY_NODE_INPUT__
+      command: __QUALITY_SHARED_COMMAND__
