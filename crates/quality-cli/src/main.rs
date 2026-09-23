@@ -217,9 +217,18 @@ fn run() -> Result<()> {
             provider,
             force,
             install,
+            shared_ref,
+            command,
         } => match provider {
             CiProvider::Github => {
-                let path = generate_github_workflow(&root, &project, force, &install)?;
+                let path = generate_github_workflow(
+                    &root,
+                    &project,
+                    force,
+                    install.as_deref(),
+                    shared_ref.as_deref(),
+                    command.as_deref(),
+                )?;
                 println!("Created {}", display_path(&path));
             }
         },
@@ -333,14 +342,10 @@ fn generate_github_workflow(
     root: &std::path::Path,
     project: &Project,
     force: bool,
-    install_command: &str,
+    install_command: Option<&str>,
+    shared_ref: Option<&str>,
+    shared_command: Option<&str>,
 ) -> Result<PathBuf> {
-    if install_command.trim().is_empty()
-        || install_command.contains('\n')
-        || install_command.contains('\r')
-    {
-        anyhow::bail!("--install must be one non-empty command line");
-    }
     let path = root.join(".github/workflows/quality.yml");
     if path.exists() && !force {
         anyhow::bail!(
@@ -352,19 +357,86 @@ fn generate_github_workflow(
         std::fs::create_dir_all(parent)
             .with_context(|| format!("could not create {}", parent.display()))?;
     }
-    let runner = if project.has_file("Package.swift") || project.path_contains(".xcodeproj/") {
-        "macos-latest"
+    let workflow = if let Some(reference) = shared_ref {
+        if install_command.is_some() {
+            anyhow::bail!("--install and --shared-ref cannot be used together");
+        }
+        let command = shared_command
+            .ok_or_else(|| anyhow::anyhow!("--command is required with --shared-ref"))?;
+        render_shared_github_workflow(root, reference, command)?
     } else {
-        "ubuntu-latest"
+        let install_command = install_command.ok_or_else(|| {
+            anyhow::anyhow!("--install is required unless --shared-ref is provided")
+        })?;
+        validate_single_line("--install", install_command)?;
+        let runner = if project.has_file("Package.swift") || project.path_contains(".xcodeproj/") {
+            "macos-latest"
+        } else {
+            "ubuntu-latest"
+        };
+        let setup = github_project_setup(project, install_command);
+        include_str!("../../../templates/github-actions.yml")
+            .replace("__QUALITY_RUNNER__", runner)
+            .replace("__QUALITY_PROJECT_SETUP__", &setup)
+            .replace("__QUALITY_INSTALL_COMMAND__", install_command)
     };
-    let setup = github_project_setup(project, install_command);
-    let workflow = include_str!("../../../templates/github-actions.yml")
-        .replace("__QUALITY_RUNNER__", runner)
-        .replace("__QUALITY_PROJECT_SETUP__", &setup)
-        .replace("__QUALITY_INSTALL_COMMAND__", install_command);
     atomic::write(&path, workflow.as_bytes())
         .with_context(|| format!("could not write {}", path.display()))?;
     Ok(path)
+}
+
+fn render_shared_github_workflow(
+    root: &std::path::Path,
+    reference: &str,
+    command: &str,
+) -> Result<String> {
+    validate_single_line("--shared-ref", reference)?;
+    validate_single_line("--command", command)?;
+    if reference.contains('@') || reference.chars().any(char::is_whitespace) {
+        anyhow::bail!("--shared-ref must be a tag or commit without whitespace or @");
+    }
+    if !root.join("pnpm-lock.yaml").is_file() {
+        anyhow::bail!("--shared-ref requires a pnpm-lock.yaml repository");
+    }
+    let node_input = if root.join(".node-version").is_file() {
+        "      node-version-file: .node-version"
+    } else {
+        "      node-version: \"24\""
+    };
+    let pnpm_input = if root_package_manager_declares_pnpm(root)? {
+        ""
+    } else {
+        "      pnpm-version: \"11.22.0\""
+    };
+    let command = serde_json::to_string(command)?;
+
+    Ok(include_str!("../../../templates/github-actions-shared.yml")
+        .replace("__QUALITY_SHARED_REF__", reference)
+        .replace("__QUALITY_NODE_INPUT__", node_input)
+        .replace("__QUALITY_PNPM_INPUT__", pnpm_input)
+        .replace("__QUALITY_SHARED_COMMAND__", &command))
+}
+
+fn root_package_manager_declares_pnpm(root: &std::path::Path) -> Result<bool> {
+    let manifest_path = root.join("package.json");
+    if !manifest_path.is_file() {
+        return Ok(false);
+    }
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("could not read {}", manifest_path.display()))?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest)
+        .with_context(|| format!("could not parse {}", manifest_path.display()))?;
+    Ok(manifest
+        .get("packageManager")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| value.starts_with("pnpm@")))
+}
+
+fn validate_single_line(name: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() || value.contains('\n') || value.contains('\r') {
+        anyhow::bail!("{name} must be one non-empty command line");
+    }
+    Ok(())
 }
 
 fn github_project_setup(project: &Project, install_command: &str) -> String {
@@ -444,4 +516,16 @@ fn display_path(path: &std::path::Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+#[cfg(test)]
+mod shared_workflow_tests {
+    use super::validate_single_line;
+
+    #[test]
+    fn rejects_empty_or_multiline_shared_values() {
+        assert!(validate_single_line("--command", "").is_err());
+        assert!(validate_single_line("--command", "pnpm run check\npnpm test").is_err());
+        assert!(validate_single_line("--command", "pnpm run verify").is_ok());
+    }
 }

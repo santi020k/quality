@@ -76,6 +76,29 @@ The generated workflow:
 7. Checks pull-request changes against the base branch.
 8. Emits native GitHub annotations and uploads SARIF to code scanning.
 
+## Reuse pnpm CI
+
+The repository also publishes a reusable pnpm workflow for build, test and browser
+jobs. Generate a compact caller with the CLI:
+
+```bash
+quality ci github \
+  --shared-ref '<reviewed-release-commit-sha>' \
+  --command 'pnpm run verify'
+```
+
+Or call `.github/workflows/reusable-pnpm-ci.yml` directly from a job. The workflow
+reads the pnpm version from `packageManager`, installs frozen dependencies, runs a
+trusted repository command and can install cached Playwright browsers or upload
+failure diagnostics. Repositories without a `packageManager` declaration must pass
+the workflow's `pnpm-version` input; generated callers add a pinned fallback. Use a
+caller matrix to shard browser jobs.
+
+Deployment credentials, database migrations, environment approvals, tagging and
+production smoke tests stay in the consuming repository. Deployment jobs can use
+`santi020k/quality/actions/setup-pnpm` to remove repeated setup steps without moving
+those safeguards into shared code.
+
 ## Cost-aware CI
 
 Run JavaScript, Android, Kotlin, and Rust jobs on Linux whenever platform requirements permit. Reserve macOS runners for Swift and Xcode work.

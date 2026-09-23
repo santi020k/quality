@@ -186,6 +186,19 @@ The generator selects Linux or macOS from the detected platforms and adds
 package-manager setup, frozen dependency installation, and detected native
 toolchain setup before running `quality doctor`.
 
+For a pnpm repository, generate a thin caller for the versioned reusable workflow:
+
+```bash
+quality ci github \
+  --shared-ref '<reviewed-release-commit-sha>' \
+  --command 'pnpm run verify'
+```
+
+The generated caller retains repository-owned triggers and permissions while the
+shared workflow owns checkout, the repository-declared pnpm version, Node.js,
+frozen dependency installation and command execution. Pin a reviewed full commit
+SHA so updates remain explicit.
+
 ## `quality repositories`
 
 Audit every immediate Git repository under a parent folder without changing it:

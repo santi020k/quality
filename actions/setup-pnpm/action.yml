@@ -1,0 +1,76 @@
+name: Set up pnpm workspace
+description: Install the repository-declared pnpm version, Node.js and frozen workspace dependencies.
+author: quality contributors
+
+inputs:
+  pnpm-version:
+    description: Explicit pnpm version. Leave empty to read packageManager from package.json.
+    default: ""
+  node-version:
+    description: Node.js version used when node-version-file is empty.
+    default: "24"
+  node-version-file:
+    description: Repository-relative Node.js version file. Leave empty to use node-version.
+    default: ""
+  cache:
+    description: Enable the pnpm dependency cache.
+    default: "true"
+  cache-dependency-path:
+    description: Repository-relative lockfile path used for the pnpm cache key.
+    default: pnpm-lock.yaml
+  install:
+    description: Install dependencies with the frozen lockfile after setting up Node.js.
+    default: "true"
+  working-directory:
+    description: Directory in which pnpm install runs.
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Set up repository-declared pnpm
+      if: inputs.pnpm-version == ''
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        run_install: false
+
+    - name: Set up explicit pnpm version
+      if: inputs.pnpm-version != ''
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        version: ${{ inputs.pnpm-version }}
+        run_install: false
+
+    - name: Set up Node.js from version file with cache
+      if: inputs.node-version-file != '' && inputs.cache == 'true'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Set up Node.js from version file
+      if: inputs.node-version-file != '' && inputs.cache != 'true'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+
+    - name: Set up Node.js version with cache
+      if: inputs.node-version-file == '' && inputs.cache == 'true'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Set up Node.js version
+      if: inputs.node-version-file == '' && inputs.cache != 'true'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install frozen workspace dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pnpm install --frozen-lockfile

@@ -8,6 +8,11 @@ allowBuilds:
   sharp: true
   workerd: true
 
+overrides:
+  fflate: 0.7.5
+  js-yaml: 4.3.2
+  sharp: 0.35.4
+
 minimumReleaseAgeExclude:
   - '@santi020k/og'
   - '@santi020k/lumen-astro@2.1.0'
@@ -37,3 +42,4 @@ minimumReleaseAgeExclude:
   - cspell@10.1.0
   - satori@0.33.4
   - '@lucide/icons@1.37.0'
+  - wrangler@4.137.0

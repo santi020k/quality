@@ -26,6 +26,7 @@ words:
   - dtolnay
   - esac
   - esbuild
+  - fflate
   - fsmonitor
   - gradlew
   - labelledby

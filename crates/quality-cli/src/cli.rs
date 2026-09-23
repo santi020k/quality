@@ -127,8 +127,14 @@ pub enum Command {
         #[arg(long)]
         force: bool,
         /// Command CI should run to install quality (for example, a pinned Cargo --git command).
-        #[arg(long, value_name = "COMMAND")]
-        install: String,
+        #[arg(long, value_name = "COMMAND", conflicts_with = "shared_ref")]
+        install: Option<String>,
+        /// Version tag or immutable commit for the shared santi020k/quality pnpm workflow.
+        #[arg(long, value_name = "REF", conflicts_with = "install")]
+        shared_ref: Option<String>,
+        /// Trusted repository command executed by the shared pnpm workflow.
+        #[arg(long, value_name = "COMMAND", requires = "shared_ref")]
+        command: Option<String>,
     },
     /// Audit or configure a folder containing multiple Git repositories.
     Repositories {
