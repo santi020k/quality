@@ -7,6 +7,10 @@ on:
         description: Trusted repository command to execute after dependency installation.
         required: true
         type: string
+      pnpm-version:
+        description: Explicit pnpm version. Leave empty to read packageManager from package.json.
+        default: ""
+        type: string
       node-version:
         description: Node.js version used when node-version-file is empty.
         default: "24"
@@ -62,9 +66,17 @@ jobs:
           fetch-depth: ${{ inputs.fetch-depth }}
           persist-credentials: false
 
-      - name: Set up pnpm
+      - name: Set up repository-declared pnpm
+        if: inputs.pnpm-version == ''
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
+          run_install: false
+
+      - name: Set up explicit pnpm version
+        if: inputs.pnpm-version != ''
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ inputs.pnpm-version }}
           run_install: false
 
       - name: Set up Node.js from version file

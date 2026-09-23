@@ -1356,8 +1356,61 @@ fn ci_generates_a_thin_shared_pnpm_workflow() {
         "uses: santi020k/quality/.github/workflows/reusable-pnpm-ci.yml@{reference}"
     )));
     assert!(workflow.contains("node-version-file: .node-version"));
+    assert!(workflow.contains("pnpm-version: \"11.22.0\""));
     assert!(workflow.contains("command: \"pnpm run verify\""));
     serde_yaml::from_str::<serde_yaml::Value>(&workflow).expect("generated workflow must be YAML");
+}
+
+#[test]
+fn ci_shared_workflow_uses_only_root_markers_and_repository_pnpm() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("packages/app")).unwrap();
+    fs::write(
+        temp.path().join("packages/app/pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+    fs::write(temp.path().join("packages/app/.node-version"), "22.23.1\n").unwrap();
+
+    let missing_root_lock = quality(
+        temp.path(),
+        &[
+            "ci",
+            "github",
+            "--shared-ref",
+            "v1.1.0",
+            "--command",
+            "pnpm run verify",
+        ],
+    );
+    assert_eq!(missing_root_lock.status.code(), Some(2));
+
+    fs::write(
+        temp.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{"packageManager":"pnpm@10.28.1"}"#,
+    )
+    .unwrap();
+    let output = quality(
+        temp.path(),
+        &[
+            "ci",
+            "github",
+            "--shared-ref",
+            "v1.1.0",
+            "--command",
+            "pnpm run verify",
+        ],
+    );
+    assert!(output.status.success());
+    let workflow = fs::read_to_string(temp.path().join(".github/workflows/quality.yml")).unwrap();
+    assert!(workflow.contains("node-version: \"24\""));
+    assert!(!workflow.contains("node-version-file:"));
+    assert!(!workflow.contains("pnpm-version:"));
 }
 
 #[test]

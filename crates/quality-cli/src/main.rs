@@ -363,7 +363,7 @@ fn generate_github_workflow(
         }
         let command = shared_command
             .ok_or_else(|| anyhow::anyhow!("--command is required with --shared-ref"))?;
-        render_shared_github_workflow(project, reference, command)?
+        render_shared_github_workflow(root, reference, command)?
     } else {
         let install_command = install_command.ok_or_else(|| {
             anyhow::anyhow!("--install is required unless --shared-ref is provided")
@@ -386,7 +386,7 @@ fn generate_github_workflow(
 }
 
 fn render_shared_github_workflow(
-    project: &Project,
+    root: &std::path::Path,
     reference: &str,
     command: &str,
 ) -> Result<String> {
@@ -395,20 +395,41 @@ fn render_shared_github_workflow(
     if reference.contains('@') || reference.chars().any(char::is_whitespace) {
         anyhow::bail!("--shared-ref must be a tag or commit without whitespace or @");
     }
-    if !project.has_file("pnpm-lock.yaml") {
+    if !root.join("pnpm-lock.yaml").is_file() {
         anyhow::bail!("--shared-ref requires a pnpm-lock.yaml repository");
     }
-    let node_input = if project.has_file(".node-version") {
+    let node_input = if root.join(".node-version").is_file() {
         "      node-version-file: .node-version"
     } else {
         "      node-version: \"24\""
+    };
+    let pnpm_input = if root_package_manager_declares_pnpm(root)? {
+        ""
+    } else {
+        "      pnpm-version: \"11.22.0\""
     };
     let command = serde_json::to_string(command)?;
 
     Ok(include_str!("../../../templates/github-actions-shared.yml")
         .replace("__QUALITY_SHARED_REF__", reference)
         .replace("__QUALITY_NODE_INPUT__", node_input)
+        .replace("__QUALITY_PNPM_INPUT__", pnpm_input)
         .replace("__QUALITY_SHARED_COMMAND__", &command))
+}
+
+fn root_package_manager_declares_pnpm(root: &std::path::Path) -> Result<bool> {
+    let manifest_path = root.join("package.json");
+    if !manifest_path.is_file() {
+        return Ok(false);
+    }
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("could not read {}", manifest_path.display()))?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest)
+        .with_context(|| format!("could not parse {}", manifest_path.display()))?;
+    Ok(manifest
+        .get("packageManager")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| value.starts_with("pnpm@")))
 }
 
 fn validate_single_line(name: &str, value: &str) -> Result<()> {

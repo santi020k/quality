@@ -90,7 +90,9 @@ quality ci github \
 Or call `.github/workflows/reusable-pnpm-ci.yml` directly from a job. The workflow
 reads the pnpm version from `packageManager`, installs frozen dependencies, runs a
 trusted repository command and can install cached Playwright browsers or upload
-failure diagnostics. Use a caller matrix to shard browser jobs.
+failure diagnostics. Repositories without a `packageManager` declaration must pass
+the workflow's `pnpm-version` input; generated callers add a pinned fallback. Use a
+caller matrix to shard browser jobs.
 
 Deployment credentials, database migrations, environment approvals, tagging and
 production smoke tests stay in the consuming repository. Deployment jobs can use

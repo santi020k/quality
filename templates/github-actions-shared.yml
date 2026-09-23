@@ -19,4 +19,5 @@ jobs:
     with:
       fetch-depth: 0
 __QUALITY_NODE_INPUT__
+__QUALITY_PNPM_INPUT__
       command: __QUALITY_SHARED_COMMAND__
