@@ -2,6 +2,11 @@
 
 set -eu
 
+# Git exports repository-local variables to hooks. Clear them before the
+# playground initializes its nested fixture, especially from linked worktrees
+# where GIT_DIR is absolute and would otherwise target the parent repository.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 playground_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_dir=$(CDPATH= cd -- "$playground_dir/.." && pwd)
 temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/quality-playground.XXXXXX")
