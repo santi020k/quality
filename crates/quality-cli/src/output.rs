@@ -332,6 +332,17 @@ fn render_agent_run(
     let shown_reruns = rerun_adapters.len().min(remaining_tool_entries);
     if shown_reruns > 0 {
         output.push_str("\n## Focused reruns\n\n");
+        let thresholds = if matches!(operation, Operation::Check)
+            && (report_level != Severity::Info || fail_level != Severity::Info)
+        {
+            format!(
+                " --report-level {} --fail-level {}",
+                severity_argument(report_level),
+                severity_argument(fail_level)
+            )
+        } else {
+            String::new()
+        };
         let changed = report
             .scope
             .as_ref()
@@ -341,8 +352,9 @@ fn render_agent_run(
         for adapter in rerun_adapters.iter().take(shown_reruns) {
             let _ = writeln!(
                 output,
-                "- `quality {}{} --only {}`",
+                "- `quality {}{}{} --only {}`",
                 operation_command(operation),
+                thresholds,
                 changed,
                 agent_code(adapter, usize::MAX)
             );
@@ -500,6 +512,14 @@ fn operation_command(operation: Operation) -> &'static str {
     }
 }
 
+fn severity_argument(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Info => "info",
+        Severity::Warning => "warning",
+        Severity::Error => "error",
+    }
+}
+
 fn agent_text(value: &str, limit: usize) -> String {
     let normalized = normalized_agent_text(value, limit);
     normalized
@@ -516,7 +536,7 @@ fn normalized_agent_text(value: &str, limit: usize) -> String {
     let sanitized = value
         .chars()
         .map(|character| {
-            if character.is_control() {
+            if is_agent_control(character) {
                 ' '
             } else {
                 character
@@ -529,6 +549,34 @@ fn normalized_agent_text(value: &str, limit: usize) -> String {
         shortened.push('…');
     }
     shortened
+}
+
+fn is_agent_control(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character as u32,
+            0x00ad
+                | 0x0600..=0x0605
+                | 0x061c
+                | 0x06dd
+                | 0x070f
+                | 0x0890..=0x0891
+                | 0x08e2
+                | 0x180e
+                | 0x200b..=0x200f
+                | 0x202a..=0x202e
+                | 0x2060..=0x2064
+                | 0x2066..=0x206f
+                | 0xfeff
+                | 0xfff9..=0xfffb
+                | 0x110bd
+                | 0x110cd
+                | 0x13430..=0x1343f
+                | 0x1bca0..=0x1bca3
+                | 0x1d173..=0x1d17a
+                | 0xe0001
+                | 0xe0020..=0xe007f
+        )
 }
 
 fn agent_code(value: &str, limit: usize) -> String {
@@ -576,7 +624,7 @@ fn encode_agent_path_characters(
             '\r' => output.push_str("\\r"),
             '`' => output.push_str("\\x60"),
             '\\' => output.push_str("\\\\"),
-            character if character.is_control() => {
+            character if is_agent_control(character) => {
                 let _ = write!(output, "\\u{{{:04x}}}", u32::from(character));
             }
             _ => output.push(character),
@@ -1074,6 +1122,14 @@ mod tests {
         assert_eq!(
             agent_path_code("before\u{1b}[2J after", 500),
             "before\\u{001b}[2J after"
+        );
+        assert_eq!(
+            normalized_agent_text("left\u{202e}right", 500),
+            "left right"
+        );
+        assert_eq!(
+            agent_path_code("left\u{202e}right", 500),
+            "left\\u{202e}right"
         );
     }
 

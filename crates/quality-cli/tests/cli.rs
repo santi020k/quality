@@ -1122,10 +1122,20 @@ fn agent_rerun_preserves_changed_scope() {
 
     let output = quality(
         temp.path(),
-        &["check", "--changed", "base;echo", "--format", "agent"],
+        &[
+            "check",
+            "--changed",
+            "base;echo",
+            "--report-level",
+            "warning",
+            "--fail-level",
+            "error",
+            "--format",
+            "agent",
+        ],
     );
 
-    assert_eq!(output.status.code(), Some(1));
+    assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     let head = Command::new("git")
         .arg("-C")
@@ -1135,7 +1145,7 @@ fn agent_rerun_preserves_changed_scope() {
         .unwrap();
     let head = String::from_utf8(head.stdout).unwrap();
     assert!(stdout.contains(&format!(
-        "`quality check --changed {} --only swiftlint`",
+        "`quality check --report-level warning --fail-level error --changed {} --only swiftlint`",
         head.trim()
     )));
     assert!(!stdout.contains("--changed base;echo"));
