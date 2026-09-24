@@ -200,7 +200,7 @@ fn render_agent_run(
     if !findings.is_empty() {
         output.push_str("\n## Findings\n");
         for (path, entries) in findings {
-            let _ = writeln!(output, "\n### `{}`\n", agent_code(&path, 240));
+            let _ = writeln!(output, "\n### `{}`\n", agent_path_code(&path, 240));
             for (result, diagnostic) in entries {
                 let location = match (diagnostic.line, diagnostic.column) {
                     (Some(line), Some(column)) => format!("{line}:{column}"),
@@ -250,23 +250,28 @@ fn render_agent_run(
                 Some(FailureKind::Environment | FailureKind::Toolchain)
             )
         })
-        .take(AGENT_TOOL_LIMIT)
         .collect::<Vec<_>>();
-    if !execution_problems.is_empty() {
+    let mut remaining_tool_entries = AGENT_TOOL_LIMIT;
+    let mut shown_tool_entries = execution_problems.len().min(remaining_tool_entries);
+    if shown_tool_entries > 0 {
         output.push_str("\n## Environment and toolchain problems\n\n");
-        for result in execution_problems {
+        for result in execution_problems.iter().take(shown_tool_entries) {
             let category = match result.failure_kind {
                 Some(FailureKind::Environment) => "environment",
                 Some(FailureKind::Toolchain) => "toolchain",
                 Some(FailureKind::Code) | None => "code",
             };
-            let detail = result.guidance.as_deref().or_else(|| {
-                result
-                    .diagnostics
-                    .iter()
-                    .find(|item| item.path.is_none())
-                    .map(|item| item.message.as_str())
-            });
+            let detail = result
+                .guidance
+                .as_deref()
+                .or_else(|| {
+                    result
+                        .diagnostics
+                        .iter()
+                        .find(|item| item.path.is_none())
+                        .map(|item| item.message.as_str())
+                })
+                .or_else(|| crate::runner::environment_failure_detail(&result.output));
             let detail = match (&result.status, detail) {
                 (_, Some(detail)) => detail,
                 (&Status::Missing, None) => {
@@ -284,19 +289,26 @@ fn render_agent_run(
             );
         }
     }
+    remaining_tool_entries -= shown_tool_entries;
 
     let raw_failures = report
         .results
         .iter()
         .filter(|result| {
             matches!(result.status, Status::Failed)
+                && !matches!(
+                    result.failure_kind,
+                    Some(FailureKind::Environment | FailureKind::Toolchain)
+                )
                 && (result.diagnostics.is_empty() || agent_has_synthesized_failure(result))
         })
-        .take(AGENT_TOOL_LIMIT)
         .collect::<Vec<_>>();
-    if !raw_failures.is_empty() {
+    let shown_raw_failures = raw_failures.len().min(remaining_tool_entries);
+    shown_tool_entries += shown_raw_failures;
+    remaining_tool_entries -= shown_raw_failures;
+    if shown_raw_failures > 0 {
         output.push_str("\n## Unstructured failure output\n");
-        for result in raw_failures {
+        for result in raw_failures.iter().take(shown_raw_failures) {
             let _ = writeln!(output, "\n### {}\n", agent_text(&result.name, 120));
             for line in result.output.lines().take(AGENT_OUTPUT_LINE_LIMIT) {
                 let _ = writeln!(output, "    {}", agent_text(line, 240));
@@ -313,9 +325,10 @@ fn render_agent_run(
             rerun_adapters.insert(result.tool.split('@').next().unwrap_or(&result.tool));
         }
     }
-    if !rerun_adapters.is_empty() {
+    let shown_reruns = rerun_adapters.len().min(remaining_tool_entries);
+    if shown_reruns > 0 {
         output.push_str("\n## Focused reruns\n\n");
-        for adapter in rerun_adapters.into_iter().take(AGENT_TOOL_LIMIT) {
+        for adapter in rerun_adapters.iter().take(shown_reruns) {
             let _ = writeln!(
                 output,
                 "- `quality {} --only {}`",
@@ -323,6 +336,15 @@ fn render_agent_run(
                 agent_code(adapter, usize::MAX)
             );
         }
+        shown_tool_entries += shown_reruns;
+    }
+    let total_tool_entries = execution_problems.len() + raw_failures.len() + rerun_adapters.len();
+    if total_tool_entries > shown_tool_entries {
+        let _ = writeln!(
+            output,
+            "\n_{} additional tool entries omitted; use `--format json` for the complete report._",
+            total_tool_entries - shown_tool_entries
+        );
     }
     output
 }
@@ -478,6 +500,29 @@ fn normalized_agent_text(value: &str, limit: usize) -> String {
 
 fn agent_code(value: &str, limit: usize) -> String {
     normalized_agent_text(value, limit).replace('`', "'")
+}
+
+fn agent_path_code(value: &str, limit: usize) -> String {
+    let significant_whitespace = value.starts_with(' ')
+        || value.ends_with(' ')
+        || value.contains("  ")
+        || value.contains(['\t', '\n', '\r']);
+    let mut output = String::new();
+    let mut chars = value.chars();
+    for character in chars.by_ref().take(limit) {
+        match character {
+            ' ' if significant_whitespace => output.push_str("\\x20"),
+            '\t' => output.push_str("\\t"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '`' => output.push_str("\\x60"),
+            _ => output.push(character),
+        }
+    }
+    if chars.next().is_some() {
+        output.push('…');
+    }
+    output
 }
 
 fn agent_finding_includes(

@@ -545,6 +545,47 @@ fn agent_doctor_shares_one_bounded_tool_budget() {
 
 #[cfg(unix)]
 #[test]
+fn agent_run_shares_one_bounded_tool_budget() {
+    use std::fmt::Write as _;
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("widget.acme"), "value\n").unwrap();
+    let fake = temp.path().join("failing-tool");
+    fs::write(&fake, "#!/bin/sh\necho 'failure detail'\nexit 1\n").unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    let mut config = String::from("version: 1\noutput: pretty\ntools: {}\ncustom:\n");
+    for index in 0..30 {
+        writeln!(
+            config,
+            "  a-missing-{index:02}:\n    command: definitely-missing-{index:02}\n    required: false\n    extensions: [acme]"
+        )
+        .unwrap();
+    }
+    for index in 0..30 {
+        writeln!(
+            config,
+            "  z-failing-{index:02}:\n    command: {}\n    extensions: [acme]",
+            fake.display()
+        )
+        .unwrap();
+    }
+    fs::write(temp.path().join("quality.yml"), config).unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.matches("(toolchain):").count(), 30);
+    assert_eq!(stdout.matches("\n### z-failing-").count(), 20);
+    assert!(!stdout.contains("## Focused reruns"));
+    assert!(stdout.contains("70 additional tool entries omitted"));
+}
+
+#[cfg(unix)]
+#[test]
 fn doctor_resolves_relative_commands_from_the_project_root() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -773,7 +814,7 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     let fake = temp.path().join("fake-swiftlint");
     fs::write(
         &fake,
-        "#!/bin/sh\necho 'App.swift:4:2: warning: Code finding (example_rule)'\necho 'no space left on device'\nexit 1\n",
+        "#!/bin/sh\nprintf 'Odd  \\tName.swift:4:2: warning: Code finding (example_rule)\\n'\necho 'no space left on device'\nexit 1\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&fake).unwrap().permissions();
@@ -793,8 +834,9 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("## Findings"));
-    assert!(stdout.contains("### `App.swift`"));
+    assert!(stdout.contains("### `Odd\\x20\\x20\\tName.swift`"));
     assert!(stdout.contains("## Environment and toolchain problems"));
+    assert!(stdout.contains("no space left on device"));
     assert!(!stdout.contains("additional diagnostics omitted"));
 }
 

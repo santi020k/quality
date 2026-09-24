@@ -1075,8 +1075,15 @@ fn normalize_path(
 }
 
 fn classify_failure(output: &str) -> FailureKind {
-    let normalized = output.to_ascii_lowercase();
-    if [
+    if environment_failure_detail(output).is_some() {
+        FailureKind::Environment
+    } else {
+        FailureKind::Code
+    }
+}
+
+pub fn environment_failure_detail(output: &str) -> Option<&str> {
+    const PATTERNS: [&str; 8] = [
         "address already in use",
         "port is already in use",
         "unable to locate a java runtime",
@@ -1085,14 +1092,11 @@ fn classify_failure(output: &str) -> FailureKind {
         "no space left on device",
         "too many open files",
         "cannot allocate memory",
-    ]
-    .iter()
-    .any(|pattern| normalized.contains(pattern))
-    {
-        FailureKind::Environment
-    } else {
-        FailureKind::Code
-    }
+    ];
+    output.lines().find(|line| {
+        let normalized = line.to_ascii_lowercase();
+        PATTERNS.iter().any(|pattern| normalized.contains(pattern))
+    })
 }
 
 fn format_command(invocation: &Invocation) -> String {
