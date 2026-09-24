@@ -25,6 +25,13 @@ test("replaces stable, prerelease, and build-metadata version references", () =>
   );
 });
 
+test("preserves version annotations for immutable Action commit pins", () => {
+  const pinnedAction =
+    "uses: example/action@0123456789abcdef0123456789abcdef01234567 # v1.1.1";
+
+  assert.equal(replaceReleaseVersionReferences(pinnedAction, "1.1.2"), pinnedAction);
+});
+
 test("matches only an exact release heading", () => {
   const prereleaseChangelog = "## Unreleased\n\n## 1.0.0-next.0\n";
 
