@@ -1035,14 +1035,53 @@ fn writes_github_environment_file(command: &str) -> bool {
         "$env:GITHUB_ENV",
     ]
     .iter()
-    .any(|variable| {
-        command.find(variable).is_some_and(|index| {
-            command[..index].contains('>')
-                || (command[..index]
-                    .trim_start()
-                    .to_ascii_lowercase()
-                    .starts_with("add-content "))
-        })
+    .any(|variable| has_shell_redirection_to(command, variable))
+}
+
+fn has_shell_redirection_to(command: &str, variable: &str) -> bool {
+    let mut single_quoted = false;
+    let mut double_quoted = false;
+    let mut escaped = false;
+    for (index, character) in command.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' if !single_quoted => escaped = true,
+            '\'' if !double_quoted => single_quoted = !single_quoted,
+            '"' if !single_quoted => double_quoted = !double_quoted,
+            '>' if !single_quoted
+                && !double_quoted
+                && redirection_target_matches(&command[index + 1..], variable) =>
+            {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn redirection_target_matches(remainder: &str, variable: &str) -> bool {
+    let remainder = remainder
+        .strip_prefix('>')
+        .unwrap_or(remainder)
+        .trim_start();
+    if let Some(quoted) = remainder.strip_prefix('"') {
+        return quoted
+            .strip_prefix(variable)
+            .is_some_and(|suffix| suffix.starts_with('"'));
+    }
+    if remainder.starts_with('\'') {
+        return false;
+    }
+    remainder.strip_prefix(variable).is_some_and(|suffix| {
+        suffix.is_empty()
+            || suffix
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_whitespace() || ";&|".contains(character))
     })
 }
 
@@ -1101,6 +1140,11 @@ mod tests {
         assert!(!environment_setup_command(
             "grep '$GITHUB_ENV' scripts/setup.sh"
         ));
+        assert!(!environment_setup_command(
+            "grep '>> $GITHUB_ENV' scripts/setup.sh"
+        ));
+        assert!(environment_setup_command("echo bin >> \"$GITHUB_PATH\""));
+        assert!(!environment_setup_command("echo bin >> '$GITHUB_PATH'"));
     }
 
     #[test]
