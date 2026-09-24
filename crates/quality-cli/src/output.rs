@@ -260,19 +260,22 @@ fn render_agent_run(
                 Some(FailureKind::Toolchain) => "toolchain",
                 Some(FailureKind::Code) | None => "code",
             };
-            let detail = result
-                .guidance
-                .as_deref()
-                .or_else(|| {
-                    result
-                        .diagnostics
-                        .iter()
-                        .find(|item| item.path.is_none())
-                        .map(|item| item.message.as_str())
-                })
-                .unwrap_or(
-                    "Adapter output indicates an execution failure; inspect the complete JSON report.",
-                );
+            let detail = result.guidance.as_deref().or_else(|| {
+                result
+                    .diagnostics
+                    .iter()
+                    .find(|item| item.path.is_none())
+                    .map(|item| item.message.as_str())
+            });
+            let detail = match (&result.status, detail) {
+                (_, Some(detail)) => detail,
+                (&Status::Missing, None) => {
+                    "Optional tool is unavailable; install it or run `quality doctor --format agent` for setup guidance."
+                }
+                (&Status::Failed | &Status::Passed, None) => {
+                    "Adapter output indicates an execution failure; inspect the complete JSON report."
+                }
+            };
             let _ = writeln!(
                 output,
                 "- **{}** ({category}): {}",
@@ -314,7 +317,7 @@ fn render_agent_run(
                 output,
                 "- `quality {} --only {}`",
                 operation_command(operation),
-                agent_code(adapter, 120)
+                agent_code(adapter, usize::MAX)
             );
         }
     }
@@ -352,12 +355,18 @@ fn render_agent_doctor(report: &DoctorReport) -> String {
         "- Summary: {available} available; {required_missing} required missing; {optional_missing} optional missing"
     );
 
+    let missing_total = report
+        .tools
+        .iter()
+        .filter(|entry| entry.check_enabled && !entry.available)
+        .count();
     let actionable = report
         .tools
         .iter()
         .filter(|entry| entry.check_enabled && !entry.available)
         .take(AGENT_TOOL_LIMIT)
         .collect::<Vec<_>>();
+    let mut shown_tools = actionable.len();
     if !actionable.is_empty() {
         output.push_str("\n## Missing tools\n\n");
         for entry in actionable {
@@ -380,12 +389,18 @@ fn render_agent_doctor(report: &DoctorReport) -> String {
         }
     }
 
+    let configured_total = report
+        .tools
+        .iter()
+        .filter(|entry| entry.check_enabled && entry.available)
+        .count();
     let configured = report
         .tools
         .iter()
         .filter(|entry| entry.check_enabled && entry.available)
-        .take(AGENT_TOOL_LIMIT)
+        .take(AGENT_TOOL_LIMIT - shown_tools)
         .collect::<Vec<_>>();
+    shown_tools += configured.len();
     if !configured.is_empty() {
         output.push_str("\n## Available checks\n\n");
         for entry in configured {
@@ -397,6 +412,13 @@ fn render_agent_doctor(report: &DoctorReport) -> String {
                 agent_code(&entry.command, 240)
             );
         }
+    }
+    let omitted_tools = missing_total + configured_total - shown_tools;
+    if omitted_tools > 0 {
+        let _ = writeln!(
+            output,
+            "\n_{omitted_tools} additional tool entries omitted; use `--format json` for the complete report._"
+        );
     }
 
     if let Some(preset) = &report.preset {

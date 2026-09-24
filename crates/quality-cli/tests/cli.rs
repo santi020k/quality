@@ -495,6 +495,54 @@ fn doctor_explains_a_missing_required_tool() {
     assert!(stdout.contains("quality doctor --format agent"));
 }
 
+#[test]
+fn agent_output_explains_an_optional_missing_tool() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    required: false\n    command: definitely-not-a-real-tool\n  swiftformat:\n    enabled: false\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("**SwiftLint** (toolchain): Optional tool is unavailable"));
+    assert!(stdout.contains("quality doctor --format agent"));
+    assert!(!stdout.contains("Adapter output indicates an execution failure"));
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_doctor_shares_one_bounded_tool_budget() {
+    use std::fmt::Write as _;
+
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = String::from("version: 1\noutput: pretty\ntools: {}\ncustom:\n");
+    for index in 0..30 {
+        writeln!(
+            config,
+            "  a-missing-{index:02}:\n    command: definitely-missing-{index:02}\n    required: false"
+        )
+        .unwrap();
+    }
+    for index in 0..30 {
+        writeln!(config, "  z-available-{index:02}:\n    command: true").unwrap();
+    }
+    fs::write(temp.path().join("quality.yml"), config).unwrap();
+
+    let output = quality(temp.path(), &["doctor", "--format", "agent"]);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.matches("- **").count(), 50);
+    assert!(stdout.contains("10 additional tool entries omitted"));
+    assert!(stdout.contains("z-available-19"));
+    assert!(!stdout.contains("z-available-20"));
+}
+
 #[cfg(unix)]
 #[test]
 fn doctor_resolves_relative_commands_from_the_project_root() {
@@ -676,6 +724,40 @@ fn agent_output_bounds_diagnostics_and_reports_omissions() {
     assert_eq!(stdout.matches("_(via SwiftLint)_").count(), 50);
     assert!(stdout.contains("1 additional diagnostics omitted"));
     assert!(!stdout.contains("Finding 51"));
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("widget.acme"), "value\n").unwrap();
+    let fake = temp.path().join("custom-lint");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho 'failed without diagnostics'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    let adapter = "a".repeat(121);
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools: {{}}\ncustom:\n  {adapter}:\n    command: {}\n    extensions: [acme]\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(&format!("`quality check --only {adapter}`")));
+    assert!(!stdout.contains(&format!("--only {}…", &adapter[..120])));
 }
 
 #[cfg(unix)]
