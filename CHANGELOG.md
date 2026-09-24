@@ -8,6 +8,12 @@ release notes are generated from the same versioned changes.
 
 - No changes yet.
 
+## 1.2.0
+
+### Minor Changes
+
+- [#51](https://github.com/santi020k/quality/pull/51) [`11403a8`](https://github.com/santi020k/quality/commit/11403a8a68d8b7838e0fddf2a0f92dc17598672b) Thanks [@santi020k](https://github.com/santi020k)! - Add local CI planning and execution for configured Git hooks, including pull-request workflow coverage, per-step and total wall time, bounded failure output, focused reruns, metadata-only Git history, versioned JSON reports, and published schemas.
+
 ## 1.1.2
 
 ### Patch Changes
