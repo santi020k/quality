@@ -736,7 +736,7 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
     let fake = temp.path().join("custom-lint");
     fs::write(
         &fake,
-        "#!/bin/sh\necho 'failed without diagnostics'\nexit 1\n",
+        "#!/bin/sh\necho 'failed without diagnostics'\necho 'stack frame one'\necho 'stack frame two'\nexit 1\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&fake).unwrap().permissions();
@@ -757,6 +757,9 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(&format!("`quality check --only {adapter}`")));
+    assert!(stdout.contains("## Unstructured failure output"));
+    assert!(stdout.contains("stack frame one"));
+    assert!(stdout.contains("stack frame two"));
     assert!(!stdout.contains(&format!("--only {}…", &adapter[..120])));
 }
 

@@ -288,7 +288,10 @@ fn render_agent_run(
     let raw_failures = report
         .results
         .iter()
-        .filter(|result| matches!(result.status, Status::Failed) && result.diagnostics.is_empty())
+        .filter(|result| {
+            matches!(result.status, Status::Failed)
+                && (result.diagnostics.is_empty() || agent_has_synthesized_failure(result))
+        })
         .take(AGENT_TOOL_LIMIT)
         .collect::<Vec<_>>();
     if !raw_failures.is_empty() {
@@ -486,6 +489,24 @@ fn agent_finding_includes(
             result.failure_kind,
             Some(FailureKind::Environment | FailureKind::Toolchain)
         )
+}
+
+fn agent_has_synthesized_failure(result: &crate::runner::ToolResult) -> bool {
+    if !matches!(result.failure_kind, Some(FailureKind::Code) | None)
+        || result.diagnostics.len() != 1
+    {
+        return false;
+    }
+    let diagnostic = &result.diagnostics[0];
+    diagnostic.path.is_none()
+        && diagnostic.line.is_none()
+        && diagnostic.column.is_none()
+        && diagnostic.rule.is_none()
+        && result
+            .output
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .is_some_and(|line| line.trim() == diagnostic.message)
 }
 
 fn agent_selection_description(scope: &crate::runner::RunScope) -> String {
