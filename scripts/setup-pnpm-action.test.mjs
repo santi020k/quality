@@ -28,7 +28,11 @@ test("shared pnpm automation offers an opt-in, revision-safe task cache", async 
     assert.match(contents, /uses: actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/);
     assert.match(contents, /\$\{\{ github\.sha \}\}/);
     assert.match(contents, /\$\{\{ runner\.arch \}\}/);
-    assert.match(contents, /hashFiles\(inputs\.node-version-file,/);
+    assert.match(contents, /hashFiles\(inputs\.node-version-file\)/);
+    assert.match(
+      contents,
+      /node-\$\{\{ inputs\.node-version \}\}-\$\{\{ hashFiles\(inputs\.node-version-file\) \}\}-/,
+    );
   }
 
   assert.match(action, /task-cache-hit:/);

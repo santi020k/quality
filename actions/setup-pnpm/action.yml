@@ -96,10 +96,10 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.task-cache-path }}
-        key: task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file, inputs.cache-dependency-path, inputs.task-cache-config-path) }}-${{ github.sha }}
+        key: task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file) }}-${{ hashFiles(inputs.cache-dependency-path, inputs.task-cache-config-path) }}-${{ github.sha }}
         restore-keys: |
-          task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file, inputs.cache-dependency-path, inputs.task-cache-config-path) }}-
-          task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-
+          task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file) }}-${{ hashFiles(inputs.cache-dependency-path, inputs.task-cache-config-path) }}-
+          task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file) }}-
 
     - name: Install frozen workspace dependencies
       if: inputs.install == 'true'
