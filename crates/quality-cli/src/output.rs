@@ -559,6 +559,7 @@ fn encode_agent_path_characters(
             '\n' => output.push_str("\\n"),
             '\r' => output.push_str("\\r"),
             '`' => output.push_str("\\x60"),
+            '\\' => output.push_str("\\\\"),
             _ => output.push(character),
         }
     }

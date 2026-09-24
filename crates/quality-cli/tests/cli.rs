@@ -788,7 +788,7 @@ fn agent_output_disambiguates_truncated_file_paths() {
     fs::write(
         &fake,
         format!(
-            "#!/bin/sh\necho '{prefix}/first.swift:1:1: warning: First (first_rule)'\necho '{prefix}/second.swift:2:1: warning: Second (second_rule)'\nexit 1\n"
+            "#!/bin/sh\necho '{prefix}/first.swift:1:1: warning: First (first_rule)'\necho '{prefix}/second.swift:2:1: warning: Second (second_rule)'\nprintf '%s\\n' 'folder\\name.swift:3:1: warning: Backslash (backslash_rule)'\nexit 1\n"
         ),
     )
     .unwrap();
@@ -810,7 +810,8 @@ fn agent_output_disambiguates_truncated_file_paths() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("first.swift#"));
     assert!(stdout.contains("second.swift#"));
-    assert_eq!(stdout.matches("### `").count(), 2);
+    assert!(stdout.contains("folder\\\\name.swift"));
+    assert_eq!(stdout.matches("### `").count(), 3);
 }
 
 #[cfg(unix)]
