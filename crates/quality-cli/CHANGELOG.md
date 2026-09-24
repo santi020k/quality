@@ -1,5 +1,11 @@
 # @quality/cli
 
+## 1.3.0
+
+### Minor Changes
+
+- [#53](https://github.com/santi020k/quality/pull/53) [`5224439`](https://github.com/santi020k/quality/commit/5224439c6dcbf1d79670dec192cb60fd5e61359e) Thanks [@santi020k](https://github.com/santi020k)! - Add compact, bounded `agent` output for checks and doctor reports, with file-grouped diagnostics, separated environment failures, focused rerun commands, and documentation for AI coding-agent workflows.
+
 ## 1.2.0
 
 ### Minor Changes
