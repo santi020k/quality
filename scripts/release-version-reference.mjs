@@ -25,6 +25,34 @@ export function releaseNotesForVersion(contents, targetVersion) {
   return contents.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading).trim();
 }
 
+export function mergeReleaseNotes(notes) {
+  const sections = new Map();
+
+  for (const note of notes) {
+    for (const section of note.split(/^### /m).slice(1)) {
+      const headingEnd = section.indexOf("\n");
+      if (headingEnd === -1) continue;
+
+      const heading = section.slice(0, headingEnd).trim();
+      const entries = section
+        .slice(headingEnd + 1)
+        .trim()
+        .split(/\n\n(?=- )/)
+        .filter(Boolean);
+      const mergedEntries = sections.get(heading) ?? [];
+
+      for (const entry of entries) {
+        if (!mergedEntries.includes(entry)) mergedEntries.push(entry);
+      }
+      sections.set(heading, mergedEntries);
+    }
+  }
+
+  return [...sections]
+    .map(([heading, entries]) => `### ${heading}\n\n${entries.join("\n\n")}`)
+    .join("\n\n");
+}
+
 export function ensureReleaseHeading(contents, targetVersion, releaseNotes = "- No changes yet.") {
   if (hasReleaseHeading(contents, targetVersion)) return contents;
 

@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import {
   ensureReleaseHeading,
+  mergeReleaseNotes,
   releaseNotesForVersion,
   replaceReleaseVersionReferences,
 } from "./release-version-reference.mjs";
@@ -78,8 +79,13 @@ await synchronize("apps/site/src/content/docs/compatibility.md", (contents) => {
 });
 
 if (majorVersion >= 1) {
-  const actionChangelog = await readFile("packages/action/CHANGELOG.md", "utf8");
-  const releaseNotes = releaseNotesForVersion(actionChangelog, targetVersion);
+  const changelogs = await Promise.all([
+    readFile("packages/action/CHANGELOG.md", "utf8"),
+    readFile("crates/quality-cli/CHANGELOG.md", "utf8"),
+  ]);
+  const releaseNotes = mergeReleaseNotes(
+    changelogs.map((changelog) => releaseNotesForVersion(changelog, targetVersion)),
+  );
   if (!releaseNotes) {
     throw new Error(`Could not read release notes for ${targetVersion}`);
   }

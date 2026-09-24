@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ensureReleaseHeading,
   hasReleaseHeading,
+  mergeReleaseNotes,
   releaseNotesForVersion,
   replaceReleaseVersionReferences,
 } from "./release-version-reference.mjs";
@@ -59,4 +60,15 @@ test("extracts release notes from a package changelog", () => {
     "### Patch Changes\n\n- Added registry support.",
   );
   assert.equal(releaseNotesForVersion(changelog, "2.0.0"), "");
+});
+
+test("merges and deduplicates release notes from multiple packages", () => {
+  const shared = "- Shared workflow improvement.";
+  const actionNotes = `### Patch Changes\n\n${shared}`;
+  const cliNotes = `### Patch Changes\n\n${shared}\n\n- CLI-only release fix.`;
+
+  assert.equal(
+    mergeReleaseNotes([actionNotes, cliNotes]),
+    `### Patch Changes\n\n${shared}\n\n- CLI-only release fix.`,
+  );
 });
