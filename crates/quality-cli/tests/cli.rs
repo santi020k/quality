@@ -311,7 +311,7 @@ fn init_does_not_import_a_recursive_local_ci_hook_script() {
         temp.path().join("package.json"),
         r#"{
             "scripts":{
-                "pre-push":"pnpm run local-gate",
+                "pre-push":"npm run --if-present local-gate",
                 "local-gate":"quality --root . ci local"
             }
         }"#,

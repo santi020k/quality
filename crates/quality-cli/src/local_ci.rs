@@ -937,9 +937,15 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
 fn runner_operating_system_value(value: &serde_yaml::Value) -> Option<&'static str> {
     match value {
         serde_yaml::Value::String(label) => runner_operating_system(label),
-        serde_yaml::Value::Sequence(labels) => labels
-            .iter()
-            .find_map(|label| label.as_str().and_then(runner_operating_system)),
+        serde_yaml::Value::Sequence(labels) => {
+            labels.iter().find_map(runner_operating_system_value)
+        }
+        serde_yaml::Value::Mapping(values) => values.iter().find_map(|(key, value)| {
+            (key.as_str() == Some("labels"))
+                .then(|| runner_operating_system_value(value))
+                .flatten()
+        }),
+        serde_yaml::Value::Tagged(tagged) => runner_operating_system_value(&tagged.value),
         _ => None,
     }
 }
@@ -980,14 +986,21 @@ fn setup_command_fragment(command: &str) -> bool {
         "npm install",
         "yarn install",
         "bun install",
-        "go install",
         "brew install",
         "rustup component add",
     ]
     .iter()
     .any(|prefix| command.starts_with(prefix))
+        || go_tool_install_command(command)
         || command.contains("$GITHUB_PATH")
         || command.contains("$GITHUB_ENV")
+}
+
+fn go_tool_install_command(command: &str) -> bool {
+    command
+        .strip_prefix("go install")
+        .and_then(|arguments| arguments.split_ascii_whitespace().next())
+        .is_some_and(|target| target.contains('@') && !target.starts_with('.'))
 }
 
 fn has_pull_request_trigger(value: &serde_yaml::Value) -> bool {
@@ -1040,6 +1053,7 @@ mod tests {
         ));
         assert!(!environment_setup_command("pnpm install\npnpm test"));
         assert!(!environment_setup_command("pnpm run check"));
+        assert!(!environment_setup_command("go install ./..."));
     }
 
     #[test]
@@ -1109,5 +1123,10 @@ mod tests {
             serde_yaml::from_str::<serde_yaml::Value>(r#"[self-hosted, "${{ vars.RUNNER_OS }}"]"#)
                 .unwrap();
         assert!(contains_expression(&expression));
+        let mapped = serde_yaml::from_str::<serde_yaml::Value>(
+            "{ group: hosted, labels: [self-hosted, windows-2022] }",
+        )
+        .unwrap();
+        assert_eq!(runner_operating_system_value(&mapped), Some("windows"));
     }
 }

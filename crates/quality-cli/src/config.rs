@@ -831,12 +831,11 @@ fn command_invokes_script(command: &str, script: &str) -> bool {
         })
         .filter(|token| !token.is_empty())
         .collect();
-    tokens
+    tokens.iter().enumerate().any(|(index, token)| {
+        matches!(*token, "run" | "run-script") && tokens[index + 1..].contains(&script)
+    }) || tokens
         .windows(2)
-        .any(|tokens| tokens[0] == "run" && tokens[1] == script)
-        || tokens
-            .windows(2)
-            .any(|tokens| matches!(tokens[0], "yarn" | "pnpm" | "bun") && tokens[1] == script)
+        .any(|tokens| matches!(tokens[0], "yarn" | "pnpm" | "bun") && tokens[1] == script)
 }
 
 #[cfg(test)]
