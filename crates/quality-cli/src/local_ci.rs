@@ -572,13 +572,14 @@ fn command_display(step: &HookStepConfig, hook_args: &[OsString]) -> String {
 
 fn display_argument(argument: &OsStr) -> String {
     let text = argument.to_string_lossy();
-    if text
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || "-._/:=@".contains(character))
+    if !text.is_empty()
+        && text
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-._/:=@".contains(character))
     {
         text.into_owned()
     } else {
-        format!("{:?}", text)
+        format!("'{}'", text.replace('\'', "'\"'\"'"))
     }
 }
 
@@ -1130,6 +1131,14 @@ mod tests {
             normalize_command(r#"printf "a b""#)
         );
         assert_eq!(normalize_command("pnpm run check\r\n"), "pnpm run check");
+    }
+
+    #[test]
+    fn rendered_arguments_preserve_literal_shell_semantics() {
+        assert_eq!(display_argument(OsStr::new("$TOKEN")), "'$TOKEN'");
+        assert_eq!(display_argument(OsStr::new("")), "''");
+        assert_eq!(display_argument(OsStr::new("it's")), "'it'\"'\"'s'");
+        assert_eq!(display_argument(OsStr::new("pnpm")), "pnpm");
     }
 
     #[test]

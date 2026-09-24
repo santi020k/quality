@@ -1579,6 +1579,29 @@ fn ci_plan_rejects_invalid_covered_commands() {
 }
 
 #[test]
+fn ci_plan_does_not_equate_literal_arguments_with_shell_expansion() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: test\n        args: [-n, '$TOKEN']\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/ci.yml"),
+        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - run: 'test -n \"$TOKEN\"'\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["ci", "plan", "--format", "json"]);
+
+    assert!(output.status.success());
+    let plan: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["summary"]["covered"], 0);
+    assert_eq!(plan["summary"]["uncovered"], 1);
+}
+
+#[test]
 fn ci_plan_resolves_inherited_directories_without_ignoring_env_or_shell() {
     let temp = tempfile::tempdir().unwrap();
     fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
