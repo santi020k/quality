@@ -38,8 +38,24 @@ visible to developers and compatible agents. Run the command again after a
 
 ## Use structured output
 
-Agents and automation can inspect configuration and results without parsing
-the human-readable terminal presentation:
+Use the compact Markdown format when an agent needs actionable context:
+
+```bash
+quality doctor --format agent
+quality check --changed --format agent
+quality check --format agent
+```
+
+The agent format groups diagnostics by file, separates code findings from
+environment and toolchain problems, and includes focused rerun commands. It is
+bounded to 50 diagnostics, 50 tool entries, and eight lines of otherwise
+unstructured failure output per adapter. Individual messages are also bounded
+and normalized to one line. Analyzer messages are explicitly identified as
+untrusted repository or tool output.
+
+The format does not change which analyzers run, their exit status, the selected
+severity thresholds, or baseline behavior. Use JSON when an integration needs
+the complete versioned report instead of a compact agent context:
 
 ```bash
 quality doctor --format json

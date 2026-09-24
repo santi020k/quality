@@ -137,6 +137,7 @@ fn run() -> Result<()> {
             present_run(
                 &root,
                 &report,
+                runner::Operation::Check,
                 format.unwrap_or(config.output_format()),
                 report_path,
                 report_level,
@@ -174,6 +175,7 @@ fn run() -> Result<()> {
             present_run(
                 &root,
                 &report,
+                operation,
                 format.unwrap_or(config.output_format()),
                 report_path,
                 cli::Severity::Info,
@@ -205,6 +207,7 @@ fn run() -> Result<()> {
             present_run(
                 &root,
                 &report,
+                runner::Operation::Fix,
                 format.unwrap_or(config.output_format()),
                 report_path,
                 cli::Severity::Info,
@@ -399,6 +402,7 @@ fn discover_changes(
 fn present_run(
     root: &std::path::Path,
     run_report: &runner::RunReport,
+    operation: runner::Operation,
     format: cli::OutputFormat,
     report_path: Option<PathBuf>,
     report_level: cli::Severity,
@@ -413,7 +417,7 @@ fn present_run(
         output::write_sarif(run_report, &report_path, report_level)?;
         eprintln!("Wrote SARIF report to {}", display_path(&report_path));
     }
-    output::print_run(run_report, format, report_level, fail_level)
+    output::print_run(run_report, operation, format, report_level, fail_level)
 }
 
 fn retain_local_ci_history(

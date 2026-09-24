@@ -104,6 +104,8 @@ pub struct RunReport {
     pub scope: Option<RunScope>,
     #[serde(default)]
     pub suppressed: usize,
+    #[serde(skip)]
+    pub execution: ExecutionSettings,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -126,6 +128,8 @@ pub struct RunScope {
     pub mode: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+    #[serde(skip)]
+    pub rerun_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -135,13 +139,18 @@ pub struct RunScope {
 }
 
 impl RunReport {
-    pub fn new(results: Vec<ToolResult>, scope: Option<RunScope>) -> Self {
+    pub fn new(
+        results: Vec<ToolResult>,
+        scope: Option<RunScope>,
+        execution: ExecutionSettings,
+    ) -> Self {
         let mut report = Self {
             schema_version: REPORT_SCHEMA_VERSION,
             results,
             summary: RunSummary::default(),
             scope,
             suppressed: 0,
+            execution,
         };
         report.refresh_summary();
         report
@@ -407,6 +416,7 @@ pub fn execute(
     let scope = (changes.is_some() || !selection.is_empty()).then(|| RunScope {
         mode: changes.map(|_| "changed"),
         base: changes.map(|changes| changes.base.clone()),
+        rerun_base: changes.map(|changes| changes.resolved_base.clone()),
         files: changes.map(|changes| changes.files.len()),
         only: selection.only.clone(),
         exclude: selection.exclude.clone(),
@@ -422,12 +432,12 @@ pub fn execute(
                 break;
             }
         }
-        return Ok(RunReport::new(results, scope));
+        return Ok(RunReport::new(results, scope, settings));
     }
 
     let count = invocations.len();
     if count == 0 {
-        return Ok(RunReport::new(Vec::new(), scope));
+        return Ok(RunReport::new(Vec::new(), scope, settings));
     }
     let queue = Arc::new(Mutex::new(VecDeque::from(invocations)));
     let (sender, receiver) = mpsc::channel();
@@ -450,7 +460,7 @@ pub fn execute(
     drop(sender);
     let mut results: Vec<_> = receiver.iter().take(count).collect();
     results.sort_by(|left, right| left.tool.cmp(&right.tool));
-    Ok(RunReport::new(results, scope))
+    Ok(RunReport::new(results, scope, settings))
 }
 
 fn collect_invocations(
@@ -1075,8 +1085,15 @@ fn normalize_path(
 }
 
 fn classify_failure(output: &str) -> FailureKind {
-    let normalized = output.to_ascii_lowercase();
-    if [
+    if environment_failure_detail(output).is_some() {
+        FailureKind::Environment
+    } else {
+        FailureKind::Code
+    }
+}
+
+pub fn environment_failure_detail(output: &str) -> Option<&str> {
+    const PATTERNS: [&str; 8] = [
         "address already in use",
         "port is already in use",
         "unable to locate a java runtime",
@@ -1085,14 +1102,11 @@ fn classify_failure(output: &str) -> FailureKind {
         "no space left on device",
         "too many open files",
         "cannot allocate memory",
-    ]
-    .iter()
-    .any(|pattern| normalized.contains(pattern))
-    {
-        FailureKind::Environment
-    } else {
-        FailureKind::Code
-    }
+    ];
+    output.lines().find(|line| {
+        let normalized = line.to_ascii_lowercase();
+        PATTERNS.iter().any(|pattern| normalized.contains(pattern))
+    })
 }
 
 fn format_command(invocation: &Invocation) -> String {

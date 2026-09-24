@@ -28,6 +28,11 @@ published report schemas remain compatible. New optional fields, adapters, and
 flags may be added. Removing or changing the meaning or type of an existing
 contract requires a new CLI major release or report schema version.
 
+The `agent` format is a bounded human- and model-readable Markdown presentation,
+not a versioned machine contract. Its headings and limits may evolve within a
+major release. Integrations that require stable fields or complete diagnostics
+must use JSON or SARIF.
+
 Preset output is intentionally upgradeable. A minor release may update pinned
 analyzer versions or generated policy, but `quality preset diff` and
 `quality preset update --dry-run` expose the change before files are replaced.

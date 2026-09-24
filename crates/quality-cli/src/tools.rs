@@ -1217,6 +1217,7 @@ mod tests {
             .unwrap();
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
             files: vec![PathBuf::from(".swiftlint.yml")],
             deleted: Default::default(),
         };
@@ -1355,6 +1356,7 @@ mod tests {
         let project = Project::discover(temp.path()).unwrap();
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
             files: vec![PathBuf::from("article.md")],
             deleted: Default::default(),
         };
@@ -1383,6 +1385,7 @@ mod tests {
         let project = Project::discover(temp.path()).unwrap();
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
             files: vec![PathBuf::from("README.md")],
             deleted: Default::default(),
         };
@@ -1412,6 +1415,7 @@ mod tests {
         let project = Project::discover(temp.path()).unwrap();
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
             files: vec![PathBuf::from("README.md")],
             deleted: Default::default(),
         };
@@ -1566,6 +1570,7 @@ mod tests {
             .unwrap();
         let changes = ChangeSet {
             base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
             files: vec![PathBuf::from("MainActivity.kt")],
             deleted: Default::default(),
         };

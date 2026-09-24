@@ -13,7 +13,7 @@
     },
     "output": {
       "description": "Default output format for checks.",
-      "enum": ["pretty", "json", "sarif", "github"],
+      "enum": ["pretty", "agent", "json", "sarif", "github"],
       "default": "pretty"
     },
     "baseline": {

@@ -8,19 +8,19 @@ use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 pub struct ChangeSet {
     pub base: String,
+    #[serde(skip)]
+    pub resolved_base: String,
     pub files: Vec<PathBuf>,
     pub deleted: BTreeSet<PathBuf>,
 }
 
 pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
     ensure_repository(root)?;
-    ensure_revision(root, "HEAD").context(
+    resolve_revision(root, "HEAD").context(
         "changed-file mode needs at least one Git commit; run without `--changed` in a new repository",
     )?;
-    if base != "HEAD" {
-        ensure_revision(root, base)
-            .with_context(|| format!("Git base `{base}` does not resolve to a commit"))?;
-    }
+    let resolved_base = resolve_revision(root, base)
+        .with_context(|| format!("Git base `{base}` does not resolve to a commit"))?;
 
     let mut files = BTreeSet::new();
     let comparison = if base == "HEAD" {
@@ -89,6 +89,7 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
 
     Ok(ChangeSet {
         base: base.to_owned(),
+        resolved_base,
         files: files.into_iter().collect(),
         deleted,
     })
@@ -111,13 +112,16 @@ fn ensure_repository(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn ensure_revision(root: &Path, revision: &str) -> Result<()> {
+fn resolve_revision(root: &Path, revision: &str) -> Result<String> {
     let revision = format!("{revision}^{{commit}}");
     let output = git(root, &["rev-parse", "--verify", "--quiet", &revision])?;
     if !output.status.success() {
         anyhow::bail!("revision does not exist");
     }
-    Ok(())
+    Ok(String::from_utf8(output.stdout)
+        .context("Git returned a non-UTF-8 commit identifier")?
+        .trim()
+        .to_owned())
 }
 
 fn collect_paths(root: &Path, args: &[&str], paths: &mut BTreeSet<PathBuf>) -> Result<()> {

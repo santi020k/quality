@@ -425,6 +425,8 @@ pub enum BaselineCommand {
 pub enum OutputFormat {
     #[default]
     Pretty,
+    /// Emit compact, bounded Markdown for AI coding agents.
+    Agent,
     Json,
     Sarif,
     /// Emit GitHub Actions workflow commands for inline annotations.
