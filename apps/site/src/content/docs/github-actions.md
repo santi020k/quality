@@ -100,6 +100,64 @@ production smoke tests stay in the consuming repository. Deployment jobs can use
 those safeguards into shared code. Package-release jobs can pass `registry-url`;
 authentication tokens remain scoped to the consuming workflow's environment.
 
+### Migrate an existing pnpm job
+
+Replace separate pnpm, Node.js and frozen-install steps with the composite action.
+Keep repository-specific commands, conditions, matrices, credentials and deployment
+gates in the consuming workflow:
+
+```yaml
+- uses: santi020k/quality/actions/setup-pnpm@eec1701b98bcc0b76d36af288ee78a0369cd84cc # v1.1.1
+  with:
+    node-version-file: .node-version
+
+- run: pnpm run verify
+```
+
+For Turborepo or another local task runner, the next release also supports an
+opt-in task-output cache before the frozen install. The commit SHA in this example
+must be replaced with the reviewed release commit that contains these inputs:
+
+```yaml
+- uses: santi020k/quality/actions/setup-pnpm@<reviewed-release-commit-sha>
+  with:
+    node-version-file: .node-version
+    task-cache-path: .turbo/cache
+    task-cache-key: quality
+    task-cache-config-path: turbo.json
+```
+
+The cache key isolates operating system, architecture, Node configuration, job
+namespace, dependency and task-runner configuration, and commit. Exact commits can
+save new entries while restore prefixes reuse valid task outputs from earlier runs.
+Use a distinct `task-cache-key` for jobs or matrix shards that must not share
+outputs. Leave `task-cache-path` empty to disable this cache. The action exposes
+`task-cache-hit` for job summaries or diagnostics.
+
+### Publish to an authenticated package registry
+
+Quality 1.1.1 added `registry-url` to the shared setup action. Pin the action to a
+reviewed commit, configure the registry without a token, and expose the token only
+to the publishing step:
+
+```yaml
+- uses: santi020k/quality/actions/setup-pnpm@eec1701b98bcc0b76d36af288ee78a0369cd84cc # v1.1.1
+  with:
+    node-version: 24
+    registry-url: https://registry.npmjs.org
+
+- name: Publish package
+  run: pnpm publish
+  env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+The setup action writes the registry configuration expected by `actions/setup-node`;
+it does not read or own the credential. If dependency installation also requires a
+private registry, provide `NODE_AUTH_TOKEN` to the setup action step so its built-in
+frozen install can authenticate. Keep that secret in the consuming repository or
+environment, and never pass it as an action input.
+
 ## Cost-aware CI
 
 Run JavaScript, Android, Kotlin, and Rust jobs on Linux whenever platform requirements permit. Reserve macOS runners for Swift and Xcode work.

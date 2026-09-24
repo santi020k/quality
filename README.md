@@ -41,7 +41,7 @@ The Action verifies the downloaded release checksum, adds pull-request annotatio
 
 Reusable pnpm projects can also call
 `.github/workflows/reusable-pnpm-ci.yml` for frozen installs, build or test commands,
-optional Playwright browser caching and failure artifacts. Individual jobs can use
+optional task-output and Playwright browser caching, and failure artifacts. Individual jobs can use
 `santi020k/quality/actions/setup-pnpm@<full-commit-sha>` to share setup while keeping deployment
 credentials, migrations and smoke checks project-owned. Pin shared automation to a
 reviewed full commit SHA.
