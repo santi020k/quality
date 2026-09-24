@@ -332,6 +332,18 @@ fn render_agent_run(
     let shown_reruns = rerun_adapters.len().min(remaining_tool_entries);
     if shown_reruns > 0 {
         output.push_str("\n## Focused reruns\n\n");
+        let defaults = crate::runner::ExecutionSettings::default();
+        let mut execution = String::new();
+        if let Some(timeout_seconds) = report.execution.timeout_seconds {
+            let _ = write!(execution, " --timeout-seconds {timeout_seconds}");
+        }
+        if report.execution.max_output_bytes != defaults.max_output_bytes {
+            let _ = write!(
+                execution,
+                " --max-output-bytes {}",
+                report.execution.max_output_bytes
+            );
+        }
         let thresholds = if matches!(operation, Operation::Check)
             && (report_level != Severity::Info || fail_level != Severity::Info)
         {
@@ -352,8 +364,9 @@ fn render_agent_run(
         for adapter in rerun_adapters.iter().take(shown_reruns) {
             let _ = writeln!(
                 output,
-                "- `quality {}{}{} --only {}`",
+                "- `quality {}{}{}{} --only {}`",
                 operation_command(operation),
+                execution,
                 thresholds,
                 changed,
                 agent_code(adapter, usize::MAX)
@@ -1169,6 +1182,7 @@ mod tests {
                 baseline_safe: true,
             }],
             None,
+            crate::runner::ExecutionSettings::default(),
         );
 
         let output = render_agent_run(&report, Operation::Check, Severity::Info, Severity::Info);

@@ -104,6 +104,8 @@ pub struct RunReport {
     pub scope: Option<RunScope>,
     #[serde(default)]
     pub suppressed: usize,
+    #[serde(skip)]
+    pub execution: ExecutionSettings,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -137,13 +139,18 @@ pub struct RunScope {
 }
 
 impl RunReport {
-    pub fn new(results: Vec<ToolResult>, scope: Option<RunScope>) -> Self {
+    pub fn new(
+        results: Vec<ToolResult>,
+        scope: Option<RunScope>,
+        execution: ExecutionSettings,
+    ) -> Self {
         let mut report = Self {
             schema_version: REPORT_SCHEMA_VERSION,
             results,
             summary: RunSummary::default(),
             scope,
             suppressed: 0,
+            execution,
         };
         report.refresh_summary();
         report
@@ -425,12 +432,12 @@ pub fn execute(
                 break;
             }
         }
-        return Ok(RunReport::new(results, scope));
+        return Ok(RunReport::new(results, scope, settings));
     }
 
     let count = invocations.len();
     if count == 0 {
-        return Ok(RunReport::new(Vec::new(), scope));
+        return Ok(RunReport::new(Vec::new(), scope, settings));
     }
     let queue = Arc::new(Mutex::new(VecDeque::from(invocations)));
     let (sender, receiver) = mpsc::channel();
@@ -453,7 +460,7 @@ pub fn execute(
     drop(sender);
     let mut results: Vec<_> = receiver.iter().take(count).collect();
     results.sort_by(|left, right| left.tool.cmp(&right.tool));
-    Ok(RunReport::new(results, scope))
+    Ok(RunReport::new(results, scope, settings))
 }
 
 fn collect_invocations(

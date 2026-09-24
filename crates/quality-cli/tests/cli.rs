@@ -1130,6 +1130,10 @@ fn agent_rerun_preserves_changed_scope() {
             "warning",
             "--fail-level",
             "error",
+            "--timeout-seconds",
+            "9",
+            "--max-output-bytes",
+            "2048",
             "--format",
             "agent",
         ],
@@ -1145,7 +1149,7 @@ fn agent_rerun_preserves_changed_scope() {
         .unwrap();
     let head = String::from_utf8(head.stdout).unwrap();
     assert!(stdout.contains(&format!(
-        "`quality check --report-level warning --fail-level error --changed {} --only swiftlint`",
+        "`quality check --timeout-seconds 9 --max-output-bytes 2048 --report-level warning --fail-level error --changed {} --only swiftlint`",
         head.trim()
     )));
     assert!(!stdout.contains("--changed base;echo"));

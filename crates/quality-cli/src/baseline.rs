@@ -195,6 +195,7 @@ mod tests {
             summary: Default::default(),
             scope: None,
             suppressed: 0,
+            execution: Default::default(),
         };
         create(&initial, &path, false).unwrap();
 
@@ -204,6 +205,7 @@ mod tests {
             summary: Default::default(),
             scope: None,
             suppressed: 0,
+            execution: Default::default(),
         };
         apply(&mut current, &path).unwrap();
         assert_eq!(current.suppressed, 1);
