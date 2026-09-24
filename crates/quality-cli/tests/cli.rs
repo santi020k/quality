@@ -540,6 +540,28 @@ fn missing_required_tool_is_included_in_sarif() {
         sarif["runs"][0]["results"][0]["ruleId"],
         "tool-not-installed"
     );
+
+    let agent = quality(temp.path(), &["check", "--format", "agent"]);
+    assert_eq!(agent.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&agent.stdout);
+    assert!(stdout.contains("## Environment and toolchain problems"));
+    assert!(!stdout.contains("## Findings"));
+}
+
+#[test]
+fn agent_output_explains_an_empty_explicit_selection() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["check", "--only", "cargo-fmt", "--format", "agent"],
+    );
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("No applicable tools matched only cargo-fmt."));
+    assert!(!stdout.contains("Run `quality init`"));
 }
 
 #[cfg(unix)]

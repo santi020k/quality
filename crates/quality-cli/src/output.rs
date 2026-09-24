@@ -157,6 +157,12 @@ fn render_agent_run(
                 "No relevant adapters matched the {files} changed files against `{}`.",
                 agent_code(base, 200)
             );
+        } else if let Some(scope) = &report.scope {
+            let _ = writeln!(
+                output,
+                "No applicable tools matched {}.",
+                selection_description(scope)
+            );
         } else {
             output.push_str("No checks ran. Run `quality init` after adding project files.\n");
         }
@@ -166,6 +172,12 @@ fn render_agent_run(
     let mut findings: BTreeMap<String, Vec<_>> = BTreeMap::new();
     let mut visible_count = 0;
     for result in &report.results {
+        if matches!(
+            result.failure_kind,
+            Some(FailureKind::Environment | FailureKind::Toolchain)
+        ) {
+            continue;
+        }
         for diagnostic in result
             .diagnostics
             .iter()
