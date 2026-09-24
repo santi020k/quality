@@ -44,6 +44,11 @@ hooks:
 `covers` affects the plan only; execution still runs the declared hook command.
 Use `--strict` in adoption checks to reject uncovered commands.
 
+Workflow- and job-level `defaults.run.working-directory` values are resolved
+before comparison. A declared `env` or custom `shell` is not silently treated
+as equivalent to a local hook: static context is uncovered, while expressions
+that require GitHub context remain GitHub-only.
+
 ## Run the gate
 
 ```bash
@@ -54,8 +59,11 @@ quality ci local --step 2
 
 Steps run sequentially and stop after the first failure. The terminal report
 shows each step's wall time, the total wall time, the exit code and a concise
-tail of bounded failure output, followed by an exact focused rerun command.
-`--step` accepts a one-based number from the plan or prior report.
+tail of bounded failure output, followed by a focused rerun command. `--step`
+accepts a one-based number from the plan or prior report. When a step forwards
+Git hook arguments, the rerun uses a `<git-hook-args>` placeholder instead of
+persisting values such as remote URLs; replace it with the original hook
+arguments.
 
 Managed Git hooks use this same execution and reporting path. A typical policy
 keeps `pre-commit` limited to staged-file checks and uses `pre-push` for affected

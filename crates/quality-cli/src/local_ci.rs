@@ -229,7 +229,12 @@ pub fn execute(
     for (index, step) in hook.steps.iter().enumerate() {
         let number = index + 1;
         if selected_step.is_some_and(|selected| selected != number) || failed {
-            results.push(skipped_step(number, step, hook_name));
+            results.push(skipped_step(
+                number,
+                step,
+                hook_name,
+                step.pass_hook_args && !hook_args.is_empty(),
+            ));
             continue;
         }
         if show_progress {
@@ -325,7 +330,11 @@ pub fn write_report(report: &LocalCiReport, path: &Path) -> Result<()> {
         .with_context(|| format!("could not write local CI report to {}", path.display()))
 }
 
-pub fn retain_report(root: &Path, report: &LocalCiReport) -> Result<Option<PathBuf>> {
+pub fn retain_report(
+    root: &Path,
+    config: &Config,
+    report: &LocalCiReport,
+) -> Result<Option<PathBuf>> {
     let output = Command::new("git")
         .args(["rev-parse", "--git-path", "quality/local-ci"])
         .current_dir(root)
@@ -347,9 +356,17 @@ pub fn retain_report(root: &Path, report: &LocalCiReport) -> Result<Option<PathB
     fs::create_dir_all(&directory)
         .with_context(|| format!("could not create {}", directory.display()))?;
     let mut retained = report.clone();
-    for step in &mut retained.steps {
+    let configured_steps = config
+        .hooks
+        .get(&report.hook)
+        .map(|hook| hook.steps.as_slice())
+        .unwrap_or_default();
+    for (index, step) in retained.steps.iter_mut().enumerate() {
         step.output.clear();
         step.output_truncated = false;
+        if let Some(configured) = configured_steps.get(index) {
+            step.command = command_display(configured, &[]);
+        }
     }
     let run_path = directory.join(format!("run-{}.json", report.started_at_unix_ms));
     write_report(&retained, &run_path)?;
@@ -391,7 +408,8 @@ fn execute_step(
         .as_ref()
         .map_or_else(|| root.to_path_buf(), |path| root.join(path));
     let passed_args = if step.pass_hook_args { hook_args } else { &[] };
-    let display = command_display(step, passed_args);
+    let display = command_display(step, &[]);
+    let requires_hook_args = step.pass_hook_args && !hook_args.is_empty();
     let mut command = Command::new(&step.command);
     command
         .args(&step.args)
@@ -446,12 +464,28 @@ fn execute_step(
                         Some(code) => format!("command exited with code {code}"),
                         None => "command terminated by a signal".to_owned(),
                     }),
-                    rerun: Some(rerun_command(hook_name, number)),
+                    rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
                 },
-                Err(error) => failed_step(number, step, hook_name, display, started, error),
+                Err(error) => failed_step(
+                    number,
+                    step,
+                    hook_name,
+                    display,
+                    started,
+                    error,
+                    requires_hook_args,
+                ),
             }
         }
-        Err(error) => failed_step(number, step, hook_name, display, started, error),
+        Err(error) => failed_step(
+            number,
+            step,
+            hook_name,
+            display,
+            started,
+            error,
+            requires_hook_args,
+        ),
     }
 }
 
@@ -462,6 +496,7 @@ fn failed_step(
     command: String,
     started: Instant,
     error: io::Error,
+    requires_hook_args: bool,
 ) -> LocalCiStepResult {
     LocalCiStepResult {
         number,
@@ -474,11 +509,16 @@ fn failed_step(
         output: String::new(),
         output_truncated: false,
         failure: Some(format!("could not run command: {error}")),
-        rerun: Some(rerun_command(hook_name, number)),
+        rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
     }
 }
 
-fn skipped_step(number: usize, step: &HookStepConfig, hook_name: &str) -> LocalCiStepResult {
+fn skipped_step(
+    number: usize,
+    step: &HookStepConfig,
+    hook_name: &str,
+    requires_hook_args: bool,
+) -> LocalCiStepResult {
     LocalCiStepResult {
         number,
         name: step_name(step),
@@ -490,12 +530,17 @@ fn skipped_step(number: usize, step: &HookStepConfig, hook_name: &str) -> LocalC
         output: String::new(),
         output_truncated: false,
         failure: None,
-        rerun: Some(rerun_command(hook_name, number)),
+        rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
     }
 }
 
-fn rerun_command(hook_name: &str, number: usize) -> String {
-    format!("quality ci local --hook {hook_name} --step {number}")
+fn rerun_command(hook_name: &str, number: usize, requires_hook_args: bool) -> String {
+    let suffix = if requires_hook_args {
+        " -- <git-hook-args>"
+    } else {
+        ""
+    };
+    format!("quality ci local --hook {hook_name} --step {number}{suffix}")
 }
 
 fn relative_working_directory(step: &HookStepConfig) -> Option<String> {
@@ -543,10 +588,12 @@ fn read_limited(mut reader: impl Read, limit: usize) -> io::Result<CapturedOutpu
         if read == 0 {
             break;
         }
-        let remaining = limit.saturating_sub(retained.len());
-        let keep = read.min(remaining);
-        retained.extend_from_slice(&buffer[..keep]);
-        truncated |= keep < read;
+        retained.extend_from_slice(&buffer[..read]);
+        if retained.len() > limit {
+            let excess = retained.len() - limit;
+            retained.drain(..excess);
+            truncated = true;
+        }
     }
     Ok((retained, truncated))
 }
@@ -563,13 +610,23 @@ fn combine_limited_output(
     stderr: CapturedOutput,
     limit: usize,
 ) -> (String, bool) {
-    let mut bytes = stdout.0;
-    let remaining = limit.saturating_sub(bytes.len());
-    let keep = stderr.0.len().min(remaining);
-    bytes.extend_from_slice(&stderr.0[..keep]);
+    let stderr_target = if stderr.0.is_empty() {
+        0
+    } else {
+        limit.div_ceil(2)
+    };
+    let mut stderr_keep = stderr.0.len().min(stderr_target);
+    let stdout_keep = stdout.0.len().min(limit.saturating_sub(stderr_keep));
+    stderr_keep += stderr
+        .0
+        .len()
+        .saturating_sub(stderr_keep)
+        .min(limit.saturating_sub(stdout_keep + stderr_keep));
+    let mut bytes = stdout.0[stdout.0.len().saturating_sub(stdout_keep)..].to_vec();
+    bytes.extend_from_slice(&stderr.0[stderr.0.len().saturating_sub(stderr_keep)..]);
     (
         String::from_utf8_lossy(&bytes).into_owned(),
-        stdout.1 || stderr.1 || keep < stderr.0.len(),
+        stdout.1 || stderr.1 || stdout_keep < stdout.0.len() || stderr_keep < stderr.0.len(),
     )
 }
 
@@ -603,6 +660,8 @@ fn inspect_pull_request_workflows(
         if !has_pull_request_trigger(&value) {
             continue;
         }
+        let workflow_env = mapping_value(&value, "env");
+        let workflow_defaults = run_defaults(&value);
         let workflow = path
             .file_name()
             .and_then(OsStr::to_str)
@@ -629,6 +688,8 @@ fn inspect_pull_request_workflows(
                 continue;
             };
             let job_context = github_only_job_reason(job);
+            let job_env = mapping_value(job, "env");
+            let job_defaults = run_defaults(job);
             for (step_index, step) in steps.iter().enumerate() {
                 let name = mapping_value(step, "name")
                     .and_then(serde_yaml::Value::as_str)
@@ -671,6 +732,23 @@ fn inspect_pull_request_workflows(
                     });
                     continue;
                 }
+                let step_env = mapping_value(step, "env");
+                let shell = mapping_value(step, "shell")
+                    .and_then(serde_yaml::Value::as_str)
+                    .or_else(|| defaults_value(job_defaults, "shell"))
+                    .or_else(|| defaults_value(workflow_defaults, "shell"));
+                if let Some((status, detail)) =
+                    execution_context_reason(workflow_env, job_env, step_env, shell)
+                {
+                    results.push(WorkflowStepPlan {
+                        workflow: workflow.clone(),
+                        job: job_name.clone(),
+                        name,
+                        status,
+                        detail,
+                    });
+                    continue;
+                }
                 if environment_setup_command(run) {
                     results.push(WorkflowStepPlan {
                         workflow: workflow.clone(),
@@ -681,8 +759,20 @@ fn inspect_pull_request_workflows(
                     });
                     continue;
                 }
-                let workflow_directory =
-                    mapping_value(step, "working-directory").and_then(serde_yaml::Value::as_str);
+                let workflow_directory = mapping_value(step, "working-directory")
+                    .and_then(serde_yaml::Value::as_str)
+                    .or_else(|| defaults_value(job_defaults, "working-directory"))
+                    .or_else(|| defaults_value(workflow_defaults, "working-directory"));
+                if workflow_directory.is_some_and(|directory| directory.contains("${{")) {
+                    results.push(WorkflowStepPlan {
+                        workflow: workflow.clone(),
+                        job: job_name.clone(),
+                        name,
+                        status: WorkflowStepStatus::GithubOnly,
+                        detail: "working directory requires GitHub context".to_owned(),
+                    });
+                    continue;
+                }
                 let covered = local_steps.iter().any(|local| {
                     (normalize_command(run) == normalize_command(&command_display(local, &[]))
                         || local
@@ -714,6 +804,80 @@ fn inspect_pull_request_workflows(
         }
     }
     Ok(results)
+}
+
+fn run_defaults(value: &serde_yaml::Value) -> Option<&serde_yaml::Value> {
+    mapping_value(value, "defaults").and_then(|defaults| mapping_value(defaults, "run"))
+}
+
+fn defaults_value<'a>(defaults: Option<&'a serde_yaml::Value>, key: &str) -> Option<&'a str> {
+    defaults
+        .and_then(|value| mapping_value(value, key))
+        .and_then(serde_yaml::Value::as_str)
+}
+
+fn execution_context_reason(
+    workflow_env: Option<&serde_yaml::Value>,
+    job_env: Option<&serde_yaml::Value>,
+    step_env: Option<&serde_yaml::Value>,
+    shell: Option<&str>,
+) -> Option<(WorkflowStepStatus, String)> {
+    let environments = [workflow_env, job_env, step_env]
+        .into_iter()
+        .flatten()
+        .filter(|value| context_value_present(value))
+        .collect::<Vec<_>>();
+    if !environments.is_empty() {
+        let github_context = environments.iter().any(|value| contains_expression(value));
+        return Some((
+            if github_context {
+                WorkflowStepStatus::GithubOnly
+            } else {
+                WorkflowStepStatus::Uncovered
+            },
+            if github_context {
+                "environment requires GitHub context".to_owned()
+            } else {
+                "workflow environment is not represented by the local hook".to_owned()
+            },
+        ));
+    }
+    shell.map(|shell| {
+        if shell.contains("${{") {
+            (
+                WorkflowStepStatus::GithubOnly,
+                "shell requires GitHub context".to_owned(),
+            )
+        } else {
+            (
+                WorkflowStepStatus::Uncovered,
+                "workflow shell is not represented by the local hook".to_owned(),
+            )
+        }
+    })
+}
+
+fn context_value_present(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Null => false,
+        serde_yaml::Value::String(text) => !text.is_empty(),
+        serde_yaml::Value::Sequence(values) => !values.is_empty(),
+        serde_yaml::Value::Mapping(values) => !values.is_empty(),
+        serde_yaml::Value::Tagged(tagged) => context_value_present(&tagged.value),
+        _ => true,
+    }
+}
+
+fn contains_expression(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::String(text) => text.contains("${{"),
+        serde_yaml::Value::Sequence(values) => values.iter().any(contains_expression),
+        serde_yaml::Value::Mapping(values) => values
+            .iter()
+            .any(|(key, value)| contains_expression(key) || contains_expression(value)),
+        serde_yaml::Value::Tagged(tagged) => contains_expression(&tagged.value),
+        _ => false,
+    }
 }
 
 fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
@@ -820,5 +984,27 @@ mod tests {
         assert!(!names.contains(&"run-01.json".to_owned()));
         assert!(names.contains(&"run-21.json".to_owned()));
         assert!(names.contains(&"latest.json".to_owned()));
+    }
+
+    #[test]
+    fn bounded_output_keeps_the_failure_tail_and_reserves_stderr() {
+        let (output, truncated) = combine_limited_output(
+            (b"verbose stdout that ends with OUT_TAIL".to_vec(), true),
+            (b"diagnostic context and FINAL_ERROR".to_vec(), true),
+            24,
+        );
+
+        assert!(truncated);
+        assert!(output.contains("FINAL_ERROR"));
+        assert!(output.contains("OUT_TAIL"));
+        assert!(!output.contains("verbose stdout"));
+    }
+
+    #[test]
+    fn rerun_marks_required_git_hook_arguments_without_persisting_them() {
+        assert_eq!(
+            rerun_command("commit-msg", 1, true),
+            "quality ci local --hook commit-msg --step 1 -- <git-hook-args>"
+        );
     }
 }

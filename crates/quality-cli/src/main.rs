@@ -278,7 +278,7 @@ fn run() -> Result<()> {
                     eprintln!("Wrote local CI report to {}", display_path(&path));
                 }
                 if !no_history {
-                    retain_local_ci_history(&root, &report_data);
+                    retain_local_ci_history(&root, &config, &report_data);
                 }
                 local_ci::print_report(&report_data, format)?;
                 if !report_data.passed() {
@@ -349,7 +349,7 @@ fn run() -> Result<()> {
                 HooksCommand::Run { event, args } => {
                     let report =
                         local_ci::execute(&root, &config, &event, None, &args, 1024 * 1024, true)?;
-                    retain_local_ci_history(&root, &report);
+                    retain_local_ci_history(&root, &config, &report);
                     local_ci::print_report(&report, cli::CiOutputFormat::Pretty)?;
                     if !report.passed() {
                         std::process::exit(1);
@@ -416,8 +416,12 @@ fn present_run(
     output::print_run(run_report, format, report_level, fail_level)
 }
 
-fn retain_local_ci_history(root: &std::path::Path, report: &local_ci::LocalCiReport) {
-    if let Err(error) = local_ci::retain_report(root, report) {
+fn retain_local_ci_history(
+    root: &std::path::Path,
+    config: &Config,
+    report: &local_ci::LocalCiReport,
+) {
+    if let Err(error) = local_ci::retain_report(root, config, report) {
         eprintln!("Warning: could not retain local CI history: {error:#}");
     }
 }

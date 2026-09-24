@@ -1533,6 +1533,53 @@ fn ci_plan_rejects_invalid_covered_commands() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("must be one non-empty line"));
 }
 
+#[test]
+fn ci_plan_resolves_inherited_directories_without_ignoring_env_or_shell() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: pnpm\n        args: [run, check]\n        working_directory: packages/app\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/context.yml"),
+        "name: Context\non: [pull_request]\njobs:\n  inherited-directory:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        working-directory: packages/app\n    steps:\n      - run: pnpm run check\n  static-env:\n    runs-on: ubuntu-latest\n    env:\n      MODE: strict\n    steps:\n      - run: pnpm run check\n  expression-env:\n    runs-on: ubuntu-latest\n    env:\n      TOKEN: ${{ github.token }}\n    steps:\n      - run: pnpm run check\n  custom-shell:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: pnpm run check\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/workflow-default.yml"),
+        "name: Workflow default\non: [pull_request]\ndefaults:\n  run:\n    working-directory: packages/app\njobs:\n  inherited-directory:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm run check\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["ci", "plan", "--format", "json"]);
+
+    assert!(output.status.success());
+    let plan: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["summary"]["covered"], 2);
+    assert_eq!(plan["summary"]["uncovered"], 2);
+    assert_eq!(plan["summary"]["github_only"], 1);
+    assert!(
+        plan["workflow_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| {
+                step["detail"] == "workflow environment is not represented by the local hook"
+            })
+    );
+    assert!(
+        plan["workflow_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| {
+                step["detail"] == "workflow shell is not represented by the local hook"
+            })
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
@@ -1799,7 +1846,11 @@ fn hooks_install_run_status_and_uninstall_managed_launchers() {
 
     let status = quality(temp.path(), &["hooks", "status"]);
     assert!(status.status.success());
-    let run = quality(temp.path(), &["hooks", "run", "commit-msg", "message.txt"]);
+    let sensitive_argument = "https://token@example.com/repo.git";
+    let run = quality(
+        temp.path(),
+        &["hooks", "run", "commit-msg", sensitive_argument],
+    );
     assert!(
         run.status.success(),
         "{}",
@@ -1807,7 +1858,7 @@ fn hooks_install_run_status_and_uninstall_managed_launchers() {
     );
     assert_eq!(
         fs::read_to_string(temp.path().join("hook-arguments.txt")).unwrap(),
-        "configured\nmessage.txt\n"
+        format!("configured\n{sensitive_argument}\n")
     );
     let retained: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(temp.path().join(".git/quality/local-ci/latest.json")).unwrap(),
@@ -1816,6 +1867,8 @@ fn hooks_install_run_status_and_uninstall_managed_launchers() {
     assert_eq!(retained["hook"], "commit-msg");
     assert_eq!(retained["status"], "passed");
     assert!(retained["steps"][0].get("output").is_none());
+    assert_eq!(retained["steps"][0]["command"], "./record-hook configured");
+    assert!(!retained.to_string().contains("token@example.com"));
 
     let removed = quality(temp.path(), &["hooks", "uninstall"]);
     assert!(removed.status.success());
