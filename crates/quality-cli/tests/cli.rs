@@ -233,6 +233,37 @@ fn init_configures_installed_commitprompt_without_replacing_source_checks() {
 }
 
 #[test]
+fn init_imports_existing_pre_commit_and_pre_push_scripts() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "pre-commit": "lint-staged",
+    "pre-push": "pnpm run check && pnpm test"
+  }
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(config.contains("pre-commit:"));
+    assert!(config.contains("pre-push:"));
+    assert!(config.contains("- pre-commit"));
+    assert!(config.contains("- pre-push"));
+}
+
+#[test]
 fn doctor_distinguishes_disabled_checks_from_disabled_tools() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(
@@ -271,6 +302,51 @@ fn init_does_not_import_a_recursive_quality_script() {
     let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
     assert!(!config.contains("repository-check:"));
     assert!(!config.contains("check: false"));
+}
+
+#[test]
+fn init_does_not_import_a_recursive_local_ci_hook_script() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "scripts":{
+                "pre-push":"npm run --if-present local-gate",
+                "local-gate":"quality --root . ci local"
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(!config.contains("pre-push:"));
+    assert!(!config.contains("local-gate"));
+}
+
+#[test]
+fn local_ci_blocks_recursive_process_invocations() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: git\n        args: [--version]\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(temp.path())
+        .args(["ci", "local"])
+        .env("QUALITY_LOCAL_CI", "1")
+        .output()
+        .expect("quality should execute");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("recursive local CI invocation blocked")
+    );
 }
 
 #[test]
@@ -1441,6 +1517,246 @@ fn ci_shared_workflow_requires_pnpm_and_a_command() {
     );
 }
 
+#[test]
+fn ci_keeps_the_legacy_github_generator_syntax() {
+    let temp = tempfile::tempdir().unwrap();
+
+    let output = quality(temp.path(), &["ci", "--install", "./install-quality"]);
+
+    assert!(output.status.success());
+    assert!(temp.path().join(".github/workflows/quality.yml").exists());
+}
+
+#[test]
+fn ci_plan_classifies_pull_request_workflow_coverage() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Check project\n        command: pnpm\n        args: [run, validate]\n        covers: [pnpm run check]\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/ci.yml"),
+        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - name: Check project\n        run: pnpm run check\n      - name: Missing locally\n        if: true\n        run: pnpm run test\n      - name: GitHub context\n        if: github.actor != 'dependabot[bot]'\n        run: pnpm changeset status --since=origin/main\n",
+    )
+    .unwrap();
+
+    let output = quality(
+        temp.path(),
+        &["ci", "plan", "--hook", "pre-push", "--format", "json"],
+    );
+
+    assert!(output.status.success());
+    let plan: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["schema_version"], 1);
+    assert_eq!(plan["summary"]["local_steps"], 1);
+    assert_eq!(plan["summary"]["covered"], 1);
+    assert_eq!(plan["summary"]["github_only"], 2);
+    assert_eq!(plan["summary"]["uncovered"], 1);
+    assert_matches_published_schema(
+        &plan,
+        include_str!("../../../apps/site/public/quality-ci-plan.schema.json"),
+    );
+
+    let strict = quality(temp.path(), &["ci", "plan", "--strict"]);
+    assert_eq!(strict.status.code(), Some(1));
+}
+
+#[test]
+fn ci_plan_rejects_invalid_covered_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: pnpm\n        args: [run, validate]\n        covers:\n          - |\n            pnpm run check\n            pnpm test\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["ci", "plan"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("must be one non-empty line"));
+}
+
+#[test]
+fn ci_plan_does_not_equate_literal_arguments_with_shell_expansion() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: test\n        args: [-n, '$TOKEN']\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/ci.yml"),
+        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - run: 'test -n \"$TOKEN\"'\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["ci", "plan", "--format", "json"]);
+
+    assert!(output.status.success());
+    let plan: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["summary"]["covered"], 0);
+    assert_eq!(plan["summary"]["uncovered"], 1);
+}
+
+#[test]
+fn ci_plan_resolves_inherited_directories_without_ignoring_env_or_shell() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: pnpm\n        args: [run, check]\n        working_directory: packages/app\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/context.yml"),
+        "name: Context\non: [pull_request]\njobs:\n  inherited-directory:\n    defaults:\n      run:\n        working-directory: packages/app\n    steps:\n      - run: pnpm run check\n  static-env:\n    env:\n      MODE: strict\n    steps:\n      - run: pnpm run check\n  expression-env:\n    env:\n      TOKEN: ${{ github.token }}\n    steps:\n      - run: pnpm run check\n  custom-shell:\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: pnpm run check\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join(".github/workflows/workflow-default.yml"),
+        "name: Workflow default\non: [pull_request]\ndefaults:\n  run:\n    working-directory: packages/app\njobs:\n  inherited-directory:\n    steps:\n      - run: pnpm run check\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["ci", "plan", "--format", "json"]);
+
+    assert!(output.status.success());
+    let plan: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["summary"]["covered"], 2);
+    assert_eq!(plan["summary"]["uncovered"], 2);
+    assert_eq!(plan["summary"]["github_only"], 1);
+    assert!(
+        plan["workflow_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| {
+                step["detail"] == "workflow environment is not represented by the local hook"
+            })
+    );
+    assert!(
+        plan["workflow_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| {
+                step["detail"] == "workflow shell is not represented by the local hook"
+            })
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let failure = temp.path().join("fail-check");
+    let success = temp.path().join("pass-check");
+    fs::write(
+        &failure,
+        "#!/bin/sh\necho 'src/app.ts:4: broken check' >&2\nexit 7\n",
+    )
+    .unwrap();
+    fs::write(&success, "#!/bin/sh\nprintf 'ran\\n' > focused-rerun.txt\n").unwrap();
+    fs::set_permissions(&failure, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&success, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Failing check\n        command: ./fail-check\n      - name: Passing check\n        command: ./pass-check\n",
+    )
+    .unwrap();
+
+    let failed = quality(
+        temp.path(),
+        &["ci", "local", "--report", "local-ci.json", "--no-history"],
+    );
+
+    assert_eq!(failed.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&failed.stdout);
+    assert!(stdout.contains("command exited with code 7"));
+    assert!(stdout.contains("src/app.ts:4: broken check"));
+    assert!(stdout.contains("quality ci local --hook pre-push --step 1"));
+    assert!(stdout.contains("wall time"));
+    assert!(!temp.path().join("focused-rerun.txt").exists());
+    let report: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(temp.path().join("local-ci.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["status"], "failed");
+    assert_eq!(report["steps"][0]["exit_code"], 7);
+    assert_eq!(report["steps"][1]["status"], "skipped");
+    assert_matches_published_schema(
+        &report,
+        include_str!("../../../apps/site/public/quality-local-ci.schema.json"),
+    );
+
+    let bounded = quality(
+        temp.path(),
+        &[
+            "ci",
+            "local",
+            "--format",
+            "json",
+            "--max-output-bytes",
+            "8",
+            "--no-history",
+        ],
+    );
+    assert_eq!(bounded.status.code(), Some(1));
+    let bounded_report: serde_json::Value = serde_json::from_slice(&bounded.stdout).unwrap();
+    assert_eq!(bounded_report["steps"][0]["output_truncated"], true);
+    assert!(bounded_report["steps"][0]["output"].as_str().unwrap().len() <= 8);
+
+    let focused = quality(temp.path(), &["ci", "local", "--step", "2", "--no-history"]);
+    assert!(focused.status.success());
+    assert_eq!(
+        fs::read_to_string(temp.path().join("focused-rerun.txt")).unwrap(),
+        "ran\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ci_local_stops_waiting_when_a_descendant_keeps_output_pipes_open() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    let temp = tempfile::tempdir().unwrap();
+    let command = temp.path().join("spawn-background");
+    fs::write(
+        &command,
+        "#!/bin/sh\nprintf 'direct child done\\n'\nsleep 3 &\n",
+    )
+    .unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: ./spawn-background\n",
+    )
+    .unwrap();
+
+    let started = Instant::now();
+    let output = quality(
+        temp.path(),
+        &["ci", "local", "--format", "json", "--no-history"],
+    );
+
+    assert!(output.status.success());
+    assert!(started.elapsed() < Duration::from_secs(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        report["steps"][0]["output"]
+            .as_str()
+            .unwrap()
+            .contains("direct child done")
+    );
+    assert_eq!(report["steps"][0]["output_truncated"], true);
+}
+
 #[cfg(unix)]
 #[test]
 fn first_run_init_doctor_and_check_work_without_global_tools() {
@@ -1636,7 +1952,11 @@ fn hooks_install_run_status_and_uninstall_managed_launchers() {
 
     let status = quality(temp.path(), &["hooks", "status"]);
     assert!(status.status.success());
-    let run = quality(temp.path(), &["hooks", "run", "commit-msg", "message.txt"]);
+    let sensitive_argument = "https://token@example.com/repo.git";
+    let run = quality(
+        temp.path(),
+        &["hooks", "run", "commit-msg", sensitive_argument],
+    );
     assert!(
         run.status.success(),
         "{}",
@@ -1644,8 +1964,17 @@ fn hooks_install_run_status_and_uninstall_managed_launchers() {
     );
     assert_eq!(
         fs::read_to_string(temp.path().join("hook-arguments.txt")).unwrap(),
-        "configured\nmessage.txt\n"
+        format!("configured\n{sensitive_argument}\n")
     );
+    let retained: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(temp.path().join(".git/quality/local-ci/latest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(retained["hook"], "commit-msg");
+    assert_eq!(retained["status"], "passed");
+    assert!(retained["steps"][0].get("output").is_none());
+    assert_eq!(retained["steps"][0]["command"], "./record-hook configured");
+    assert!(!retained.to_string().contains("token@example.com"));
 
     let removed = quality(temp.path(), &["hooks", "uninstall"]);
     assert!(removed.status.success());

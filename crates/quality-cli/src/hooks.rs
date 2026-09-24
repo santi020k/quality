@@ -1,11 +1,10 @@
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use anyhow::{Context, Result};
 
-use crate::config::{Config, HookStepConfig};
+use crate::config::Config;
 
 const MARKER: &str = "# Managed by quality. Do not edit.";
 
@@ -94,46 +93,6 @@ pub fn uninstall(root: &Path, config: &Config) -> Result<()> {
                 .with_context(|| format!("could not remove {}", path.display()))?;
             println!("Removed {event}");
         }
-    }
-    Ok(())
-}
-
-pub fn run(root: &Path, config: &Config, event: &str, hook_args: &[OsString]) -> Result<()> {
-    let hook = config
-        .hooks
-        .get(event)
-        .with_context(|| format!("hook `{event}` is not configured in quality.yml"))?;
-    for (index, step) in hook.steps.iter().enumerate() {
-        let name = step
-            .name
-            .as_deref()
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("{} {}", step.command.display(), step.args.join(" ")));
-        println!("[{event}] {name}");
-        run_step(root, step, hook_args)
-            .with_context(|| format!("step {} (`{name}`) failed in hook `{event}`", index + 1))?;
-    }
-    Ok(())
-}
-
-fn run_step(root: &Path, step: &HookStepConfig, hook_args: &[OsString]) -> Result<()> {
-    let directory = step
-        .working_directory
-        .as_ref()
-        .map_or_else(|| root.to_path_buf(), |path| root.join(path));
-    let mut command = Command::new(&step.command);
-    command.args(&step.args).current_dir(directory);
-    if step.pass_hook_args {
-        command.args(hook_args);
-    }
-    command.stdin(Stdio::inherit());
-    command.stdout(Stdio::inherit());
-    command.stderr(Stdio::inherit());
-    let status = command
-        .status()
-        .with_context(|| format!("could not run `{}`", step.command.display()))?;
-    if !status.success() {
-        anyhow::bail!("command exited with {status}");
     }
     Ok(())
 }

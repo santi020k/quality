@@ -161,6 +161,9 @@ pub struct HookStepConfig {
     pub working_directory: Option<PathBuf>,
     #[serde(default)]
     pub pass_hook_args: bool,
+    /// GitHub Actions `run:` commands this wrapper step explicitly covers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub covers: Vec<String>,
 }
 
 fn enabled_by_default() -> bool {
@@ -298,6 +301,15 @@ impl Config {
                 }
                 if let Some(directory) = &step.working_directory {
                     validate_working_directory(event, directory)?;
+                }
+                for covered in &step.covers {
+                    if covered.trim().is_empty() || covered.contains('\n') || covered.contains('\r')
+                    {
+                        anyhow::bail!(
+                            "covered command in step {} of hook `{event}` must be one non-empty line",
+                            index + 1
+                        );
+                    }
                 }
             }
         }
@@ -476,6 +488,9 @@ pub fn merge_preset_text_with_gate(
             config.hooks.insert("commit-msg".to_owned(), hook);
         }
     }
+    for (event, hook) in detect_repository_hooks(project) {
+        config.hooks.entry(event).or_insert(hook);
+    }
     let mut text = String::from(
         "# yaml-language-server: $schema=https://quality.santi020k.com/quality.schema.json\n\
          # cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint\n\
@@ -522,6 +537,7 @@ fn policy_text_with_tools(
     if let Some(hook) = detect_commitprompt_hook(project) {
         hooks.insert("commit-msg".to_owned(), hook);
     }
+    hooks.extend(detect_repository_hooks(project));
     let config = Config {
         tools,
         tasks,
@@ -665,8 +681,54 @@ fn detect_commitprompt_hook(project: &Project) -> Option<HookConfig> {
             args,
             working_directory: None,
             pass_hook_args: true,
+            covers: Vec::new(),
         }],
     })
+}
+
+fn detect_repository_hooks(project: &Project) -> BTreeMap<String, HookConfig> {
+    let path = project.root.join("package.json");
+    let Some(manifest) = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+    else {
+        return BTreeMap::new();
+    };
+    let Some(scripts) = manifest
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return BTreeMap::new();
+    };
+    let manager = package_manager(project, &manifest);
+    [
+        ("pre-commit", ["pre-commit", "precommit"]),
+        ("pre-push", ["pre-push", "prepush"]),
+    ]
+    .into_iter()
+    .filter_map(|(event, candidates)| {
+        let script = candidates.into_iter().find(|candidate| {
+            scripts
+                .get(*candidate)
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+                && !script_invokes_local_ci(scripts, candidate, &mut BTreeSet::new())
+        })?;
+        Some((
+            event.to_owned(),
+            HookConfig {
+                steps: vec![HookStepConfig {
+                    name: Some(format!("Run {event} checks")),
+                    command: PathBuf::from(manager),
+                    args: vec!["run".to_owned(), script.to_owned()],
+                    working_directory: None,
+                    pass_hook_args: false,
+                    covers: Vec::new(),
+                }],
+            },
+        ))
+    })
+    .collect()
 }
 
 fn package_manager<'a>(project: &Project, manifest: &'a serde_json::Value) -> &'a str {
@@ -717,6 +779,50 @@ fn script_invokes_quality(
     invokes_quality
 }
 
+fn script_invokes_local_ci(
+    scripts: &serde_json::Map<String, serde_json::Value>,
+    script: &str,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    if !visiting.insert(script.to_owned()) {
+        return false;
+    }
+    let invokes_local_ci = scripts
+        .get(script)
+        .and_then(|value| value.as_str())
+        .is_some_and(|command| {
+            invokes_local_ci_command(command)
+                || scripts.keys().any(|dependency| {
+                    command_invokes_script(command, dependency)
+                        && script_invokes_local_ci(scripts, dependency, visiting)
+                })
+        });
+    visiting.remove(script);
+    invokes_local_ci
+}
+
+fn invokes_local_ci_command(command: &str) -> bool {
+    let tokens = command
+        .split(|character: char| {
+            character.is_ascii_whitespace()
+                || matches!(character, ';' | '&' | '|' | '(' | ')' | '"' | '\'')
+        })
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let quality = tokens.iter().position(|token| {
+        std::path::Path::new(token)
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|name| matches!(name, "quality" | "quality-cli"))
+            || *token == "quality-cli"
+    });
+    quality.is_some_and(|index| {
+        tokens[index + 1..]
+            .windows(2)
+            .any(|pair| matches!(pair, ["ci", "local"] | ["hooks", "run"]))
+    })
+}
+
 fn command_invokes_script(command: &str, script: &str) -> bool {
     let tokens: Vec<_> = command
         .split(|character: char| {
@@ -725,12 +831,11 @@ fn command_invokes_script(command: &str, script: &str) -> bool {
         })
         .filter(|token| !token.is_empty())
         .collect();
-    tokens
+    tokens.iter().enumerate().any(|(index, token)| {
+        matches!(*token, "run" | "run-script") && tokens[index + 1..].contains(&script)
+    }) || tokens
         .windows(2)
-        .any(|tokens| tokens[0] == "run" && tokens[1] == script)
-        || tokens
-            .windows(2)
-            .any(|tokens| matches!(tokens[0], "yarn" | "pnpm" | "bun") && tokens[1] == script)
+        .any(|tokens| matches!(tokens[0], "yarn" | "pnpm" | "bun") && tokens[1] == script)
 }
 
 #[cfg(test)]

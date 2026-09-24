@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-ci-plan.schema.json",
+  "title": "quality local CI plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "hook", "local_steps", "workflow_steps", "summary"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "hook": { "type": "string" },
+    "local_steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/localStep" }
+    },
+    "workflow_steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowStep" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_steps", "covered", "github_only", "uncovered"],
+      "properties": {
+        "local_steps": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "github_only": { "type": "integer", "minimum": 0 },
+        "uncovered": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "localStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "name", "command"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "command": { "type": "string" },
+        "working_directory": { "type": "string" },
+        "covers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "workflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "job", "name", "status", "detail"],
+      "properties": {
+        "workflow": { "type": "string" },
+        "job": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "enum": ["covered", "github_only", "uncovered"] },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

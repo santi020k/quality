@@ -122,6 +122,8 @@ quality baseline create # Record existing findings and block new regressions
 quality completions zsh # Generate native shell completions
 quality instructions --format agents # Print a section for a repository AGENTS.md
 quality ci github --install '…' # Generate a runnable GitHub Actions workflow
+quality ci plan        # Compare PR workflow steps with the local pre-push gate
+quality ci local       # Run and time the local pre-push gate
 quality hooks install   # Install the Git hooks declared in quality.yml
 quality hooks status    # Verify that every configured hook is installed
 ```
@@ -421,6 +423,36 @@ from repository files, including Actionlint when its use is detected:
 quality ci github --install \
   'cargo install --git https://github.com/your-org/quality --tag v1.1.2 --locked'
 ```
+
+Run the configured `pre-push` gate before spending a GitHub-hosted runner:
+
+```bash
+quality ci plan
+quality ci plan --strict
+quality ci local
+quality ci local --step 2
+quality ci local --hook pre-commit
+```
+
+`ci plan` inventories pull-request workflows and marks exact local-command
+matches as covered, `uses:` actions and GitHub expressions as GitHub-only, and
+plain `run:` commands missing from the selected hook as uncovered. `ci local`
+runs hook steps in order, reports wall time for every step, retains bounded
+failure output, and prints a focused rerun command. Git hooks use the same timed
+runner automatically. `quality init` and presets import existing `pre-commit`,
+`precommit`, `pre-push`, or `prepush` package scripts without replacing a hook
+already present in `quality.yml`. Wrapper steps can declare exact workflow
+commands under `covers` so the planner records intentional equivalence without
+guessing from script names.
+
+The latest 20 metadata-only runs are retained under `.git/quality/local-ci/`;
+output is omitted from automatic history. Pass `--report PATH` when a complete,
+versioned JSON report is needed. That explicit report can contain command
+output and should not be committed when checks may print sensitive data.
+
+Local execution is an early feedback gate, not proof of the GitHub environment.
+Hosted actions, secrets, permissions, services, deployments, releases, and the
+authoritative check for the exact pushed commit remain in GitHub Actions.
 
 ## Design direction
 

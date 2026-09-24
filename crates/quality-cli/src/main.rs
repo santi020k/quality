@@ -4,6 +4,7 @@ mod changes;
 mod cli;
 mod config;
 mod hooks;
+mod local_ci;
 mod output;
 mod presets;
 mod project;
@@ -18,7 +19,7 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 
 use crate::cli::{
-    AdapterSelection, BaselineCommand, CiProvider, Cli, Command, HooksCommand, InstructionsFormat,
+    AdapterSelection, BaselineCommand, CiCommand, Cli, Command, HooksCommand, InstructionsFormat,
     PresetCommand,
 };
 use crate::config::Config;
@@ -214,13 +215,18 @@ fn run() -> Result<()> {
             }
         }
         Command::Ci {
-            provider,
-            force,
-            install,
-            shared_ref,
             command,
-        } => match provider {
-            CiProvider::Github => {
+            force: legacy_force,
+            install: legacy_install,
+            shared_ref: legacy_shared_ref,
+            shared_command: legacy_shared_command,
+        } => match command {
+            Some(CiCommand::Github {
+                force,
+                install,
+                shared_ref,
+                command,
+            }) => {
                 let path = generate_github_workflow(
                     &root,
                     &project,
@@ -228,6 +234,70 @@ fn run() -> Result<()> {
                     install.as_deref(),
                     shared_ref.as_deref(),
                     command.as_deref(),
+                )?;
+                println!("Created {}", display_path(&path));
+            }
+            Some(CiCommand::Plan {
+                hook,
+                format,
+                strict,
+            }) => {
+                let config = Config::load_or_default(&root)?;
+                let plan = local_ci::plan(&root, &config, &hook)?;
+                local_ci::print_plan(&plan, format)?;
+                if strict && plan.summary.uncovered > 0 {
+                    std::process::exit(1);
+                }
+            }
+            Some(CiCommand::Local {
+                hook,
+                step,
+                format,
+                report,
+                no_history,
+                max_output_bytes,
+                args,
+            }) => {
+                let config = Config::load_or_default(&root)?;
+                let report_data = local_ci::execute(
+                    &root,
+                    &config,
+                    &hook,
+                    step.map(std::num::NonZeroUsize::get),
+                    &args,
+                    max_output_bytes.get(),
+                    matches!(format, cli::CiOutputFormat::Pretty),
+                )?;
+                if let Some(path) = report {
+                    let path = if path.is_absolute() {
+                        path
+                    } else {
+                        root.join(path)
+                    };
+                    local_ci::write_report(&report_data, &path)?;
+                    eprintln!("Wrote local CI report to {}", display_path(&path));
+                }
+                if !no_history {
+                    retain_local_ci_history(&root, &config, &report_data);
+                }
+                local_ci::print_report(&report_data, format)?;
+                if !report_data.passed() {
+                    std::process::exit(1);
+                }
+            }
+            None => {
+                if legacy_install.is_none() && legacy_shared_ref.is_none() {
+                    anyhow::bail!(
+                        "missing CI command; use `quality ci github --install COMMAND` or `quality ci plan`"
+                    );
+                }
+                let path = generate_github_workflow(
+                    &root,
+                    &project,
+                    legacy_force,
+                    legacy_install.as_deref(),
+                    legacy_shared_ref.as_deref(),
+                    legacy_shared_command.as_deref(),
                 )?;
                 println!("Created {}", display_path(&path));
             }
@@ -276,7 +346,15 @@ fn run() -> Result<()> {
                 HooksCommand::Install => hooks::install(&root, &config)?,
                 HooksCommand::Status => hooks::status(&root, &config)?,
                 HooksCommand::Uninstall => hooks::uninstall(&root, &config)?,
-                HooksCommand::Run { event, args } => hooks::run(&root, &config, &event, &args)?,
+                HooksCommand::Run { event, args } => {
+                    let report =
+                        local_ci::execute(&root, &config, &event, None, &args, 1024 * 1024, true)?;
+                    retain_local_ci_history(&root, &config, &report);
+                    local_ci::print_report(&report, cli::CiOutputFormat::Pretty)?;
+                    if !report.passed() {
+                        std::process::exit(1);
+                    }
+                }
             }
         }
     }
@@ -336,6 +414,16 @@ fn present_run(
         eprintln!("Wrote SARIF report to {}", display_path(&report_path));
     }
     output::print_run(run_report, format, report_level, fail_level)
+}
+
+fn retain_local_ci_history(
+    root: &std::path::Path,
+    config: &Config,
+    report: &local_ci::LocalCiReport,
+) {
+    if let Err(error) = local_ci::retain_report(root, config, report) {
+        eprintln!("Warning: could not retain local CI history: {error:#}");
+    }
 }
 
 fn generate_github_workflow(

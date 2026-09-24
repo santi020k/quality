@@ -64,3 +64,5 @@ hooks:
       - run
       - pre-push
       pass_hook_args: false
+      covers:
+      - pnpm run ci

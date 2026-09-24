@@ -64,7 +64,9 @@ should block on stale output without silently modifying tracked files.
 
 This design lets teams add repository-specific steps without editing generated
 hook files or depending on Node.js. Steps run sequentially and stop at the
-first failure. The lifecycle is `quality hooks install`,
+first failure. Every managed hook run also reports per-step and total wall time,
+retains metadata-only history under the Git directory, and provides a focused
+rerun command after a failure. The lifecycle is `quality hooks install`,
 `quality hooks status`, and `quality hooks uninstall`; changing steps will not
 require reinstalling the managed hooks.
 
@@ -78,6 +80,11 @@ manager's `core.hooksPath` setting before installing, or invoke
 `quality hooks run <event>` from that manager manually. Local hooks remain an
 early feedback mechanism; protected CI checks remain the authoritative quality
 gate.
+
+Use `quality ci plan` to compare pull-request workflow commands with the
+configured `pre-push` gate, and `quality ci local` to run that gate explicitly.
+See [Local CI and PR gates](/local-ci/) for the coverage boundary and reporting
+contract.
 
 ## Supported output
 

@@ -80,6 +80,27 @@ so that script remains the source of truth without sacrificing `quality
 format` or `quality fix`. If no composite script exists, `typecheck` or
 `type-check` is imported separately and analyzers continue to check normally.
 
+## Git hook steps
+
+Hook behavior stays in version-controlled configuration:
+
+```yaml
+hooks:
+  pre-push:
+    steps:
+      - name: Run local validation
+        command: pnpm
+        args: [run, pre-push]
+        pass_hook_args: false
+        covers: [pnpm run ci]
+```
+
+`pass_hook_args` forwards arguments supplied by Git. `covers` lists exact
+GitHub Actions `run:` commands that a broader wrapper intentionally includes;
+it changes `quality ci plan` coverage only and never changes what is executed.
+Commands must be non-empty single lines. See [Local CI and PR gates](/local-ci/)
+for execution and reporting behavior.
+
 ## Validation
 
 Unknown keys are rejected instead of silently ignored. Common typos include a suggestion so configuration mistakes fail early and clearly.
