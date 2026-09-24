@@ -26,7 +26,13 @@ export function releaseNotesForVersion(contents, targetVersion) {
 }
 
 export function mergeReleaseNotes(notes) {
-  const sections = new Map();
+  const headingOrder = new Map();
+  const entries = new Map();
+  const headingPriority = new Map([
+    ["Major Changes", 3],
+    ["Minor Changes", 2],
+    ["Patch Changes", 1],
+  ]);
 
   for (const note of notes) {
     for (const section of note.split(/^### /m).slice(1)) {
@@ -34,22 +40,38 @@ export function mergeReleaseNotes(notes) {
       if (headingEnd === -1) continue;
 
       const heading = section.slice(0, headingEnd).trim();
-      const entries = section
+      if (!headingOrder.has(heading)) headingOrder.set(heading, headingOrder.size);
+
+      const sectionEntries = section
         .slice(headingEnd + 1)
         .trim()
         .split(/\n\n(?=- )/)
         .filter(Boolean);
-      const mergedEntries = sections.get(heading) ?? [];
 
-      for (const entry of entries) {
-        if (!mergedEntries.includes(entry)) mergedEntries.push(entry);
+      for (const entry of sectionEntries) {
+        const existingHeading = entries.get(entry);
+        if (
+          !existingHeading ||
+          (headingPriority.get(heading) ?? 0) > (headingPriority.get(existingHeading) ?? 0)
+        ) {
+          entries.set(entry, heading);
+        }
       }
-      sections.set(heading, mergedEntries);
     }
   }
 
-  return [...sections]
-    .map(([heading, entries]) => `### ${heading}\n\n${entries.join("\n\n")}`)
+  return [...headingOrder.keys()]
+    .sort(
+      (left, right) =>
+        (headingPriority.get(right) ?? 0) - (headingPriority.get(left) ?? 0) ||
+        (headingOrder.get(left) ?? 0) - (headingOrder.get(right) ?? 0),
+    )
+    .map((heading) => [heading, [...entries].filter(([, value]) => value === heading)])
+    .filter(([, headingEntries]) => headingEntries.length > 0)
+    .map(
+      ([heading, headingEntries]) =>
+        `### ${heading}\n\n${headingEntries.map(([entry]) => entry).join("\n\n")}`,
+    )
     .join("\n\n");
 }
 

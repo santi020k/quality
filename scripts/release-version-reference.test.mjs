@@ -72,3 +72,14 @@ test("merges and deduplicates release notes from multiple packages", () => {
     `### Patch Changes\n\n${shared}\n\n- CLI-only release fix.`,
   );
 });
+
+test("keeps shared release notes under the highest package change type", () => {
+  const shared = "- Shared contract change.";
+  const actionNotes = `### Patch Changes\n\n${shared}`;
+  const cliNotes = `### Minor Changes\n\n${shared}\n\n- CLI-only feature.`;
+
+  assert.equal(
+    mergeReleaseNotes([actionNotes, cliNotes]),
+    `### Minor Changes\n\n${shared}\n\n- CLI-only feature.`,
+  );
+});
