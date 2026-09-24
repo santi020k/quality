@@ -823,7 +823,7 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
     let fake = temp.path().join("custom-lint");
     fs::write(
         &fake,
-        "#!/bin/sh\necho 'failed without diagnostics'\necho 'stack frame one'\necho 'stack frame two'\nexit 1\n",
+        "#!/bin/sh\nprintf '\\n\\n\\n\\n\\n\\n\\n\\n\\nfailed without diagnostics\\nstack frame one\\nstack frame two\\n'\nexit 1\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&fake).unwrap().permissions();
@@ -2960,6 +2960,27 @@ fn doctor_reports_preset_compatibility_and_setup_guidance() {
     let setup = quality(temp.path(), &["preset", "setup"]);
     assert!(setup.status.success());
     assert!(String::from_utf8_lossy(&setup.stdout).contains("rustup component add rustfmt clippy"));
+
+    let metadata_path = temp.path().join(".quality-preset.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&metadata_path).unwrap()).unwrap();
+    fs::create_dir(temp.path().join("stale")).unwrap();
+    for index in 0..51 {
+        let path = format!("stale/issue-{index:02}");
+        fs::write(temp.path().join(&path), "stale\n").unwrap();
+        metadata["managed_files"][path] = serde_json::json!("outdated");
+    }
+    fs::write(
+        &metadata_path,
+        format!("{}\n", serde_json::to_string_pretty(&metadata).unwrap()),
+    )
+    .unwrap();
+
+    let bounded = quality(temp.path(), &["doctor", "--format", "agent"]);
+    assert!(bounded.status.success());
+    let stdout = String::from_utf8_lossy(&bounded.stdout);
+    assert_eq!(stdout.matches("- D stale/issue-").count(), 50);
+    assert!(stdout.contains("additional preset issues omitted"));
 }
 
 #[test]

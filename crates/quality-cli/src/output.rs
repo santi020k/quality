@@ -314,10 +314,11 @@ fn render_agent_run(
         output.push_str("\n## Unstructured failure output\n");
         for result in raw_failures.iter().take(shown_raw_failures) {
             let _ = writeln!(output, "\n### {}\n", agent_text(&result.name, 120));
-            for line in result.output.lines().take(AGENT_OUTPUT_LINE_LIMIT) {
+            let mut lines = result.output.lines().filter(|line| !line.trim().is_empty());
+            for line in lines.by_ref().take(AGENT_OUTPUT_LINE_LIMIT) {
                 let _ = writeln!(output, "    {}", agent_text(line, 240));
             }
-            if result.output.lines().count() > AGENT_OUTPUT_LINE_LIMIT || result.output_truncated {
+            if lines.next().is_some() || result.output_truncated {
                 output.push_str("    [additional output omitted]\n");
             }
         }
@@ -465,6 +466,13 @@ fn render_agent_doctor(report: &DoctorReport) -> String {
         );
         for issue in preset.issues.iter().take(AGENT_TOOL_LIMIT) {
             let _ = writeln!(output, "- {}", agent_text(issue, AGENT_TEXT_LIMIT));
+        }
+        if preset.issues.len() > AGENT_TOOL_LIMIT {
+            let _ = writeln!(
+                output,
+                "\n_{} additional preset issues omitted; use `--format json` for the complete report._",
+                preset.issues.len() - AGENT_TOOL_LIMIT
+            );
         }
     }
 
