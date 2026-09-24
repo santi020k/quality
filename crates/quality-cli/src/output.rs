@@ -16,6 +16,7 @@ const AGENT_OUTPUT_LINE_LIMIT: usize = 8;
 const AGENT_TEXT_LIMIT: usize = 500;
 const AGENT_SELECTION_LIMIT: usize = 8;
 const AGENT_SELECTION_ID_LIMIT: usize = 40;
+const AGENT_RERUN_ID_LIMIT: usize = 240;
 
 pub fn print_run(
     report: &RunReport,
@@ -329,11 +330,18 @@ fn render_agent_run(
             rerun_adapters.insert(result.tool.split('@').next().unwrap_or(&result.tool));
         }
     }
-    let shown_reruns = rerun_adapters.len().min(remaining_tool_entries);
+    let eligible_reruns = rerun_adapters
+        .iter()
+        .filter(|adapter| adapter.chars().count() <= AGENT_RERUN_ID_LIMIT)
+        .collect::<Vec<_>>();
+    let shown_reruns = eligible_reruns.len().min(remaining_tool_entries);
     if shown_reruns > 0 {
         output.push_str("\n## Focused reruns\n\n");
         let defaults = crate::runner::ExecutionSettings::default();
         let mut execution = String::new();
+        if report.execution.jobs != defaults.jobs {
+            let _ = write!(execution, " --jobs {}", report.execution.jobs);
+        }
         if let Some(timeout_seconds) = report.execution.timeout_seconds {
             let _ = write!(execution, " --timeout-seconds {timeout_seconds}");
         }
@@ -361,7 +369,7 @@ fn render_agent_run(
             .and_then(|scope| scope.rerun_base.as_deref())
             .map(|base| format!(" --changed {}", agent_code(base, usize::MAX)))
             .unwrap_or_default();
-        for adapter in rerun_adapters.iter().take(shown_reruns) {
+        for adapter in eligible_reruns.into_iter().take(shown_reruns) {
             let _ = writeln!(
                 output,
                 "- `quality {}{}{}{} --only {}`",
@@ -369,7 +377,7 @@ fn render_agent_run(
                 execution,
                 thresholds,
                 changed,
-                agent_code(adapter, usize::MAX)
+                agent_code(adapter, AGENT_RERUN_ID_LIMIT)
             );
         }
         shown_tool_entries += shown_reruns;

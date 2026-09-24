@@ -831,10 +831,12 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
     permissions.set_mode(0o755);
     fs::set_permissions(&fake, permissions).unwrap();
     let adapter = "a".repeat(121);
+    let overlong_adapter = "b".repeat(300);
     fs::write(
         temp.path().join("quality.yml"),
         format!(
-            "version: 1\noutput: pretty\ntools: {{}}\ncustom:\n  {adapter}:\n    command: {}\n    extensions: [acme]\n",
+            "version: 1\noutput: pretty\ntools: {{}}\ncustom:\n  {adapter}:\n    command: {}\n    extensions: [acme]\n  {overlong_adapter}:\n    command: {}\n    extensions: [acme]\n",
+            fake.display(),
             fake.display()
         ),
     )
@@ -849,6 +851,8 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
     assert!(stdout.contains("stack frame one"));
     assert!(stdout.contains("stack frame two"));
     assert!(!stdout.contains(&format!("--only {}…", &adapter[..120])));
+    assert!(!stdout.contains(&format!("--only {overlong_adapter}")));
+    assert!(stdout.contains("1 additional tool entries omitted"));
 }
 
 #[cfg(unix)]
@@ -1134,6 +1138,8 @@ fn agent_rerun_preserves_changed_scope() {
             "9",
             "--max-output-bytes",
             "2048",
+            "--jobs",
+            "97",
             "--format",
             "agent",
         ],
@@ -1149,7 +1155,7 @@ fn agent_rerun_preserves_changed_scope() {
         .unwrap();
     let head = String::from_utf8(head.stdout).unwrap();
     assert!(stdout.contains(&format!(
-        "`quality check --timeout-seconds 9 --max-output-bytes 2048 --report-level warning --fail-level error --changed {} --only swiftlint`",
+        "`quality check --jobs 97 --timeout-seconds 9 --max-output-bytes 2048 --report-level warning --fail-level error --changed {} --only swiftlint`",
         head.trim()
     )));
     assert!(!stdout.contains("--changed base;echo"));
