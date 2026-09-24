@@ -305,6 +305,28 @@ fn init_does_not_import_a_recursive_quality_script() {
 }
 
 #[test]
+fn init_does_not_import_a_recursive_local_ci_hook_script() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("package.json"),
+        r#"{
+            "scripts":{
+                "pre-push":"pnpm run local-gate",
+                "local-gate":"quality ci local"
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["init"]);
+
+    assert!(output.status.success());
+    let config = fs::read_to_string(temp.path().join("quality.yml")).unwrap();
+    assert!(!config.contains("pre-push:"));
+    assert!(!config.contains("local-gate"));
+}
+
+#[test]
 fn init_imports_typecheck_when_there_is_no_composite_gate() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(

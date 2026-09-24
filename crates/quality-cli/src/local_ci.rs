@@ -947,7 +947,7 @@ fn mapping_value<'a>(value: &'a serde_yaml::Value, key: &str) -> Option<&'a serd
 }
 
 fn normalize_command(command: &str) -> String {
-    command.split_whitespace().collect::<Vec<_>>().join(" ")
+    command.replace("\r\n", "\n").trim().to_owned()
 }
 
 #[cfg(test)]
@@ -1006,5 +1006,14 @@ mod tests {
             rerun_command("commit-msg", 1, true),
             "quality ci local --hook commit-msg --step 1 -- <git-hook-args>"
         );
+    }
+
+    #[test]
+    fn command_normalization_preserves_semantic_whitespace() {
+        assert_ne!(
+            normalize_command(r#"printf "a  b""#),
+            normalize_command(r#"printf "a b""#)
+        );
+        assert_eq!(normalize_command("pnpm run check\r\n"), "pnpm run check");
     }
 }

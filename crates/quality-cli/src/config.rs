@@ -712,6 +712,7 @@ fn detect_repository_hooks(project: &Project) -> BTreeMap<String, HookConfig> {
                 .get(*candidate)
                 .and_then(serde_json::Value::as_str)
                 .is_some()
+                && !script_invokes_local_ci(scripts, candidate, &mut BTreeSet::new())
         })?;
         Some((
             event.to_owned(),
@@ -776,6 +777,29 @@ fn script_invokes_quality(
         });
     visiting.remove(script);
     invokes_quality
+}
+
+fn script_invokes_local_ci(
+    scripts: &serde_json::Map<String, serde_json::Value>,
+    script: &str,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
+    if !visiting.insert(script.to_owned()) {
+        return false;
+    }
+    let invokes_local_ci = scripts
+        .get(script)
+        .and_then(|value| value.as_str())
+        .is_some_and(|command| {
+            command.contains("quality ci local")
+                || command.contains("quality hooks run")
+                || scripts.keys().any(|dependency| {
+                    command_invokes_script(command, dependency)
+                        && script_invokes_local_ci(scripts, dependency, visiting)
+                })
+        });
+    visiting.remove(script);
+    invokes_local_ci
 }
 
 fn command_invokes_script(command: &str, script: &str) -> bool {
