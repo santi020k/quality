@@ -791,8 +791,7 @@ fn script_invokes_local_ci(
         .get(script)
         .and_then(|value| value.as_str())
         .is_some_and(|command| {
-            command.contains("quality ci local")
-                || command.contains("quality hooks run")
+            invokes_local_ci_command(command)
                 || scripts.keys().any(|dependency| {
                     command_invokes_script(command, dependency)
                         && script_invokes_local_ci(scripts, dependency, visiting)
@@ -800,6 +799,28 @@ fn script_invokes_local_ci(
         });
     visiting.remove(script);
     invokes_local_ci
+}
+
+fn invokes_local_ci_command(command: &str) -> bool {
+    let tokens = command
+        .split(|character: char| {
+            character.is_ascii_whitespace()
+                || matches!(character, ';' | '&' | '|' | '(' | ')' | '"' | '\'')
+        })
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let quality = tokens.iter().position(|token| {
+        std::path::Path::new(token)
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|name| matches!(name, "quality" | "quality-cli"))
+            || *token == "quality-cli"
+    });
+    quality.is_some_and(|index| {
+        tokens[index + 1..]
+            .windows(2)
+            .any(|pair| matches!(pair, ["ci", "local"] | ["hooks", "run"]))
+    })
 }
 
 fn command_invokes_script(command: &str, script: &str) -> bool {

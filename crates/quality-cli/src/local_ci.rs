@@ -921,9 +921,7 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
         return Some("job uses a GitHub job container");
     }
     if mapping_value(job, "if").is_some()
-        || mapping_value(job, "runs-on")
-            .and_then(serde_yaml::Value::as_str)
-            .is_some_and(|runner| runner.contains("${{"))
+        || mapping_value(job, "runs-on").is_some_and(contains_expression)
     {
         return Some("job requires GitHub context or conditions");
     }
@@ -961,7 +959,11 @@ fn runner_operating_system(label: &str) -> Option<&'static str> {
 
 fn environment_setup_command(command: &str) -> bool {
     let normalized = normalize_command(command);
-    if normalized.contains("&&") || normalized.contains("||") || normalized.contains(';') {
+    if normalized
+        .chars()
+        .any(|character| matches!(character, '&' | '|' | ';' | '`'))
+        || normalized.contains("$(")
+    {
         return false;
     }
     normalized
@@ -1033,6 +1035,9 @@ mod tests {
         assert!(!environment_setup_command(
             "pnpm install --frozen-lockfile && pnpm test"
         ));
+        assert!(!environment_setup_command(
+            "pnpm install --frozen-lockfile & pnpm test"
+        ));
         assert!(!environment_setup_command("pnpm install\npnpm test"));
         assert!(!environment_setup_command("pnpm run check"));
     }
@@ -1100,5 +1105,9 @@ mod tests {
         let labels =
             serde_yaml::from_str::<serde_yaml::Value>("[self-hosted, windows, x64]").unwrap();
         assert_eq!(runner_operating_system_value(&labels), Some("windows"));
+        let expression =
+            serde_yaml::from_str::<serde_yaml::Value>(r#"[self-hosted, "${{ vars.RUNNER_OS }}"]"#)
+                .unwrap();
+        assert!(contains_expression(&expression));
     }
 }

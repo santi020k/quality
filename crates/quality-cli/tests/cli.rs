@@ -312,7 +312,7 @@ fn init_does_not_import_a_recursive_local_ci_hook_script() {
         r#"{
             "scripts":{
                 "pre-push":"pnpm run local-gate",
-                "local-gate":"quality ci local"
+                "local-gate":"quality --root . ci local"
             }
         }"#,
     )
