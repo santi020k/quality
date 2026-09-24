@@ -27,6 +27,18 @@ on:
         description: Repository-relative pnpm lockfile path.
         default: pnpm-lock.yaml
         type: string
+      task-cache-path:
+        description: Optional task-output cache path, such as .turbo/cache. Leave empty to disable.
+        default: ""
+        type: string
+      task-cache-key:
+        description: Namespace used to isolate this job's task-output cache.
+        default: task
+        type: string
+      task-cache-config-path:
+        description: Repository-relative task-runner configuration included in the cache key.
+        default: turbo.json
+        type: string
       fetch-depth:
         description: Git history depth. Use zero when the command performs change detection.
         default: 1
@@ -96,6 +108,16 @@ jobs:
           node-version: ${{ inputs.node-version }}
           cache: pnpm
           cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+      - name: Restore task-output cache
+        if: inputs.task-cache-path != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ inputs.task-cache-path }}
+          key: task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file, inputs.cache-dependency-path, inputs.task-cache-config-path) }}-${{ github.sha }}
+          restore-keys: |
+            task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-${{ hashFiles(inputs.node-version-file, inputs.cache-dependency-path, inputs.task-cache-config-path) }}-
+            task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-key }}-node-${{ inputs.node-version }}-
 
       - name: Install frozen workspace dependencies
         working-directory: ${{ inputs.working-directory }}

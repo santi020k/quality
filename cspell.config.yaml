@@ -64,6 +64,7 @@ words:
   - ktlin
   - Ktlint
   - Knip
+  - pipefail
   - pnpm
   - rustfmt
   - santi

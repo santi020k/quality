@@ -48,21 +48,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Restore lockfile-pinned deploy toolchain
+        id: deploy-toolchain-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .deploy/wrangler-toolchain.tgz
+          key: quality-deploy-toolchain-v1-${{ runner.os }}-node-24-${{ hashFiles('pnpm-lock.yaml') }}
       - uses: ./actions/setup-pnpm
+        if: steps.deploy-toolchain-cache.outputs.cache-hit != 'true'
         with:
           node-version: 24
           install: "false"
       - name: Install lockfile-pinned deploy toolchain
+        if: steps.deploy-toolchain-cache.outputs.cache-hit != 'true'
         run: |
           pnpm --frozen-lockfile --ignore-scripts \
             --filter @quality-preset-e2e/quality-monorepo install
           test "$(node_modules/.bin/wrangler --version)" = "4.137.0"
-          tar -czf wrangler-toolchain.tgz package.json node_modules
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: quality-deploy-toolchain
-          path: wrangler-toolchain.tgz
-          if-no-files-found: error
+          mkdir -p .deploy
+          tar -czf .deploy/wrangler-toolchain.tgz package.json node_modules
+      - name: Verify prepared deploy toolchain
+        run: |
+          test -s .deploy/wrangler-toolchain.tgz
+          tar -tzf .deploy/wrangler-toolchain.tgz | grep -Fqx node_modules/.bin/wrangler
 
   deploy:
     name: Deploy site
@@ -76,16 +84,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          sparse-checkout: wrangler.jsonc
+          sparse-checkout: |
+            pnpm-lock.yaml
+            wrangler.jsonc
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: quality-site
           path: apps/site/.astro-dist
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Restore lockfile-pinned deploy toolchain
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          name: quality-deploy-toolchain
-          path: .deploy
+          path: .deploy/wrangler-toolchain.tgz
+          key: quality-deploy-toolchain-v1-${{ runner.os }}-node-24-${{ hashFiles('pnpm-lock.yaml') }}
+          fail-on-cache-miss: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
