@@ -171,7 +171,7 @@ fn render_agent_run(
         return output;
     }
 
-    let mut findings: BTreeMap<String, Vec<_>> = BTreeMap::new();
+    let mut findings: BTreeMap<Option<String>, Vec<_>> = BTreeMap::new();
     let mut visible_count = 0;
     for result in &report.results {
         for diagnostic in result.diagnostics.iter().filter(|diagnostic| {
@@ -182,12 +182,7 @@ fn render_agent_run(
                 break;
             }
             findings
-                .entry(
-                    diagnostic
-                        .path
-                        .clone()
-                        .unwrap_or_else(|| "General".to_owned()),
-                )
+                .entry(diagnostic.path.clone())
                 .or_default()
                 .push((result, diagnostic));
             visible_count += 1;
@@ -200,7 +195,11 @@ fn render_agent_run(
     if !findings.is_empty() {
         output.push_str("\n## Findings\n");
         for (path, entries) in findings {
-            let _ = writeln!(output, "\n### `{}`\n", agent_path_code(&path, 240));
+            if let Some(path) = path {
+                let _ = writeln!(output, "\n### `{}`\n", agent_path_code(&path, 240));
+            } else {
+                output.push_str("\n### General findings\n\n");
+            }
             for (result, diagnostic) in entries {
                 let location = match (diagnostic.line, diagnostic.column) {
                     (Some(line), Some(column)) => format!("{line}:{column}"),
@@ -514,7 +513,17 @@ fn agent_text(value: &str, limit: usize) -> String {
 }
 
 fn normalized_agent_text(value: &str, limit: usize) -> String {
-    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let sanitized = value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    let normalized = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut shortened = normalized.chars().take(limit).collect::<String>();
     if normalized.chars().count() > limit {
         shortened.push('…');
@@ -567,6 +576,9 @@ fn encode_agent_path_characters(
             '\r' => output.push_str("\\r"),
             '`' => output.push_str("\\x60"),
             '\\' => output.push_str("\\\\"),
+            character if character.is_control() => {
+                let _ = write!(output, "\\u{{{:04x}}}", u32::from(character));
+            }
             _ => output.push(character),
         }
     }
@@ -1045,5 +1057,67 @@ fn sarif_level(severity: &str) -> &str {
         "error" => "error",
         "warning" => "warning",
         _ => "note",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runner::{Diagnostic, ToolResult};
+
+    #[test]
+    fn agent_text_removes_terminal_control_characters() {
+        assert_eq!(
+            normalized_agent_text("before\u{1b}[2J after", 500),
+            "before [2J after"
+        );
+        assert_eq!(
+            agent_path_code("before\u{1b}[2J after", 500),
+            "before\\u{001b}[2J after"
+        );
+    }
+
+    #[test]
+    fn agent_findings_keep_pathless_diagnostics_separate_from_a_general_file() {
+        let report = RunReport::new(
+            vec![ToolResult {
+                tool: "example".to_owned(),
+                name: "Example".to_owned(),
+                status: Status::Failed,
+                failure_kind: Some(FailureKind::Code),
+                duration_ms: 1,
+                command: "example".to_owned(),
+                diagnostics: vec![
+                    Diagnostic {
+                        tool: "example".to_owned(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        severity: "warning".to_owned(),
+                        message: "Global finding".to_owned(),
+                        rule: Some("global".to_owned()),
+                    },
+                    Diagnostic {
+                        tool: "example".to_owned(),
+                        path: Some("General".to_owned()),
+                        line: Some(1),
+                        column: Some(1),
+                        severity: "warning".to_owned(),
+                        message: "File finding".to_owned(),
+                        rule: Some("file".to_owned()),
+                    },
+                ],
+                output: String::new(),
+                output_truncated: false,
+                guidance: None,
+                baseline_safe: true,
+            }],
+            None,
+        );
+
+        let output = render_agent_run(&report, Operation::Check, Severity::Info, Severity::Info);
+
+        assert!(output.contains("### General findings"));
+        assert!(output.contains("### `General`"));
     }
 }
