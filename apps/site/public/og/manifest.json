@@ -172,6 +172,25 @@
       ],
       "title": "GitHub Actions"
     },
+    "/local-ci/": {
+      "alt": "Local CI and PR gates — quality code-quality CLI",
+      "description": "Run reproducible pull-request checks before pushing and inspect the remaining GitHub-only boundary.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "local-ci.webp",
+          "primary": true,
+          "url": "/og/pages/local-ci.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/local-ci/",
+      "schemaTypes": [
+        "TechArticle"
+      ],
+      "title": "Local CI and PR gates"
+    },
     "/overview/": {
       "alt": "Overview — quality code-quality CLI",
       "description": "Understand what quality does and where it fits in your development workflow.",

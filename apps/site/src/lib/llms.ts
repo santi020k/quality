@@ -8,6 +8,7 @@ const preferredOrder = [
 	'commands',
 	'configuration',
 	'changed-files-and-baselines',
+	'local-ci',
 	'github-actions',
 	'ai-agents',
 	'adapters',

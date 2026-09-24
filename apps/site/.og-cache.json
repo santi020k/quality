@@ -55,6 +55,12 @@
       "fingerprint": "14267dc4e500e18624d468001a36711812ed12429f3bb7bd1fcd963a6e1530dc",
       "output": "github-actions.webp"
     },
+    "local-ci.webp": {
+      "baseDirectory": "public/og/pages",
+      "digest": "f0ed984f45100419adf6ccc2969bbc49a9d8ca6c997e963a3b65e1b4dd58863e",
+      "fingerprint": "3bba35e123c97f75981d2f1240985bf2ebab4a6e1cbcc7580eadfe96894c3513",
+      "output": "local-ci.webp"
+    },
     "overview.webp": {
       "baseDirectory": "public/og/pages",
       "digest": "48ddaa98f17911dbd671a46b2821baa15b7942948d9b3e7da9041a4a9699a96b",

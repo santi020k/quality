@@ -170,8 +170,42 @@ quality hooks uninstall
 ```
 
 Git calls `quality hooks run <event>` through the managed launchers. Hook steps
-run in order, stop at the first failure, and can receive Git's hook arguments
-with `pass_hook_args: true`.
+run in order, stop at the first failure, report per-step and total wall time,
+and can receive Git's hook arguments with `pass_hook_args: true`. The timed
+report includes a focused rerun command when a step fails.
+
+## `quality ci plan` and `quality ci local`
+
+Inspect pull-request workflow coverage, then run the configured `pre-push`
+gate locally:
+
+```bash
+quality ci plan
+quality ci plan --strict
+quality ci local
+quality ci local --step 2
+quality ci local --hook pre-commit
+quality ci local --format json --report reports/local-ci.json
+```
+
+`ci plan` reports exact command coverage from the selected hook. `--strict`
+exits with code 1 when a plain, locally reproducible workflow command is not
+covered. GitHub-hosted actions and steps containing GitHub expressions or
+conditions are identified as GitHub-only instead of being treated as locally
+verified. A wrapper step can explicitly list equivalent workflow commands under
+`covers`; the planner never infers that relationship from script names.
+
+`ci local` runs each hook step sequentially, captures at most 1 MiB of combined
+output per step by default, stops after the first failure, and reports wall
+time, exit status, a concise tail of failure output, and a focused rerun
+command. Override the capture limit with `--max-output-bytes`.
+
+The 20 most recent metadata-only runs are kept below `.git/quality/local-ci/` unless
+`--no-history` is passed. Automatic history omits command output. An explicit
+`--report` retains bounded output and follows the published
+[`quality local CI report schema`](/quality-local-ci.schema.json); do not commit
+reports from commands that may print sensitive information. JSON plans follow
+the [`local CI plan schema`](/quality-ci-plan.schema.json).
 
 ## `quality ci github`
 

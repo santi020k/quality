@@ -121,8 +121,47 @@ pub enum Command {
     },
     /// Generate continuous-integration configuration.
     Ci {
-        #[arg(value_enum, default_value_t = CiProvider::Github)]
-        provider: CiProvider,
+        #[command(subcommand)]
+        command: Option<CiCommand>,
+        /// Replace an existing workflow. Deprecated shorthand for `ci github --force`.
+        #[arg(long, hide = true)]
+        force: bool,
+        /// Install command. Deprecated shorthand for `ci github --install COMMAND`.
+        #[arg(
+            long,
+            value_name = "COMMAND",
+            conflicts_with = "shared_ref",
+            hide = true
+        )]
+        install: Option<String>,
+        /// Shared workflow reference. Deprecated shorthand for `ci github --shared-ref REF`.
+        #[arg(long, value_name = "REF", conflicts_with = "install", hide = true)]
+        shared_ref: Option<String>,
+        /// Shared workflow command. Deprecated shorthand for `ci github --command COMMAND`.
+        #[arg(
+            long = "command",
+            value_name = "COMMAND",
+            requires = "shared_ref",
+            hide = true
+        )]
+        shared_command: Option<String>,
+    },
+    /// Audit or configure a folder containing multiple Git repositories.
+    Repositories {
+        #[command(subcommand)]
+        command: RepositoriesCommand,
+    },
+    /// Install and run package-manager-independent Git hooks.
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CiCommand {
+    /// Generate a GitHub Actions workflow.
+    Github {
         /// Replace an existing workflow.
         #[arg(long)]
         force: bool,
@@ -136,15 +175,39 @@ pub enum Command {
         #[arg(long, value_name = "COMMAND", requires = "shared_ref")]
         command: Option<String>,
     },
-    /// Audit or configure a folder containing multiple Git repositories.
-    Repositories {
-        #[command(subcommand)]
-        command: RepositoriesCommand,
+    /// Inspect pull-request workflow coverage before running a local gate.
+    Plan {
+        /// Configured Git hook whose steps define the local gate.
+        #[arg(long, default_value = "pre-push")]
+        hook: String,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+        /// Exit unsuccessfully when a localizable workflow step is uncovered.
+        #[arg(long)]
+        strict: bool,
     },
-    /// Install and run package-manager-independent Git hooks.
-    Hooks {
-        #[command(subcommand)]
-        command: HooksCommand,
+    /// Run a configured hook as a timed local CI gate.
+    Local {
+        /// Configured Git hook whose steps define the local gate.
+        #[arg(long, default_value = "pre-push")]
+        hook: String,
+        /// Run only one one-based step number for a focused retry.
+        #[arg(long, value_name = "NUMBER")]
+        step: Option<NonZeroUsize>,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+        /// Also write the versioned JSON report to this path.
+        #[arg(long, value_name = "PATH")]
+        report: Option<PathBuf>,
+        /// Do not retain this run under the repository's Git directory.
+        #[arg(long)]
+        no_history: bool,
+        /// Maximum bytes retained from each step's combined output.
+        #[arg(long, value_name = "BYTES", default_value = "1048576")]
+        max_output_bytes: NonZeroUsize,
+        /// Arguments supplied by Git to the hook.
+        #[arg(last = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
     },
 }
 
@@ -393,9 +456,11 @@ fn severity_rank(severity: &str) -> u8 {
     }
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
-pub enum CiProvider {
-    Github,
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+pub enum CiOutputFormat {
+    #[default]
+    Pretty,
+    Json,
 }
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]

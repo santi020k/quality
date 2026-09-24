@@ -132,7 +132,11 @@
         "command": { "type": "string", "minLength": 1 },
         "args": { "$ref": "#/$defs/stringArray" },
         "working_directory": { "type": "string" },
-        "pass_hook_args": { "type": "boolean", "default": false }
+        "pass_hook_args": { "type": "boolean", "default": false },
+        "covers": {
+          "description": "GitHub Actions run commands explicitly covered by this wrapper step.",
+          "$ref": "#/$defs/stringArray"
+        }
       }
     },
     "parser": {

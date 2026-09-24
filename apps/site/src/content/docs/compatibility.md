@@ -8,8 +8,8 @@ description: Understand quality's stable contracts, exit codes, supported platfo
 `quality.yml` has its own integer `version`. A release rejects configuration
 versions it cannot interpret instead of silently changing their meaning.
 
-The native JSON produced by `check`, `format`, `fix`, `doctor`, and
-`repositories` commands includes `schema_version: 1`. Consumers should require
+The native JSON produced by `check`, `format`, `fix`, `doctor`, `repositories`,
+`ci plan`, and `ci local` includes `schema_version: 1`. Consumers should require
 a schema version they understand and ignore unknown object fields so additive
 fields remain compatible.
 
@@ -18,6 +18,8 @@ Published schemas describe the current contract:
 - [`check`, `format`, and `fix` reports](/quality-report.schema.json)
 - [`doctor` reports](/quality-doctor.schema.json)
 - [`repositories` reports](/quality-repositories.schema.json)
+- [`local CI plans`](/quality-ci-plan.schema.json)
+- [`local CI run reports`](/quality-local-ci.schema.json)
 - [`quality.yml`](/quality.schema.json)
 
 Within a stable CLI major release, existing command names, flags, built-in

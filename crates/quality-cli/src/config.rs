@@ -161,6 +161,9 @@ pub struct HookStepConfig {
     pub working_directory: Option<PathBuf>,
     #[serde(default)]
     pub pass_hook_args: bool,
+    /// GitHub Actions `run:` commands this wrapper step explicitly covers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub covers: Vec<String>,
 }
 
 fn enabled_by_default() -> bool {
@@ -298,6 +301,15 @@ impl Config {
                 }
                 if let Some(directory) = &step.working_directory {
                     validate_working_directory(event, directory)?;
+                }
+                for covered in &step.covers {
+                    if covered.trim().is_empty() || covered.contains('\n') || covered.contains('\r')
+                    {
+                        anyhow::bail!(
+                            "covered command in step {} of hook `{event}` must be one non-empty line",
+                            index + 1
+                        );
+                    }
                 }
             }
         }
@@ -476,6 +488,9 @@ pub fn merge_preset_text_with_gate(
             config.hooks.insert("commit-msg".to_owned(), hook);
         }
     }
+    for (event, hook) in detect_repository_hooks(project) {
+        config.hooks.entry(event).or_insert(hook);
+    }
     let mut text = String::from(
         "# yaml-language-server: $schema=https://quality.santi020k.com/quality.schema.json\n\
          # cspell:ignore actionlint clippy detekt knip ktlint swiftformat swiftlint\n\
@@ -522,6 +537,7 @@ fn policy_text_with_tools(
     if let Some(hook) = detect_commitprompt_hook(project) {
         hooks.insert("commit-msg".to_owned(), hook);
     }
+    hooks.extend(detect_repository_hooks(project));
     let config = Config {
         tools,
         tasks,
@@ -665,8 +681,53 @@ fn detect_commitprompt_hook(project: &Project) -> Option<HookConfig> {
             args,
             working_directory: None,
             pass_hook_args: true,
+            covers: Vec::new(),
         }],
     })
+}
+
+fn detect_repository_hooks(project: &Project) -> BTreeMap<String, HookConfig> {
+    let path = project.root.join("package.json");
+    let Some(manifest) = fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+    else {
+        return BTreeMap::new();
+    };
+    let Some(scripts) = manifest
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return BTreeMap::new();
+    };
+    let manager = package_manager(project, &manifest);
+    [
+        ("pre-commit", ["pre-commit", "precommit"]),
+        ("pre-push", ["pre-push", "prepush"]),
+    ]
+    .into_iter()
+    .filter_map(|(event, candidates)| {
+        let script = candidates.into_iter().find(|candidate| {
+            scripts
+                .get(*candidate)
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+        })?;
+        Some((
+            event.to_owned(),
+            HookConfig {
+                steps: vec![HookStepConfig {
+                    name: Some(format!("Run {event} checks")),
+                    command: PathBuf::from(manager),
+                    args: vec!["run".to_owned(), script.to_owned()],
+                    working_directory: None,
+                    pass_hook_args: false,
+                    covers: Vec::new(),
+                }],
+            },
+        ))
+    })
+    .collect()
 }
 
 fn package_manager<'a>(project: &Project, manifest: &'a serde_json::Value) -> &'a str {

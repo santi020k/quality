@@ -172,6 +172,18 @@ concurrency:
 
 For monorepos, combine the Action's `changed-only` mode with Turborepo's affected-package selection so unchanged applications never start expensive jobs.
 
+Before pushing, use the repository's configured local gate to catch
+deterministic failures without consuming a failed hosted run:
+
+```bash
+quality ci plan
+quality ci local
+```
+
+The plan distinguishes exact local command coverage from steps that require
+GitHub-hosted actions, expressions, permissions, or services. Local success is
+early feedback; keep the protected GitHub check for the exact pushed commit.
+
 ## Reporting and failure levels
 
 Reporting and build policy are independent:

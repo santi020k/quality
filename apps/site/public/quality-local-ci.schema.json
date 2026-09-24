@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-local-ci.schema.json",
+  "title": "quality local CI report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "hook",
+    "started_at_unix_ms",
+    "duration_ms",
+    "status",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "hook": { "type": "string" },
+    "started_at_unix_ms": { "type": "integer", "minimum": 0 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "status": { "$ref": "#/$defs/status" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["passed", "failed", "skipped"]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "name",
+        "status",
+        "duration_ms",
+        "command"
+      ],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "command": { "type": "string" },
+        "working_directory": { "type": "string" },
+        "exit_code": { "type": "integer" },
+        "output": { "type": "string" },
+        "output_truncated": { "type": "boolean" },
+        "failure": { "type": "string" },
+        "rerun": { "type": "string" }
+      }
+    }
+  }
+}
