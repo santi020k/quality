@@ -333,11 +333,18 @@ fn render_agent_run(
     let shown_reruns = rerun_adapters.len().min(remaining_tool_entries);
     if shown_reruns > 0 {
         output.push_str("\n## Focused reruns\n\n");
+        let changed = report
+            .scope
+            .as_ref()
+            .and_then(|scope| scope.base.as_deref())
+            .map(|base| format!(" --changed {}", agent_code(base, usize::MAX)))
+            .unwrap_or_default();
         for adapter in rerun_adapters.iter().take(shown_reruns) {
             let _ = writeln!(
                 output,
-                "- `quality {} --only {}`",
+                "- `quality {}{} --only {}`",
                 operation_command(operation),
+                changed,
                 agent_code(adapter, usize::MAX)
             );
         }

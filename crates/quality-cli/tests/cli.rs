@@ -1092,6 +1092,42 @@ fn changed_mode_uses_swiftlints_supported_file_environment() {
 
 #[cfg(unix)]
 #[test]
+fn agent_rerun_preserves_changed_scope() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    let fake = temp.path().join("fake-swiftlint");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho 'App.swift:1:1: warning: Finding (rule)'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: false\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+    git(temp.path(), &["add", "App.swift", "quality.yml"]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::write(temp.path().join("App.swift"), "struct ChangedApp {}\n").unwrap();
+
+    let output = quality(temp.path(), &["check", "--changed", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("`quality check --changed HEAD --only swiftlint`"));
+}
+
+#[cfg(unix)]
+#[test]
 fn changed_mode_passes_only_relevant_files_to_eslint() {
     use std::os::unix::fs::PermissionsExt;
 
