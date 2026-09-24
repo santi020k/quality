@@ -29,9 +29,9 @@ Website and documentation: <https://quality.santi020k.com>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v1.2.0
+- uses: santi020k/quality@v1.3.0
   with:
-    version: v1.2.0
+    version: v1.3.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -93,7 +93,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v1.2.0
+  | sh -s -- santi020k/quality v1.3.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -416,7 +416,7 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v1.2.0` is pushed.
+macOS, and Windows whenever a version tag such as `v1.3.0` is pushed.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -426,7 +426,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.2.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v1.3.0 --locked'
 ```
 
 Run the configured `pre-push` gate before spending a GitHub-hosted runner:
