@@ -206,6 +206,11 @@ pub fn execute(
     max_output_bytes: usize,
     show_progress: bool,
 ) -> Result<LocalCiReport> {
+    if std::env::var_os("QUALITY_LOCAL_CI").is_some() {
+        anyhow::bail!(
+            "recursive local CI invocation blocked; remove `quality ci local` or `quality hooks run` from the configured hook command"
+        );
+    }
     let hook = config
         .hooks
         .get(hook_name)
@@ -990,15 +995,22 @@ fn setup_command_fragment(command: &str) -> bool {
         "rustup component add",
     ]
     .iter()
-    .any(|prefix| command.starts_with(prefix))
+    .any(|prefix| command_starts_with_invocation(command, prefix))
         || go_tool_install_command(command)
         || command.contains("$GITHUB_PATH")
         || command.contains("$GITHUB_ENV")
 }
 
-fn go_tool_install_command(command: &str) -> bool {
+fn command_starts_with_invocation(command: &str, invocation: &str) -> bool {
     command
-        .strip_prefix("go install")
+        .strip_prefix(invocation)
+        .is_some_and(|remainder| remainder.is_empty() || remainder.starts_with(char::is_whitespace))
+}
+
+fn go_tool_install_command(command: &str) -> bool {
+    command_starts_with_invocation(command, "go install")
+        .then(|| command.strip_prefix("go install"))
+        .flatten()
         .and_then(|arguments| arguments.split_ascii_whitespace().next())
         .is_some_and(|target| target.contains('@') && !target.starts_with('.'))
 }
@@ -1054,6 +1066,7 @@ mod tests {
         assert!(!environment_setup_command("pnpm install\npnpm test"));
         assert!(!environment_setup_command("pnpm run check"));
         assert!(!environment_setup_command("go install ./..."));
+        assert!(!environment_setup_command("npm install-test"));
     }
 
     #[test]

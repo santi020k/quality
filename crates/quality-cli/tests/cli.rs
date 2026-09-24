@@ -327,6 +327,29 @@ fn init_does_not_import_a_recursive_local_ci_hook_script() {
 }
 
 #[test]
+fn local_ci_blocks_recursive_process_invocations() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: git\n        args: [--version]\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(temp.path())
+        .args(["ci", "local"])
+        .env("QUALITY_LOCAL_CI", "1")
+        .output()
+        .expect("quality should execute");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("recursive local CI invocation blocked")
+    );
+}
+
+#[test]
 fn init_imports_typecheck_when_there_is_no_composite_gate() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(
