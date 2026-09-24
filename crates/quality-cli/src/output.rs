@@ -560,7 +560,9 @@ fn agent_has_synthesized_failure(result: &crate::runner::ToolResult) -> bool {
             .output
             .lines()
             .find(|line| !line.trim().is_empty())
-            .is_some_and(|line| line.trim() == diagnostic.message)
+            .map_or(diagnostic.message == "tool exited unsuccessfully", |line| {
+                line.trim() == diagnostic.message
+            })
 }
 
 fn agent_selection_description(scope: &crate::runner::RunScope) -> String {

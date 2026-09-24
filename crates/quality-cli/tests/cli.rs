@@ -809,6 +809,36 @@ fn agent_output_preserves_long_adapter_ids_in_rerun_commands() {
 
 #[cfg(unix)]
 #[test]
+fn agent_output_treats_a_silent_failure_as_unstructured() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("widget.acme"), "value\n").unwrap();
+    let fake = temp.path().join("silent-lint");
+    fs::write(&fake, "#!/bin/sh\nexit 1\n").unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools: {{}}\ncustom:\n  silent-lint:\n    command: {}\n    extensions: [acme]\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("## Unstructured failure output"));
+    assert!(stdout.contains("### silent-lint"));
+    assert!(!stdout.contains("## Findings"));
+}
+
+#[cfg(unix)]
+#[test]
 fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     use std::os::unix::fs::PermissionsExt;
 
