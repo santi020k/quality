@@ -336,7 +336,7 @@ fn render_agent_run(
         let changed = report
             .scope
             .as_ref()
-            .and_then(|scope| scope.base.as_deref())
+            .and_then(|scope| scope.rerun_base.as_deref())
             .map(|base| format!(" --changed {}", agent_code(base, usize::MAX)))
             .unwrap_or_default();
         for adapter in rerun_adapters.iter().take(shown_reruns) {

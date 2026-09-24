@@ -1117,13 +1117,28 @@ fn agent_rerun_preserves_changed_scope() {
     .unwrap();
     git(temp.path(), &["add", "App.swift", "quality.yml"]);
     git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    git(temp.path(), &["update-ref", "refs/heads/base;echo", "HEAD"]);
     fs::write(temp.path().join("App.swift"), "struct ChangedApp {}\n").unwrap();
 
-    let output = quality(temp.path(), &["check", "--changed", "--format", "agent"]);
+    let output = quality(
+        temp.path(),
+        &["check", "--changed", "base;echo", "--format", "agent"],
+    );
 
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("`quality check --changed HEAD --only swiftlint`"));
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(temp.path())
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let head = String::from_utf8(head.stdout).unwrap();
+    assert!(stdout.contains(&format!(
+        "`quality check --changed {} --only swiftlint`",
+        head.trim()
+    )));
+    assert!(!stdout.contains("--changed base;echo"));
 }
 
 #[cfg(unix)]

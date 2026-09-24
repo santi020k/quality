@@ -126,6 +126,8 @@ pub struct RunScope {
     pub mode: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+    #[serde(skip)]
+    pub rerun_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -407,6 +409,7 @@ pub fn execute(
     let scope = (changes.is_some() || !selection.is_empty()).then(|| RunScope {
         mode: changes.map(|_| "changed"),
         base: changes.map(|changes| changes.base.clone()),
+        rerun_base: changes.map(|changes| changes.resolved_base.clone()),
         files: changes.map(|changes| changes.files.len()),
         only: selection.only.clone(),
         exclude: selection.exclude.clone(),
