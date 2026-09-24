@@ -14,6 +14,8 @@ const AGENT_DIAGNOSTIC_LIMIT: usize = 50;
 const AGENT_TOOL_LIMIT: usize = 50;
 const AGENT_OUTPUT_LINE_LIMIT: usize = 8;
 const AGENT_TEXT_LIMIT: usize = 500;
+const AGENT_SELECTION_LIMIT: usize = 8;
+const AGENT_SELECTION_ID_LIMIT: usize = 40;
 
 pub fn print_run(
     report: &RunReport,
@@ -161,7 +163,7 @@ fn render_agent_run(
             let _ = writeln!(
                 output,
                 "No applicable tools matched {}.",
-                selection_description(scope)
+                agent_selection_description(scope)
             );
         } else {
             output.push_str("No checks ran. Run `quality init` after adding project files.\n");
@@ -172,17 +174,10 @@ fn render_agent_run(
     let mut findings: BTreeMap<String, Vec<_>> = BTreeMap::new();
     let mut visible_count = 0;
     for result in &report.results {
-        if matches!(
-            result.failure_kind,
-            Some(FailureKind::Environment | FailureKind::Toolchain)
-        ) {
-            continue;
-        }
-        for diagnostic in result
-            .diagnostics
-            .iter()
-            .filter(|diagnostic| report_level.includes(&diagnostic.severity))
-        {
+        for diagnostic in result.diagnostics.iter().filter(|diagnostic| {
+            report_level.includes(&diagnostic.severity)
+                && agent_finding_includes(result, diagnostic)
+        }) {
             if visible_count == AGENT_DIAGNOSTIC_LIMIT {
                 break;
             }
@@ -229,13 +224,12 @@ fn render_agent_run(
         let total_visible = report
             .results
             .iter()
-            .filter(|result| {
-                !matches!(
-                    result.failure_kind,
-                    Some(FailureKind::Environment | FailureKind::Toolchain)
-                )
+            .flat_map(|result| {
+                result
+                    .diagnostics
+                    .iter()
+                    .filter(|diagnostic| agent_finding_includes(result, diagnostic))
             })
-            .flat_map(|result| &result.diagnostics)
             .filter(|diagnostic| report_level.includes(&diagnostic.severity))
             .count();
         if total_visible > visible_count {
@@ -269,8 +263,16 @@ fn render_agent_run(
             let detail = result
                 .guidance
                 .as_deref()
-                .or_else(|| result.diagnostics.first().map(|item| item.message.as_str()))
-                .unwrap_or("The adapter could not complete.");
+                .or_else(|| {
+                    result
+                        .diagnostics
+                        .iter()
+                        .find(|item| item.path.is_none())
+                        .map(|item| item.message.as_str())
+                })
+                .unwrap_or(
+                    "Adapter output indicates an execution failure; inspect the complete JSON report.",
+                );
             let _ = writeln!(
                 output,
                 "- **{}** ({category}): {}",
@@ -451,6 +453,40 @@ fn normalized_agent_text(value: &str, limit: usize) -> String {
 
 fn agent_code(value: &str, limit: usize) -> String {
     normalized_agent_text(value, limit).replace('`', "'")
+}
+
+fn agent_finding_includes(
+    result: &crate::runner::ToolResult,
+    diagnostic: &crate::runner::Diagnostic,
+) -> bool {
+    diagnostic.path.is_some()
+        || !matches!(
+            result.failure_kind,
+            Some(FailureKind::Environment | FailureKind::Toolchain)
+        )
+}
+
+fn agent_selection_description(scope: &crate::runner::RunScope) -> String {
+    let mut remaining = AGENT_SELECTION_LIMIT;
+    let mut included = 0;
+    let mut parts = Vec::new();
+    for (label, values) in [("only", &scope.only), ("excluding", &scope.exclude)] {
+        let selected = values
+            .iter()
+            .take(remaining)
+            .map(|value| agent_code(value, AGENT_SELECTION_ID_LIMIT))
+            .collect::<Vec<_>>();
+        if !selected.is_empty() {
+            included += selected.len();
+            remaining -= selected.len();
+            parts.push(format!("{label} {}", selected.join(", ")));
+        }
+    }
+    let omitted = scope.only.len() + scope.exclude.len() - included;
+    if omitted > 0 {
+        parts.push(format!("{omitted} selections omitted"));
+    }
+    parts.join("; ")
 }
 
 pub fn write_sarif(report: &RunReport, path: &Path, report_level: Severity) -> Result<()> {

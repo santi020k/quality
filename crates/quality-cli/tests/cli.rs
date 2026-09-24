@@ -562,6 +562,19 @@ fn agent_output_explains_an_empty_explicit_selection() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("No applicable tools matched only cargo-fmt."));
     assert!(!stdout.contains("Run `quality init`"));
+
+    let bounded = quality(
+        temp.path(),
+        &[
+            "check",
+            "--only",
+            "cargo-fmt,cargo-clippy,swiftlint,swiftformat,android-lint,detekt,ktlint,eslint,astro-check,prettier",
+            "--format",
+            "agent",
+        ],
+    );
+    assert!(bounded.status.success());
+    assert!(String::from_utf8_lossy(&bounded.stdout).contains("2 selections omitted"));
 }
 
 #[cfg(unix)]
@@ -675,7 +688,7 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     let fake = temp.path().join("fake-swiftlint");
     fs::write(
         &fake,
-        "#!/bin/sh\necho 'App.swift:4:2: warning: Code finding (example_rule)'\nexit 1\n",
+        "#!/bin/sh\necho 'App.swift:4:2: warning: Code finding (example_rule)'\necho 'no space left on device'\nexit 1\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&fake).unwrap().permissions();
@@ -684,7 +697,7 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     fs::write(
         temp.path().join("quality.yml"),
         format!(
-            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: true\n    command: definitely-not-swiftformat\n",
+            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: false\n",
             fake.display()
         ),
     )
@@ -695,6 +708,7 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("## Findings"));
+    assert!(stdout.contains("### `App.swift`"));
     assert!(stdout.contains("## Environment and toolchain problems"));
     assert!(!stdout.contains("additional diagnostics omitted"));
 }
