@@ -746,7 +746,7 @@ fn inspect_pull_request_workflows(
                 else {
                     continue;
                 };
-                let conditional = mapping_value(step, "if").is_some();
+                let conditional = mapping_value(step, "if").is_some_and(condition_requires_github);
                 if conditional || run.contains("${{") {
                     results.push(WorkflowStepPlan {
                         workflow: workflow.clone(),
@@ -903,6 +903,15 @@ fn context_value_present(value: &serde_yaml::Value) -> bool {
     }
 }
 
+fn condition_requires_github(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Bool(true) => false,
+        serde_yaml::Value::String(condition) => !matches!(condition.trim(), "true" | "${{ true }}"),
+        serde_yaml::Value::Tagged(tagged) => condition_requires_github(&tagged.value),
+        _ => true,
+    }
+}
+
 fn contains_expression(value: &serde_yaml::Value) -> bool {
     match value {
         serde_yaml::Value::String(text) => text.contains("${{"),
@@ -925,7 +934,7 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
     if mapping_value(job, "container").is_some() {
         return Some("job uses a GitHub job container");
     }
-    if mapping_value(job, "if").is_some()
+    if mapping_value(job, "if").is_some_and(condition_requires_github)
         || mapping_value(job, "runs-on").is_some_and(contains_expression)
     {
         return Some("job requires GitHub context or conditions");
@@ -1141,5 +1150,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(runner_operating_system_value(&mapped), Some("windows"));
+    }
+
+    #[test]
+    fn literal_true_conditions_do_not_require_github_context() {
+        assert!(!condition_requires_github(&serde_yaml::Value::Bool(true)));
+        assert!(!condition_requires_github(&serde_yaml::Value::String(
+            "${{ true }}".to_owned()
+        )));
+        assert!(condition_requires_github(&serde_yaml::Value::Bool(false)));
+        assert!(condition_requires_github(&serde_yaml::Value::String(
+            "github.ref == 'refs/heads/main'".to_owned()
+        )));
     }
 }

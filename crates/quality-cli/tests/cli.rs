@@ -1538,7 +1538,7 @@ fn ci_plan_classifies_pull_request_workflow_coverage() {
     .unwrap();
     fs::write(
         temp.path().join(".github/workflows/ci.yml"),
-        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - name: Check project\n        run: pnpm run check\n      - name: Missing locally\n        run: pnpm run test\n      - name: GitHub context\n        if: github.actor != 'dependabot[bot]'\n        run: pnpm changeset status --since=origin/main\n",
+        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - name: Check project\n        run: pnpm run check\n      - name: Missing locally\n        if: true\n        run: pnpm run test\n      - name: GitHub context\n        if: github.actor != 'dependabot[bot]'\n        run: pnpm changeset status --since=origin/main\n",
     )
     .unwrap();
 
