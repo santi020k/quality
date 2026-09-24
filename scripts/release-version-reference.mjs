@@ -6,7 +6,10 @@ const releaseVersionReference = new RegExp(
 );
 
 export function replaceReleaseVersionReferences(contents, targetVersion) {
-  return contents.replace(releaseVersionReference, `v${targetVersion}`);
+  return contents.replace(releaseVersionReference, (reference, offset) => {
+    const annotationPrefix = contents.slice(Math.max(0, offset - 44), offset);
+    return /@[0-9a-f]{40} # $/.test(annotationPrefix) ? reference : `v${targetVersion}`;
+  });
 }
 
 export function hasReleaseHeading(contents, targetVersion) {
