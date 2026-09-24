@@ -48,6 +48,8 @@ Workflow- and job-level `defaults.run.working-directory` values are resolved
 before comparison. A declared `env` or custom `shell` is not silently treated
 as equivalent to a local hook: static context is uncovered, while expressions
 that require GitHub context remain GitHub-only.
+Jobs pinned to a different runner operating system are also GitHub-only; a
+matching command on macOS does not claim coverage for Windows or Linux.
 
 ## Run the gate
 

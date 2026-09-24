@@ -3,8 +3,9 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -426,14 +427,14 @@ fn execute_step(
             let stdout = child
                 .stdout
                 .take()
-                .map(|reader| thread::spawn(move || read_limited(reader, max_output_bytes)));
+                .map(|reader| spawn_output_reader(reader, max_output_bytes));
             let stderr = child
                 .stderr
                 .take()
-                .map(|reader| thread::spawn(move || read_limited(reader, max_output_bytes)));
+                .map(|reader| spawn_output_reader(reader, max_output_bytes));
             let status = child.wait();
-            let stdout = join_output(stdout);
-            let stderr = join_output(stderr);
+            let stdout = collect_output(stdout);
+            let stderr = collect_output(stderr);
             let (output, output_truncated) =
                 combine_limited_output(stdout, stderr, max_output_bytes);
             match status {
@@ -577,32 +578,61 @@ fn display_argument(argument: &OsStr) -> String {
 }
 
 type CapturedOutput = (Vec<u8>, bool);
-type OutputReader = thread::JoinHandle<io::Result<CapturedOutput>>;
 
-fn read_limited(mut reader: impl Read, limit: usize) -> io::Result<CapturedOutput> {
-    let mut retained = Vec::new();
+struct OutputReader {
+    state: Arc<Mutex<CapturedOutput>>,
+    completed: mpsc::Receiver<()>,
+}
+
+fn spawn_output_reader(mut reader: impl Read + Send + 'static, limit: usize) -> OutputReader {
+    let state = Arc::new(Mutex::new((Vec::new(), false)));
+    let thread_state = Arc::clone(&state);
+    let (completed_tx, completed) = mpsc::channel();
+    thread::spawn(move || {
+        read_limited(&mut reader, limit, &thread_state);
+        let _ = completed_tx.send(());
+    });
+    OutputReader { state, completed }
+}
+
+fn read_limited(reader: &mut impl Read, limit: usize, state: &Mutex<CapturedOutput>) {
     let mut buffer = [0_u8; 8192];
-    let mut truncated = false;
     loop {
-        let read = reader.read(&mut buffer)?;
+        let Ok(read) = reader.read(&mut buffer) else {
+            if let Ok(mut captured) = state.lock() {
+                captured.1 = true;
+            }
+            break;
+        };
         if read == 0 {
             break;
         }
-        retained.extend_from_slice(&buffer[..read]);
-        if retained.len() > limit {
-            let excess = retained.len() - limit;
-            retained.drain(..excess);
-            truncated = true;
+        if let Ok(mut captured) = state.lock() {
+            captured.0.extend_from_slice(&buffer[..read]);
+            if captured.0.len() > limit {
+                let excess = captured.0.len() - limit;
+                captured.0.drain(..excess);
+                captured.1 = true;
+            }
         }
     }
-    Ok((retained, truncated))
 }
 
-fn join_output(handle: Option<OutputReader>) -> CapturedOutput {
-    handle
-        .and_then(|handle| handle.join().ok())
-        .and_then(Result::ok)
-        .unwrap_or_else(|| (Vec::new(), false))
+fn collect_output(reader: Option<OutputReader>) -> CapturedOutput {
+    let Some(reader) = reader else {
+        return (Vec::new(), false);
+    };
+    let completed = reader
+        .completed
+        .recv_timeout(Duration::from_millis(250))
+        .is_ok();
+    let mut captured = reader
+        .state
+        .lock()
+        .map(|state| state.clone())
+        .unwrap_or_else(|_| (Vec::new(), true));
+    captured.1 |= !completed;
+    captured
 }
 
 fn combine_limited_output(
@@ -897,7 +927,27 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
     {
         return Some("job requires GitHub context or conditions");
     }
+    if mapping_value(job, "runs-on")
+        .and_then(serde_yaml::Value::as_str)
+        .and_then(runner_operating_system)
+        .is_some_and(|runner_os| runner_os != std::env::consts::OS)
+    {
+        return Some("job uses a different runner operating system");
+    }
     None
+}
+
+fn runner_operating_system(label: &str) -> Option<&'static str> {
+    let label = label.to_ascii_lowercase();
+    if label.starts_with("ubuntu-") {
+        Some("linux")
+    } else if label.starts_with("macos-") {
+        Some("macos")
+    } else if label.starts_with("windows-") {
+        Some("windows")
+    } else {
+        None
+    }
 }
 
 fn environment_setup_command(command: &str) -> bool {
@@ -1015,5 +1065,13 @@ mod tests {
             normalize_command(r#"printf "a b""#)
         );
         assert_eq!(normalize_command("pnpm run check\r\n"), "pnpm run check");
+    }
+
+    #[test]
+    fn runner_labels_map_to_their_operating_system() {
+        assert_eq!(runner_operating_system("ubuntu-22.04"), Some("linux"));
+        assert_eq!(runner_operating_system("macos-latest"), Some("macos"));
+        assert_eq!(runner_operating_system("windows-2022"), Some("windows"));
+        assert_eq!(runner_operating_system("self-hosted"), None);
     }
 }

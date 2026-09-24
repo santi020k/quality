@@ -1515,7 +1515,7 @@ fn ci_plan_classifies_pull_request_workflow_coverage() {
     .unwrap();
     fs::write(
         temp.path().join(".github/workflows/ci.yml"),
-        "name: CI\non: [pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Check project\n        run: pnpm run check\n      - name: Missing locally\n        run: pnpm run test\n      - name: GitHub context\n        if: github.actor != 'dependabot[bot]'\n        run: pnpm changeset status --since=origin/main\n",
+        "name: CI\non: [pull_request]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - name: Check project\n        run: pnpm run check\n      - name: Missing locally\n        run: pnpm run test\n      - name: GitHub context\n        if: github.actor != 'dependabot[bot]'\n        run: pnpm changeset status --since=origin/main\n",
     )
     .unwrap();
 
@@ -1566,12 +1566,12 @@ fn ci_plan_resolves_inherited_directories_without_ignoring_env_or_shell() {
     .unwrap();
     fs::write(
         temp.path().join(".github/workflows/context.yml"),
-        "name: Context\non: [pull_request]\njobs:\n  inherited-directory:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        working-directory: packages/app\n    steps:\n      - run: pnpm run check\n  static-env:\n    runs-on: ubuntu-latest\n    env:\n      MODE: strict\n    steps:\n      - run: pnpm run check\n  expression-env:\n    runs-on: ubuntu-latest\n    env:\n      TOKEN: ${{ github.token }}\n    steps:\n      - run: pnpm run check\n  custom-shell:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: pnpm run check\n",
+        "name: Context\non: [pull_request]\njobs:\n  inherited-directory:\n    defaults:\n      run:\n        working-directory: packages/app\n    steps:\n      - run: pnpm run check\n  static-env:\n    env:\n      MODE: strict\n    steps:\n      - run: pnpm run check\n  expression-env:\n    env:\n      TOKEN: ${{ github.token }}\n    steps:\n      - run: pnpm run check\n  custom-shell:\n    defaults:\n      run:\n        shell: bash\n    steps:\n      - run: pnpm run check\n",
     )
     .unwrap();
     fs::write(
         temp.path().join(".github/workflows/workflow-default.yml"),
-        "name: Workflow default\non: [pull_request]\ndefaults:\n  run:\n    working-directory: packages/app\njobs:\n  inherited-directory:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm run check\n",
+        "name: Workflow default\non: [pull_request]\ndefaults:\n  run:\n    working-directory: packages/app\njobs:\n  inherited-directory:\n    steps:\n      - run: pnpm run check\n",
     )
     .unwrap();
 
@@ -1671,6 +1671,44 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
         fs::read_to_string(temp.path().join("focused-rerun.txt")).unwrap(),
         "ran\n"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn ci_local_stops_waiting_when_a_descendant_keeps_output_pipes_open() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    let temp = tempfile::tempdir().unwrap();
+    let command = temp.path().join("spawn-background");
+    fs::write(
+        &command,
+        "#!/bin/sh\nprintf 'direct child done\\n'\nsleep 3 &\n",
+    )
+    .unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - command: ./spawn-background\n",
+    )
+    .unwrap();
+
+    let started = Instant::now();
+    let output = quality(
+        temp.path(),
+        &["ci", "local", "--format", "json", "--no-history"],
+    );
+
+    assert!(output.status.success());
+    assert!(started.elapsed() < Duration::from_secs(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        report["steps"][0]["output"]
+            .as_str()
+            .unwrap()
+            .contains("direct child done")
+    );
+    assert_eq!(report["steps"][0]["output_truncated"], true);
 }
 
 #[cfg(unix)]
