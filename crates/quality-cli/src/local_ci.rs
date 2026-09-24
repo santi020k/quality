@@ -940,11 +940,14 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
     {
         return Some("job requires GitHub context or conditions");
     }
-    if mapping_value(job, "runs-on")
-        .and_then(runner_operating_system_value)
-        .is_some_and(|runner_os| runner_os != std::env::consts::OS)
-    {
-        return Some("job uses a different runner operating system");
+    if let Some(runner) = mapping_value(job, "runs-on") {
+        match runner_operating_system_value(runner) {
+            Some(runner_os) if runner_os != std::env::consts::OS => {
+                return Some("job uses a different runner operating system");
+            }
+            None => return Some("job runner operating system cannot be determined"),
+            Some(_) => {}
+        }
     }
     None
 }
@@ -1007,8 +1010,7 @@ fn setup_command_fragment(command: &str) -> bool {
     .iter()
     .any(|prefix| command_starts_with_invocation(command, prefix))
         || go_tool_install_command(command)
-        || command.contains("$GITHUB_PATH")
-        || command.contains("$GITHUB_ENV")
+        || writes_github_environment_file(command)
 }
 
 fn command_starts_with_invocation(command: &str, invocation: &str) -> bool {
@@ -1023,6 +1025,25 @@ fn go_tool_install_command(command: &str) -> bool {
         .flatten()
         .and_then(|arguments| arguments.split_ascii_whitespace().next())
         .is_some_and(|target| target.contains('@') && !target.starts_with('.'))
+}
+
+fn writes_github_environment_file(command: &str) -> bool {
+    [
+        "$GITHUB_PATH",
+        "$GITHUB_ENV",
+        "$env:GITHUB_PATH",
+        "$env:GITHUB_ENV",
+    ]
+    .iter()
+    .any(|variable| {
+        command.find(variable).is_some_and(|index| {
+            command[..index].contains('>')
+                || (command[..index]
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("add-content "))
+        })
+    })
 }
 
 fn has_pull_request_trigger(value: &serde_yaml::Value) -> bool {
@@ -1077,6 +1098,9 @@ mod tests {
         assert!(!environment_setup_command("pnpm run check"));
         assert!(!environment_setup_command("go install ./..."));
         assert!(!environment_setup_command("npm install-test"));
+        assert!(!environment_setup_command(
+            "grep '$GITHUB_ENV' scripts/setup.sh"
+        ));
     }
 
     #[test]
@@ -1159,6 +1183,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(runner_operating_system_value(&mapped), Some("windows"));
+        assert_eq!(
+            runner_operating_system_value(&serde_yaml::Value::String("self-hosted".to_owned())),
+            None
+        );
+        let self_hosted_job = serde_yaml::from_str::<serde_yaml::Value>(
+            "runs-on: self-hosted\nsteps:\n  - run: pnpm test\n",
+        )
+        .unwrap();
+        assert_eq!(
+            github_only_job_reason(&self_hosted_job),
+            Some("job runner operating system cannot be determined")
+        );
     }
 
     #[test]
