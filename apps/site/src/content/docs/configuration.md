@@ -21,6 +21,10 @@ tools:
     required: true
 ```
 
+`output` accepts `pretty`, `agent`, `json`, `sarif`, or `github`. Use `agent`
+for compact Markdown optimized for coding-agent context; use `json` or `sarif`
+for complete machine-readable reports.
+
 ## Tool settings
 
 Each built-in adapter accepts:

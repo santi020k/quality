@@ -112,6 +112,7 @@ quality preset apply recommended # Generate configs without overwriting existing
 quality preset apply strict --install # Generate strict configs and install pinned JS tools
 quality doctor          # Explain what is enabled, installed, or missing
 quality check           # Run applicable linters concurrently
+quality check --format agent # Emit compact Markdown for an AI coding agent
 quality --root ~/Projects repositories audit # Audit a folder of repositories
 quality --root ~/Projects repositories audit --fail-on invalid,missing-configuration # Enforce audit findings in CI
 quality --root ~/Projects repositories apply # Configure missing repositories
@@ -154,11 +155,15 @@ quality fix --changed --only eslint
 
 Selection details are retained in JSON and SARIF reports.
 
-Every command accepts `--root PATH`. Check results support `pretty`, `json`,
-`sarif`, and `github` output. The GitHub format emits native workflow commands
+Every command accepts `--root PATH`. Check results support `pretty`, `agent`,
+`json`, `sarif`, and `github` output. The `agent` format emits compact, bounded
+Markdown with file-grouped findings, environment failures, and focused rerun
+commands. The GitHub format emits native workflow commands
 that become inline annotations on pull requests:
 
 ```bash
+quality doctor --format agent
+quality check --format agent
 quality check --format github
 ```
 
@@ -465,8 +470,8 @@ The stable core is deliberately small:
 5. integrate with CI through SARIF.
 
 Future adapters can implement a documented plugin protocol. AI integrations
-can later consume the same normalized diagnostics to explain or propose fixes,
-without putting AI inside the deterministic checking path.
+can consume the same normalized diagnostics through `--format agent` to explain
+or propose fixes, without putting AI inside the deterministic checking path.
 
 ## Develop the monorepo
 

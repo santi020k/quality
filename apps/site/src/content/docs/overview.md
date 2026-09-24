@@ -27,7 +27,10 @@ quality format --check
 
 ## Deterministic by design
 
-The checking path is intentionally deterministic. Future AI integrations can consume normalized diagnostics to explain findings or propose changes, but analyzer execution and pass/fail behavior do not depend on an AI service.
+The checking path is intentionally deterministic. AI integrations can consume
+normalized diagnostics through `quality check --format agent` to explain
+findings or propose changes, but analyzer execution and pass/fail behavior do
+not depend on an AI service.
 
 ## Native Git hooks
 

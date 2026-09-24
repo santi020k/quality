@@ -69,12 +69,20 @@ Validate configuration and explain enabled, available, optional, and missing
 tools. For applied presets, doctor also reports whether the catalog and pinned
 dependencies are current, need an update, or are incompatible.
 
+```bash
+quality doctor --format agent
+```
+
+The agent format summarizes required action and the checks available for the
+next run. Doctor retains the same exit status in every output format.
+
 ## `quality check`
 
 Run all applicable analyzers concurrently and normalize their diagnostics.
 
 ```bash
 quality check --format github --report quality.sarif
+quality check --format agent
 quality check --changed origin/main
 quality check --report-level warning --fail-level error
 quality check --fail-fast
@@ -91,6 +99,12 @@ JSON output includes `schema_version: 1` and an aggregate `summary` with tool
 states, severity counts, affected files, and counts by rule. The published
 [`quality` report schema](/quality-report.schema.json) defines the complete
 machine-readable contract.
+
+`--format agent` emits bounded Markdown intended for coding-agent context. It
+groups findings by file, distinguishes environment and toolchain failures,
+includes focused rerun commands, and retains only short unstructured output
+when an adapter did not produce diagnostics. Use JSON rather than the agent
+format when completeness or a versioned machine contract is required.
 
 Use repeatable `--only ID` or `--exclude ID` flags to select built-in adapters,
 repository tasks, or custom tools. Comma-separated IDs are also accepted. The
