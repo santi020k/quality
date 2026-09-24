@@ -928,8 +928,7 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
         return Some("job requires GitHub context or conditions");
     }
     if mapping_value(job, "runs-on")
-        .and_then(serde_yaml::Value::as_str)
-        .and_then(runner_operating_system)
+        .and_then(runner_operating_system_value)
         .is_some_and(|runner_os| runner_os != std::env::consts::OS)
     {
         return Some("job uses a different runner operating system");
@@ -937,13 +936,23 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
     None
 }
 
+fn runner_operating_system_value(value: &serde_yaml::Value) -> Option<&'static str> {
+    match value {
+        serde_yaml::Value::String(label) => runner_operating_system(label),
+        serde_yaml::Value::Sequence(labels) => labels
+            .iter()
+            .find_map(|label| label.as_str().and_then(runner_operating_system)),
+        _ => None,
+    }
+}
+
 fn runner_operating_system(label: &str) -> Option<&'static str> {
     let label = label.to_ascii_lowercase();
-    if label.starts_with("ubuntu-") {
+    if label == "linux" || label == "ubuntu" || label.starts_with("ubuntu-") {
         Some("linux")
-    } else if label.starts_with("macos-") {
+    } else if label == "macos" || label.starts_with("macos-") {
         Some("macos")
-    } else if label.starts_with("windows-") {
+    } else if label == "windows" || label.starts_with("windows-") {
         Some("windows")
     } else {
         None
@@ -952,6 +961,17 @@ fn runner_operating_system(label: &str) -> Option<&'static str> {
 
 fn environment_setup_command(command: &str) -> bool {
     let normalized = normalize_command(command);
+    if normalized.contains("&&") || normalized.contains("||") || normalized.contains(';') {
+        return false;
+    }
+    normalized
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .all(setup_command_fragment)
+}
+
+fn setup_command_fragment(command: &str) -> bool {
     [
         "pnpm install",
         "npm ci",
@@ -963,9 +983,9 @@ fn environment_setup_command(command: &str) -> bool {
         "rustup component add",
     ]
     .iter()
-    .any(|prefix| normalized.starts_with(prefix))
-        || normalized.contains("$GITHUB_PATH")
-        || normalized.contains("$GITHUB_ENV")
+    .any(|prefix| command.starts_with(prefix))
+        || command.contains("$GITHUB_PATH")
+        || command.contains("$GITHUB_ENV")
 }
 
 fn has_pull_request_trigger(value: &serde_yaml::Value) -> bool {
@@ -1010,6 +1030,10 @@ mod tests {
         assert!(environment_setup_command(
             "go install example.test/tool@v1\necho bin >> $GITHUB_PATH"
         ));
+        assert!(!environment_setup_command(
+            "pnpm install --frozen-lockfile && pnpm test"
+        ));
+        assert!(!environment_setup_command("pnpm install\npnpm test"));
         assert!(!environment_setup_command("pnpm run check"));
     }
 
@@ -1073,5 +1097,8 @@ mod tests {
         assert_eq!(runner_operating_system("macos-latest"), Some("macos"));
         assert_eq!(runner_operating_system("windows-2022"), Some("windows"));
         assert_eq!(runner_operating_system("self-hosted"), None);
+        let labels =
+            serde_yaml::from_str::<serde_yaml::Value>("[self-hosted, windows, x64]").unwrap();
+        assert_eq!(runner_operating_system_value(&labels), Some("windows"));
     }
 }
