@@ -667,6 +667,40 @@ fn agent_output_bounds_diagnostics_and_reports_omissions() {
 
 #[cfg(unix)]
 #[test]
+fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    let fake = temp.path().join("fake-swiftlint");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho 'App.swift:4:2: warning: Code finding (example_rule)'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: true\n    command: definitely-not-swiftformat\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("## Findings"));
+    assert!(stdout.contains("## Environment and toolchain problems"));
+    assert!(!stdout.contains("additional diagnostics omitted"));
+}
+
+#[cfg(unix)]
+#[test]
 fn github_output_annotates_findings_and_writes_a_report() {
     use std::os::unix::fs::PermissionsExt;
 

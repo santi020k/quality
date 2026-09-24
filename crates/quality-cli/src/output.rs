@@ -229,6 +229,12 @@ fn render_agent_run(
         let total_visible = report
             .results
             .iter()
+            .filter(|result| {
+                !matches!(
+                    result.failure_kind,
+                    Some(FailureKind::Environment | FailureKind::Toolchain)
+                )
+            })
             .flat_map(|result| &result.diagnostics)
             .filter(|diagnostic| report_level.includes(&diagnostic.severity))
             .count();
