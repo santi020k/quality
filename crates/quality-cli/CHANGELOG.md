@@ -1,5 +1,15 @@
 # @quality/cli
 
+## 1.1.2
+
+### Patch Changes
+
+- [#50](https://github.com/santi020k/quality/pull/50) [`1fc67f4`](https://github.com/santi020k/quality/commit/1fc67f4b6f2a754136eae778dd4626f28121b0ff) Thanks [@santi020k](https://github.com/santi020k)! - Include and deduplicate release notes from every released package in the root changelog.
+
+- [#47](https://github.com/santi020k/quality/pull/47) [`67fddb5`](https://github.com/santi020k/quality/commit/67fddb58e1fdcd1779685744498854d65e8b9567) Thanks [@santi020k](https://github.com/santi020k)! - Add opt-in task-output caching to the shared pnpm action and reusable workflow, document authenticated registry publishing with tested consumer examples, and improve repeat site-build and deployment caching.
+
+- [#49](https://github.com/santi020k/quality/pull/49) [`e3063e7`](https://github.com/santi020k/quality/commit/e3063e709fc95e8dff645d0c8da789324daff414) Thanks [@santi020k](https://github.com/santi020k)! - Keep immutable GitHub Action commit annotations tied to the release that produced the pinned commit when synchronizing release documentation.
+
 ## 1.1.1
 
 ### Patch Changes

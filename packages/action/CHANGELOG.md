@@ -1,5 +1,11 @@
 # @quality/action
 
+## 1.1.2
+
+### Patch Changes
+
+- [#47](https://github.com/santi020k/quality/pull/47) [`67fddb5`](https://github.com/santi020k/quality/commit/67fddb58e1fdcd1779685744498854d65e8b9567) Thanks [@santi020k](https://github.com/santi020k)! - Add opt-in task-output caching to the shared pnpm action and reusable workflow, document authenticated registry publishing with tested consumer examples, and improve repeat site-build and deployment caching.
+
 ## 1.1.1
 
 ### Patch Changes
