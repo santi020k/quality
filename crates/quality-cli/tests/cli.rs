@@ -520,6 +520,8 @@ fn agent_doctor_shares_one_bounded_tool_budget() {
     use std::fmt::Write as _;
 
     let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("repo  root");
+    fs::create_dir(&root).unwrap();
     let mut config = String::from("version: 1\noutput: pretty\ntools: {}\ncustom:\n");
     for index in 0..30 {
         writeln!(
@@ -531,13 +533,14 @@ fn agent_doctor_shares_one_bounded_tool_budget() {
     for index in 0..30 {
         writeln!(config, "  z-available-{index:02}:\n    command: true").unwrap();
     }
-    fs::write(temp.path().join("quality.yml"), config).unwrap();
+    fs::write(root.join("quality.yml"), config).unwrap();
 
-    let output = quality(temp.path(), &["doctor", "--format", "agent"]);
+    let output = quality(&root, &["doctor", "--format", "agent"]);
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.matches("- **").count(), 50);
+    assert!(stdout.contains("repo\\x20\\x20root`"));
     assert!(stdout.contains("10 additional tool entries omitted"));
     assert!(stdout.contains("z-available-19"));
     assert!(!stdout.contains("z-available-20"));
@@ -838,6 +841,39 @@ fn agent_output_does_not_count_execution_diagnostics_as_omitted() {
     assert!(stdout.contains("## Environment and toolchain problems"));
     assert!(stdout.contains("no space left on device"));
     assert!(!stdout.contains("additional diagnostics omitted"));
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_output_prioritizes_environment_markers_over_synthesized_diagnostics() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("App.swift"), "struct App {}\n").unwrap();
+    let fake = temp.path().join("fake-swiftlint");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho 'starting analyzer'\necho 'no space left on device'\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake, permissions).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        format!(
+            "version: 1\noutput: pretty\ntools:\n  swiftlint:\n    enabled: true\n    command: {}\n  swiftformat:\n    enabled: false\n",
+            fake.display()
+        ),
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("(environment): no space left on device"));
+    assert!(!stdout.contains("## Findings"));
 }
 
 #[cfg(unix)]

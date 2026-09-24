@@ -265,13 +265,17 @@ fn render_agent_run(
                 .guidance
                 .as_deref()
                 .or_else(|| {
+                    matches!(result.failure_kind, Some(FailureKind::Environment))
+                        .then(|| crate::runner::environment_failure_detail(&result.output))
+                        .flatten()
+                })
+                .or_else(|| {
                     result
                         .diagnostics
                         .iter()
                         .find(|item| item.path.is_none())
                         .map(|item| item.message.as_str())
-                })
-                .or_else(|| crate::runner::environment_failure_detail(&result.output));
+                });
             let detail = match (&result.status, detail) {
                 (_, Some(detail)) => detail,
                 (&Status::Missing, None) => {
@@ -373,7 +377,11 @@ fn render_agent_doctor(report: &DoctorReport) -> String {
         .count();
     let _ = writeln!(output, "# Quality doctor\n");
     let _ = writeln!(output, "- Status: **{status}**");
-    let _ = writeln!(output, "- Project: `{}`", agent_code(&report.root, 240));
+    let _ = writeln!(
+        output,
+        "- Project: `{}`",
+        agent_path_code(&report.root, 240)
+    );
     let _ = writeln!(output, "- Config: {}", agent_text(&report.config, 240));
     let _ = writeln!(
         output,
@@ -529,11 +537,12 @@ fn agent_finding_includes(
     result: &crate::runner::ToolResult,
     diagnostic: &crate::runner::Diagnostic,
 ) -> bool {
-    diagnostic.path.is_some()
-        || !matches!(
-            result.failure_kind,
-            Some(FailureKind::Environment | FailureKind::Toolchain)
-        )
+    !agent_has_synthesized_failure(result)
+        && (diagnostic.path.is_some()
+            || !matches!(
+                result.failure_kind,
+                Some(FailureKind::Environment | FailureKind::Toolchain)
+            ))
 }
 
 fn agent_has_synthesized_failure(result: &crate::runner::ToolResult) -> bool {
