@@ -47,8 +47,26 @@
         "exit_code": { "type": "integer" },
         "output": { "type": "string" },
         "output_truncated": { "type": "boolean" },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diagnostic" }
+        },
         "failure": { "type": "string" },
         "rerun": { "type": "string" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "path", "line", "column", "severity", "message", "rule"],
+      "properties": {
+        "tool": { "type": "string" },
+        "path": { "type": ["string", "null"] },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "column": { "type": ["integer", "null"], "minimum": 1 },
+        "severity": { "type": "string" },
+        "message": { "type": "string" },
+        "rule": { "type": ["string", "null"] }
       }
     }
   }

@@ -164,6 +164,9 @@ pub struct HookStepConfig {
     /// GitHub Actions `run:` commands this wrapper step explicitly covers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub covers: Vec<String>,
+    /// Parse failed command output into file, line, rule, and severity diagnostics.
+    #[serde(default)]
+    pub parser: DiagnosticParser,
 }
 
 fn enabled_by_default() -> bool {
@@ -682,6 +685,7 @@ fn detect_commitprompt_hook(project: &Project) -> Option<HookConfig> {
             working_directory: None,
             pass_hook_args: true,
             covers: Vec::new(),
+            parser: DiagnosticParser::Generic,
         }],
     })
 }
@@ -724,6 +728,7 @@ fn detect_repository_hooks(project: &Project) -> BTreeMap<String, HookConfig> {
                     working_directory: None,
                     pass_hook_args: false,
                     covers: Vec::new(),
+                    parser: DiagnosticParser::Generic,
                 }],
             },
         ))

@@ -124,6 +124,8 @@ quality instructions --format agents # Print a section for a repository AGENTS.m
 quality ci github --install '…' # Generate a runnable GitHub Actions workflow
 quality ci plan        # Compare PR workflow steps with the local pre-push gate
 quality ci local       # Run and time the local pre-push gate
+quality ci history     # Inspect retained metadata-only runs
+quality ci compare     # Compare the latest two runs of the same hook
 quality hooks install   # Install the Git hooks declared in quality.yml
 quality hooks status    # Verify that every configured hook is installed
 ```
@@ -432,23 +434,33 @@ quality ci plan --strict
 quality ci local
 quality ci local --step 2
 quality ci local --hook pre-commit
+quality ci history --hook pre-push
+quality ci show latest --hook pre-push
+quality ci compare --hook pre-push
 ```
 
 `ci plan` inventories pull-request workflows and marks exact local-command
 matches as covered, `uses:` actions and GitHub expressions as GitHub-only, and
 plain `run:` commands missing from the selected hook as uncovered. `ci local`
 runs hook steps in order, reports wall time for every step, retains bounded
-failure output, and prints a focused rerun command. Git hooks use the same timed
-runner automatically. `quality init` and presets import existing `pre-commit`,
+failure output, normalizes configured diagnostics, and prints a focused rerun
+command. Git hooks use the same timed runner automatically. `quality init` and presets import existing `pre-commit`,
 `precommit`, `pre-push`, or `prepush` package scripts without replacing a hook
 already present in `quality.yml`. Wrapper steps can declare exact workflow
 commands under `covers` so the planner records intentional equivalence without
 guessing from script names.
 
 The latest 20 metadata-only runs are retained under `.git/quality/local-ci/`;
-output is omitted from automatic history. Pass `--report PATH` when a complete,
-versioned JSON report is needed. That explicit report can contain command
-output and should not be committed when checks may print sensitive data.
+output and diagnostics are omitted from automatic history. Use `ci history`,
+`ci show`, and `ci compare` to inspect timing regressions. Pass `--report PATH`
+when a complete, versioned JSON report is needed. That explicit report can
+contain command output and should not be committed when checks may print
+sensitive data.
+
+Repositories can pin the required CLI by writing a version such as `1.2.0` to
+`.quality-version`. A mismatch stops before checks run and prints the exact
+checksum-verified installation command on macOS and Linux or the matching
+Windows release location, keeping hooks reproducible across a team.
 
 Local execution is an early feedback gate, not proof of the GitHub environment.
 Hosted actions, secrets, permissions, services, deployments, releases, and the

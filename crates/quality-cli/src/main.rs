@@ -11,6 +11,7 @@ mod project;
 mod repositories;
 mod runner;
 mod tools;
+mod version_pin;
 
 use std::env;
 use std::path::PathBuf;
@@ -59,6 +60,7 @@ fn run() -> Result<()> {
         .unwrap_or(env::current_dir().context("could not determine the current directory")?)
         .canonicalize()
         .context("project root does not exist")?;
+    version_pin::enforce(&root)?;
     if let Command::Repositories { command } = cli.command {
         return repositories::run(&root, command);
     }
@@ -284,6 +286,30 @@ fn run() -> Result<()> {
                 if !report_data.passed() {
                     std::process::exit(1);
                 }
+            }
+            Some(CiCommand::History {
+                hook,
+                limit,
+                format,
+            }) => {
+                local_ci::print_history(&root, hook.as_deref(), limit.get(), format)?;
+            }
+            Some(CiCommand::Show { run, hook, format }) => {
+                local_ci::print_history_run(&root, hook.as_deref(), &run, format)?;
+            }
+            Some(CiCommand::Compare {
+                base,
+                head,
+                hook,
+                format,
+            }) => {
+                local_ci::print_comparison(
+                    &root,
+                    hook.as_deref(),
+                    base.as_deref(),
+                    head.as_deref(),
+                    format,
+                )?;
             }
             None => {
                 if legacy_install.is_none() && legacy_shared_ref.is_none() {

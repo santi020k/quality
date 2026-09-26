@@ -186,6 +186,9 @@ quality ci local
 quality ci local --step 2
 quality ci local --hook pre-commit
 quality ci local --format json --report reports/local-ci.json
+quality ci history --hook pre-push
+quality ci show latest --hook pre-push
+quality ci compare --hook pre-push
 ```
 
 `ci plan` reports exact command coverage from the selected hook. `--strict`
@@ -197,11 +200,13 @@ verified. A wrapper step can explicitly list equivalent workflow commands under
 
 `ci local` runs each hook step sequentially, captures at most 1 MiB of combined
 output per step by default, stops after the first failure, and reports wall
-time, exit status, a concise tail of failure output, and a focused rerun
-command. Override the capture limit with `--max-output-bytes`.
+time, exit status, normalized diagnostics, a concise tail of failure output,
+and a focused rerun command. Override the capture limit with
+`--max-output-bytes`.
 
 The 20 most recent metadata-only runs are kept below `.git/quality/local-ci/` unless
-`--no-history` is passed. Automatic history omits command output. An explicit
+`--no-history` is passed. `ci history`, `ci show`, and `ci compare` inspect
+status and timing changes. Automatic history omits command output and diagnostics. An explicit
 `--report` retains bounded output and follows the published
 [`quality local CI report schema`](/quality-local-ci.schema.json); do not commit
 reports from commands that may print sensitive information. JSON plans follow

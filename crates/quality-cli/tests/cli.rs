@@ -1659,7 +1659,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     let success = temp.path().join("pass-check");
     fs::write(
         &failure,
-        "#!/bin/sh\necho 'src/app.ts:4: broken check' >&2\nexit 7\n",
+        "#!/bin/sh\necho 'src/app.ts:4:5: error: broken check (local-rule)' >&2\nexit 7\n",
     )
     .unwrap();
     fs::write(&success, "#!/bin/sh\nprintf 'ran\\n' > focused-rerun.txt\n").unwrap();
@@ -1667,7 +1667,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     fs::set_permissions(&success, fs::Permissions::from_mode(0o755)).unwrap();
     fs::write(
         temp.path().join("quality.yml"),
-        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Failing check\n        command: ./fail-check\n      - name: Passing check\n        command: ./pass-check\n",
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Failing check\n        command: ./fail-check\n        parser: generic\n      - name: Passing check\n        command: ./pass-check\n",
     )
     .unwrap();
 
@@ -1679,7 +1679,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     assert_eq!(failed.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&failed.stdout);
     assert!(stdout.contains("command exited with code 7"));
-    assert!(stdout.contains("src/app.ts:4: broken check"));
+    assert!(stdout.contains("src/app.ts:4:5 error: broken check [local-rule]"));
     assert!(stdout.contains("quality ci local --hook pre-push --step 1"));
     assert!(stdout.contains("wall time"));
     assert!(!temp.path().join("focused-rerun.txt").exists());
@@ -1688,11 +1688,23 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
             .unwrap();
     assert_eq!(report["status"], "failed");
     assert_eq!(report["steps"][0]["exit_code"], 7);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["path"], "src/app.ts");
+    assert_eq!(report["steps"][0]["diagnostics"][0]["line"], 4);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["column"], 5);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["rule"], "local-rule");
     assert_eq!(report["steps"][1]["status"], "skipped");
     assert_matches_published_schema(
         &report,
         include_str!("../../../apps/site/public/quality-local-ci.schema.json"),
     );
+
+    let retained_failure = quality(temp.path(), &["ci", "local", "--format", "json"]);
+    assert_eq!(retained_failure.status.code(), Some(1));
+    let retained = quality(temp.path(), &["ci", "show", "latest", "--format", "json"]);
+    assert!(retained.status.success());
+    let retained: serde_json::Value = serde_json::from_slice(&retained.stdout).unwrap();
+    assert!(retained["steps"][0].get("output").is_none());
+    assert!(retained["steps"][0].get("diagnostics").is_none());
 
     let bounded = quality(
         temp.path(),
@@ -1717,6 +1729,85 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
         fs::read_to_string(temp.path().join("focused-rerun.txt")).unwrap(),
         "ran\n"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn ci_history_shows_and_compares_metadata_only_runs() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let command = temp.path().join("timed-check");
+    fs::write(
+        &command,
+        "#!/bin/sh\nsleep 0.01\necho 'private command output'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Timed check\n        command: ./timed-check\n",
+    )
+    .unwrap();
+
+    assert!(quality(temp.path(), &["ci", "local"]).status.success());
+    assert!(quality(temp.path(), &["ci", "local"]).status.success());
+
+    let history = quality(
+        temp.path(),
+        &["ci", "history", "--format", "json", "--limit", "2"],
+    );
+    assert!(
+        history.status.success(),
+        "{}",
+        String::from_utf8_lossy(&history.stderr)
+    );
+    let entries: serde_json::Value = serde_json::from_slice(&history.stdout).unwrap();
+    assert_eq!(entries["schema_version"], 1);
+    assert_eq!(entries["runs"].as_array().unwrap().len(), 2);
+    assert_eq!(entries["runs"][0]["hook"], "pre-push");
+    assert_matches_published_schema(
+        &entries,
+        include_str!("../../../apps/site/public/quality-local-ci-history.schema.json"),
+    );
+
+    let shown = quality(temp.path(), &["ci", "show", "latest", "--format", "json"]);
+    assert!(shown.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    assert!(report["steps"][0].get("output").is_none());
+    assert!(report["steps"][0].get("diagnostics").is_none());
+
+    let compared = quality(temp.path(), &["ci", "compare", "--format", "json"]);
+    assert!(compared.status.success());
+    let comparison: serde_json::Value = serde_json::from_slice(&compared.stdout).unwrap();
+    assert_eq!(comparison["schema_version"], 1);
+    assert_ne!(comparison["base"]["id"], comparison["head"]["id"]);
+    assert_eq!(comparison["steps"][0]["name"], "Timed check");
+    assert!(comparison["duration_delta_ms"].is_number());
+    assert_matches_published_schema(
+        &comparison,
+        include_str!("../../../apps/site/public/quality-local-ci-comparison.schema.json"),
+    );
+}
+
+#[test]
+fn quality_version_pin_is_enforced_before_project_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join(".quality-version"), "99.0.0\n").unwrap();
+
+    let mismatch = quality(temp.path(), &["ci", "history"]);
+    assert_eq!(mismatch.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&mismatch.stderr);
+    assert!(stderr.contains("requires quality 99.0.0"));
+    assert!(stderr.contains("v99.0.0"));
+
+    fs::write(
+        temp.path().join(".quality-version"),
+        format!("{}\n", env!("CARGO_PKG_VERSION")),
+    )
+    .unwrap();
+    assert!(quality(temp.path(), &["ci", "history"]).status.success());
 }
 
 #[cfg(unix)]

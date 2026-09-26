@@ -8,10 +8,11 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cli::CiOutputFormat;
 use crate::config::{Config, HookStepConfig};
+use crate::runner::{self, Diagnostic};
 
 const REPORT_SCHEMA_VERSION: u8 = 1;
 const PLAN_SCHEMA_VERSION: u8 = 1;
@@ -62,7 +63,7 @@ pub struct PlanSummary {
     pub uncovered: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalCiReport {
     pub schema_version: u8,
     pub hook: String,
@@ -72,7 +73,7 @@ pub struct LocalCiReport {
     pub steps: Vec<LocalCiStepResult>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LocalCiStatus {
     Passed,
@@ -80,7 +81,7 @@ pub enum LocalCiStatus {
     Skipped,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalCiStepResult {
     pub number: usize,
     pub name: String,
@@ -91,14 +92,53 @@ pub struct LocalCiStepResult {
     pub working_directory: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub output: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub output_truncated: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<Diagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rerun: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalCiHistory {
+    pub schema_version: u8,
+    pub runs: Vec<LocalCiHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalCiHistoryEntry {
+    pub id: String,
+    pub hook: String,
+    pub started_at_unix_ms: u128,
+    pub duration_ms: u128,
+    pub status: LocalCiStatus,
+    pub steps: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalCiComparison {
+    pub schema_version: u8,
+    pub base: LocalCiHistoryEntry,
+    pub head: LocalCiHistoryEntry,
+    pub duration_delta_ms: i128,
+    pub duration_delta_percent: Option<f64>,
+    pub steps: Vec<LocalCiStepComparison>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalCiStepComparison {
+    pub name: String,
+    pub command: String,
+    pub base_duration_ms: Option<u128>,
+    pub head_duration_ms: Option<u128>,
+    pub duration_delta_ms: Option<i128>,
+    pub base_status: Option<LocalCiStatus>,
+    pub head_status: Option<LocalCiStatus>,
 }
 
 impl LocalCiReport {
@@ -293,6 +333,29 @@ pub fn print_report(report: &LocalCiReport, format: CiOutputFormat) -> Result<()
                         if let Some(failure) = &step.failure {
                             println!("    {failure}");
                         }
+                        for diagnostic in step.diagnostics.iter().take(20) {
+                            let location =
+                                match (&diagnostic.path, diagnostic.line, diagnostic.column) {
+                                    (Some(path), Some(line), Some(column)) => {
+                                        format!("{path}:{line}:{column}")
+                                    }
+                                    (Some(path), Some(line), None) => format!("{path}:{line}"),
+                                    (Some(path), None, None) => path.clone(),
+                                    _ => step.name.clone(),
+                                };
+                            let rule = diagnostic
+                                .rule
+                                .as_ref()
+                                .map(|rule| format!(" [{rule}]"))
+                                .unwrap_or_default();
+                            println!(
+                                "    {location} {}: {}{rule}",
+                                diagnostic.severity, diagnostic.message
+                            );
+                        }
+                        if step.diagnostics.len() > 20 {
+                            println!("    … and {} more diagnostics", step.diagnostics.len() - 20);
+                        }
                         if !step.output.trim().is_empty() {
                             println!();
                             let lines = step.output.trim_end().lines().collect::<Vec<_>>();
@@ -341,6 +404,132 @@ pub fn retain_report(
     config: &Config,
     report: &LocalCiReport,
 ) -> Result<Option<PathBuf>> {
+    let Some(directory) = history_directory(root)? else {
+        return Ok(None);
+    };
+    fs::create_dir_all(&directory)
+        .with_context(|| format!("could not create {}", directory.display()))?;
+    let mut retained = report.clone();
+    let configured_steps = config
+        .hooks
+        .get(&report.hook)
+        .map(|hook| hook.steps.as_slice())
+        .unwrap_or_default();
+    for (index, step) in retained.steps.iter_mut().enumerate() {
+        step.output.clear();
+        step.output_truncated = false;
+        step.diagnostics.clear();
+        if let Some(configured) = configured_steps.get(index) {
+            step.command = command_display(configured, &[]);
+        }
+    }
+    let run_path = unique_run_path(&directory, report.started_at_unix_ms)?;
+    write_report(&retained, &run_path)?;
+    write_report(&retained, &directory.join("latest.json"))?;
+    prune_history(&directory)?;
+    Ok(Some(run_path))
+}
+
+pub fn print_history(
+    root: &Path,
+    hook: Option<&str>,
+    limit: usize,
+    format: CiOutputFormat,
+) -> Result<()> {
+    let runs = read_history(root, hook)?
+        .into_iter()
+        .take(limit)
+        .collect::<Vec<_>>();
+    let entries = runs
+        .iter()
+        .map(|run| history_entry(&run.id, &run.report))
+        .collect::<Vec<_>>();
+    match format {
+        CiOutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&LocalCiHistory {
+                schema_version: REPORT_SCHEMA_VERSION,
+                runs: entries,
+            })?
+        ),
+        CiOutputFormat::Pretty => {
+            if entries.is_empty() {
+                println!("No retained local CI runs found.");
+            } else {
+                println!("Local CI history");
+                println!();
+                for entry in entries {
+                    println!(
+                        "  {:<22} {:<12} {:<8} {:>8.2}s  {} step(s)",
+                        entry.id,
+                        entry.hook,
+                        status_label(entry.status),
+                        entry.duration_ms as f64 / 1000.0,
+                        entry.steps
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn print_history_run(
+    root: &Path,
+    hook: Option<&str>,
+    selector: &str,
+    format: CiOutputFormat,
+) -> Result<()> {
+    let runs = read_history(root, hook)?;
+    let run = select_history_run(&runs, selector)?;
+    if matches!(format, CiOutputFormat::Pretty) {
+        println!("Retained run {}", run.id);
+        println!();
+    }
+    print_report(&run.report, format)
+}
+
+pub fn print_comparison(
+    root: &Path,
+    hook: Option<&str>,
+    base_selector: Option<&str>,
+    head_selector: Option<&str>,
+    format: CiOutputFormat,
+) -> Result<()> {
+    let runs = read_history(root, hook)?;
+    let head = select_history_run(&runs, head_selector.unwrap_or("latest"))?;
+    let base = if let Some(selector) = base_selector {
+        select_history_run(&runs, selector)?
+    } else {
+        runs.iter()
+            .find(|run| run.id != head.id && run.report.hook == head.report.hook)
+            .with_context(|| "at least two retained local CI runs are required for comparison")?
+    };
+    if base.id == head.id {
+        anyhow::bail!("comparison requires two different retained runs");
+    }
+    if base.report.hook != head.report.hook {
+        anyhow::bail!(
+            "cannot compare hook `{}` with hook `{}`; pass --hook or choose matching runs",
+            base.report.hook,
+            head.report.hook
+        );
+    }
+    let comparison = compare_runs(base, head);
+    match format {
+        CiOutputFormat::Json => println!("{}", serde_json::to_string_pretty(&comparison)?),
+        CiOutputFormat::Pretty => print_comparison_pretty(&comparison),
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct StoredRun {
+    id: String,
+    report: LocalCiReport,
+}
+
+fn history_directory(root: &Path) -> Result<Option<PathBuf>> {
     let output = Command::new("git")
         .args(["rev-parse", "--git-path", "quality/local-ci"])
         .current_dir(root)
@@ -359,26 +548,230 @@ pub fn retain_report(
     } else {
         root.join(directory)
     };
-    fs::create_dir_all(&directory)
-        .with_context(|| format!("could not create {}", directory.display()))?;
-    let mut retained = report.clone();
-    let configured_steps = config
-        .hooks
-        .get(&report.hook)
-        .map(|hook| hook.steps.as_slice())
-        .unwrap_or_default();
-    for (index, step) in retained.steps.iter_mut().enumerate() {
-        step.output.clear();
-        step.output_truncated = false;
-        if let Some(configured) = configured_steps.get(index) {
-            step.command = command_display(configured, &[]);
+    Ok(Some(directory))
+}
+
+fn read_history(root: &Path, hook: Option<&str>) -> Result<Vec<StoredRun>> {
+    let Some(directory) = history_directory(root)? else {
+        return Ok(Vec::new());
+    };
+    if !directory.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(&directory)
+        .with_context(|| format!("could not read {}", directory.display()))?
+    {
+        let path = entry?.path();
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if !name.starts_with("run-") || !name.ends_with(".json") {
+            continue;
+        }
+        let text = fs::read_to_string(&path)
+            .with_context(|| format!("could not read {}", path.display()))?;
+        let report: LocalCiReport = serde_json::from_str(&text)
+            .with_context(|| format!("invalid local CI history in {}", path.display()))?;
+        if report.schema_version != REPORT_SCHEMA_VERSION {
+            anyhow::bail!(
+                "unsupported local CI history schema {} in {}; expected {}",
+                report.schema_version,
+                path.display(),
+                REPORT_SCHEMA_VERSION
+            );
+        }
+        if hook.is_some_and(|selected| selected != report.hook) {
+            continue;
+        }
+        runs.push(StoredRun {
+            id: name.trim_end_matches(".json").to_owned(),
+            report,
+        });
+    }
+    runs.sort_by(|left, right| {
+        right
+            .report
+            .started_at_unix_ms
+            .cmp(&left.report.started_at_unix_ms)
+    });
+    Ok(runs)
+}
+
+fn unique_run_path(directory: &Path, started_at_unix_ms: u128) -> Result<PathBuf> {
+    let first = directory.join(format!("run-{started_at_unix_ms}.json"));
+    if !first.exists() {
+        return Ok(first);
+    }
+    for suffix in 1..=9999_u16 {
+        let candidate = directory.join(format!("run-{started_at_unix_ms}-{suffix:04}.json"));
+        if !candidate.exists() {
+            return Ok(candidate);
         }
     }
-    let run_path = directory.join(format!("run-{}.json", report.started_at_unix_ms));
-    write_report(&retained, &run_path)?;
-    write_report(&retained, &directory.join("latest.json"))?;
-    prune_history(&directory)?;
-    Ok(Some(run_path))
+    anyhow::bail!("could not allocate a unique local CI history file")
+}
+
+fn select_history_run<'a>(runs: &'a [StoredRun], selector: &str) -> Result<&'a StoredRun> {
+    match selector {
+        "latest" => runs
+            .first()
+            .with_context(|| "no retained local CI runs found"),
+        "previous" => runs
+            .get(1)
+            .with_context(|| "no previous retained local CI run found"),
+        value => {
+            let without_suffix = value.strip_suffix(".json").unwrap_or(value);
+            let normalized = without_suffix
+                .strip_prefix("run-")
+                .unwrap_or(without_suffix);
+            runs.iter()
+                .find(|run| run.id == value || run.id == format!("run-{normalized}"))
+                .with_context(|| format!("retained local CI run `{value}` was not found"))
+        }
+    }
+}
+
+fn history_entry(id: &str, report: &LocalCiReport) -> LocalCiHistoryEntry {
+    LocalCiHistoryEntry {
+        id: id.to_owned(),
+        hook: report.hook.clone(),
+        started_at_unix_ms: report.started_at_unix_ms,
+        duration_ms: report.duration_ms,
+        status: report.status,
+        steps: report.steps.len(),
+    }
+}
+
+fn compare_runs(base: &StoredRun, head: &StoredRun) -> LocalCiComparison {
+    let mut used_head = vec![false; head.report.steps.len()];
+    let mut steps = Vec::new();
+    for base_step in &base.report.steps {
+        let matching = head
+            .report
+            .steps
+            .iter()
+            .enumerate()
+            .find(|(index, head_step)| {
+                !used_head[*index]
+                    && head_step.name == base_step.name
+                    && head_step.command == base_step.command
+                    && head_step.working_directory == base_step.working_directory
+            });
+        if let Some((index, head_step)) = matching {
+            used_head[index] = true;
+            steps.push(step_comparison(Some(base_step), Some(head_step)));
+        } else {
+            steps.push(step_comparison(Some(base_step), None));
+        }
+    }
+    for (index, head_step) in head.report.steps.iter().enumerate() {
+        if !used_head[index] {
+            steps.push(step_comparison(None, Some(head_step)));
+        }
+    }
+    let duration_delta_ms = signed_delta(base.report.duration_ms, head.report.duration_ms);
+    LocalCiComparison {
+        schema_version: REPORT_SCHEMA_VERSION,
+        base: history_entry(&base.id, &base.report),
+        head: history_entry(&head.id, &head.report),
+        duration_delta_ms,
+        duration_delta_percent: (base.report.duration_ms > 0)
+            .then(|| duration_delta_ms as f64 / base.report.duration_ms as f64 * 100.0),
+        steps,
+    }
+}
+
+fn step_comparison(
+    base: Option<&LocalCiStepResult>,
+    head: Option<&LocalCiStepResult>,
+) -> LocalCiStepComparison {
+    let reference = head.or(base).expect("a comparison has at least one step");
+    LocalCiStepComparison {
+        name: reference.name.clone(),
+        command: reference.command.clone(),
+        base_duration_ms: base.map(|step| step.duration_ms),
+        head_duration_ms: head.map(|step| step.duration_ms),
+        duration_delta_ms: base
+            .zip(head)
+            .map(|(base, head)| signed_delta(base.duration_ms, head.duration_ms)),
+        base_status: base.map(|step| step.status),
+        head_status: head.map(|step| step.status),
+    }
+}
+
+fn signed_delta(base: u128, head: u128) -> i128 {
+    if head >= base {
+        i128::try_from(head - base).unwrap_or(i128::MAX)
+    } else {
+        -i128::try_from(base - head).unwrap_or(i128::MAX)
+    }
+}
+
+fn print_comparison_pretty(comparison: &LocalCiComparison) {
+    println!("Local CI comparison ({})", comparison.head.hook);
+    println!();
+    println!(
+        "  base  {}  {:.2}s  {}",
+        comparison.base.id,
+        comparison.base.duration_ms as f64 / 1000.0,
+        status_label(comparison.base.status)
+    );
+    println!(
+        "  head  {}  {:.2}s  {}",
+        comparison.head.id,
+        comparison.head.duration_ms as f64 / 1000.0,
+        status_label(comparison.head.status)
+    );
+    let percent = comparison
+        .duration_delta_percent
+        .map(|value| format!(", {value:+.1}%"))
+        .unwrap_or_default();
+    println!(
+        "  total change {:+.2}s{percent}",
+        comparison.duration_delta_ms as f64 / 1000.0
+    );
+    println!();
+    for step in &comparison.steps {
+        match (
+            step.base_duration_ms,
+            step.head_duration_ms,
+            step.duration_delta_ms,
+        ) {
+            (Some(base), Some(head), Some(delta)) => println!(
+                "  {:<36} {:>7.2}s -> {:>7.2}s  ({:+.2}s)  {} -> {}",
+                step.name,
+                base as f64 / 1000.0,
+                head as f64 / 1000.0,
+                delta as f64 / 1000.0,
+                step.base_status.map(status_label).unwrap_or("missing"),
+                step.head_status.map(status_label).unwrap_or("missing")
+            ),
+            (Some(base), None, None) => println!(
+                "  {:<36} removed (was {:.2}s, {})",
+                step.name,
+                base as f64 / 1000.0,
+                step.base_status.map(status_label).unwrap_or("missing")
+            ),
+            (None, Some(head), None) => {
+                println!(
+                    "  {:<36} added ({:.2}s, {})",
+                    step.name,
+                    head as f64 / 1000.0,
+                    step.head_status.map(status_label).unwrap_or("missing")
+                )
+            }
+            _ => {}
+        }
+    }
+}
+
+fn status_label(status: LocalCiStatus) -> &'static str {
+    match status {
+        LocalCiStatus::Passed => "passed",
+        LocalCiStatus::Failed => "failed",
+        LocalCiStatus::Skipped => "skipped",
+    }
 }
 
 fn prune_history(directory: &Path) -> Result<()> {
@@ -453,25 +846,38 @@ fn execute_step(
                     exit_code: status.code(),
                     output,
                     output_truncated,
+                    diagnostics: Vec::new(),
                     failure: None,
                     rerun: None,
                 },
-                Ok(status) => LocalCiStepResult {
-                    number,
-                    name: step_name(step),
-                    status: LocalCiStatus::Failed,
-                    duration_ms: started.elapsed().as_millis(),
-                    command: display,
-                    working_directory: relative_working_directory(step),
-                    exit_code: status.code(),
-                    output,
-                    output_truncated,
-                    failure: Some(match status.code() {
-                        Some(code) => format!("command exited with code {code}"),
-                        None => "command terminated by a signal".to_owned(),
-                    }),
-                    rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
-                },
+                Ok(status) => {
+                    let name = step_name(step);
+                    let (diagnostics, _) = runner::parse_diagnostics_at(
+                        step.parser,
+                        &name,
+                        root,
+                        &directory,
+                        &output,
+                        true,
+                    );
+                    LocalCiStepResult {
+                        number,
+                        name,
+                        status: LocalCiStatus::Failed,
+                        duration_ms: started.elapsed().as_millis(),
+                        command: display,
+                        working_directory: relative_working_directory(step),
+                        exit_code: status.code(),
+                        output,
+                        output_truncated,
+                        diagnostics,
+                        failure: Some(match status.code() {
+                            Some(code) => format!("command exited with code {code}"),
+                            None => "command terminated by a signal".to_owned(),
+                        }),
+                        rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
+                    }
+                }
                 Err(error) => failed_step(
                     number,
                     step,
@@ -514,6 +920,15 @@ fn failed_step(
         exit_code: None,
         output: String::new(),
         output_truncated: false,
+        diagnostics: vec![Diagnostic {
+            tool: step_name(step),
+            path: None,
+            line: None,
+            column: None,
+            severity: "error".to_owned(),
+            message: format!("could not run command: {error}"),
+            rule: None,
+        }],
         failure: Some(format!("could not run command: {error}")),
         rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
     }
@@ -535,6 +950,7 @@ fn skipped_step(
         exit_code: None,
         output: String::new(),
         output_truncated: false,
+        diagnostics: Vec::new(),
         failure: None,
         rerun: Some(rerun_command(hook_name, number, requires_hook_args)),
     }
@@ -1168,6 +1584,17 @@ mod tests {
         assert!(!names.contains(&"run-01.json".to_owned()));
         assert!(names.contains(&"run-21.json".to_owned()));
         assert!(names.contains(&"latest.json".to_owned()));
+    }
+
+    #[test]
+    fn retained_history_does_not_replace_runs_started_in_the_same_millisecond() {
+        let temporary = tempfile::tempdir().unwrap();
+        let first = unique_run_path(temporary.path(), 123).unwrap();
+        fs::write(&first, "{}").unwrap();
+        let second = unique_run_path(temporary.path(), 123).unwrap();
+
+        assert_eq!(first.file_name().unwrap(), "run-123.json");
+        assert_eq!(second.file_name().unwrap(), "run-123-0001.json");
     }
 
     #[test]

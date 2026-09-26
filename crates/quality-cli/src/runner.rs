@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use wait_timeout::ChildExt;
 
 use crate::changes::ChangeSet;
@@ -45,7 +45,7 @@ pub enum FailureKind {
     Toolchain,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Diagnostic {
     pub tool: String,
     pub path: Option<String>,
@@ -710,7 +710,7 @@ fn parse_diagnostics(
     parse_diagnostics_at(parser, tool, root, root, output, synthesize_failure)
 }
 
-fn parse_diagnostics_at(
+pub(crate) fn parse_diagnostics_at(
     parser: DiagnosticParser,
     tool: &str,
     root: &std::path::Path,

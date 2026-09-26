@@ -209,6 +209,39 @@ pub enum CiCommand {
         #[arg(last = true, allow_hyphen_values = true)]
         args: Vec<OsString>,
     },
+    /// List retained metadata-only local CI runs.
+    History {
+        /// Limit results to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        /// Maximum number of runs to display.
+        #[arg(long, default_value = "10")]
+        limit: NonZeroUsize,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Show one retained local CI run (`latest`, `previous`, or a run ID).
+    Show {
+        #[arg(default_value = "latest")]
+        run: String,
+        /// Limit selectors to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Compare two retained local CI runs.
+    Compare {
+        /// Base run (`previous`, `latest`, a timestamp, or a run ID). Defaults to the run before HEAD.
+        base: Option<String>,
+        /// Head run. Defaults to `latest`.
+        head: Option<String>,
+        /// Limit selectors to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
 }
 
 #[derive(Debug, Subcommand)]
