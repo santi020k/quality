@@ -29,12 +29,12 @@
     "hooks:install": "cargo run --quiet --package quality-cli -- hooks install"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "1.0.0",
-    "@changesets/cli": "3.0.1",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.3",
     "@santi020k/commitprompt": "1.1.0",
-    "cspell": "10.1.0",
-    "turbo": "2.10.11",
-    "wrangler": "4.137.0"
+    "cspell": "10.3.5",
+    "turbo": "2.11.5",
+    "wrangler": "4.142.0"
   },
   "main": "index.js",
   "repository": {
