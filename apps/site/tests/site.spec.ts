@@ -135,7 +135,10 @@ test('Lumen command tabs support keyboard selection and copying after navigation
 	await page.getByRole('tabpanel').filter({ visible: true }).getByRole('button').click();
 	await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('quality format --changed');
 	await page.getByRole('link', { name: 'Get started', exact: true }).click();
+	await expect(page).toHaveURL(/\/getting-started\//);
+	await expect(page.locator('main h1')).toHaveText('Getting started');
 	await page.goBack();
+	await expect(page).toHaveURL('/');
 	await page.getByRole('tab', { name: 'A useful report', exact: true }).click();
 	await expect(page.getByRole('tabpanel').filter({ visible: true })).toContainText('quality check --format agent');
 });
