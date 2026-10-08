@@ -1,4 +1,6 @@
-# quality
+<h1 align="center">quality</h1>
+
+<p align="center">One predictable quality workflow across languages and toolchains.</p>
 
 `quality` is one fast, predictable code-quality workflow for repositories that
 contain Rust, Swift, Android/Kotlin, Python, JavaScript, and Astro projects. It does not replace the
@@ -14,13 +16,17 @@ Website and documentation: <https://quality.santi020k.com>
 [Issues](https://github.com/santi020k/quality/issues) ·
 [Contributing](CONTRIBUTING.md)
 
-[![CI](https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/codeql.yml)
-[![GitHub release](https://img.shields.io/github/v/release/santi020k/quality)](https://github.com/santi020k/quality/releases/latest)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/santi020k/quality/actions/workflows/ci.yml"><img src="https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/santi020k/quality/actions/workflows/codeql.yml"><img src="https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/santi020k/quality/releases/latest"><img src="https://img.shields.io/github/v/release/santi020k/quality" alt="GitHub release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
+</p>
 
 > Status: `1.x` stable. Public CLI, configuration, report, and Action contracts follow the
 > documented compatibility policy for this major release.
+
+**Explore:** [GitHub Action](#github-action) · [The developer experience](#the-developer-experience) · [Install for development](#install-for-development) · [Supported adapters](#supported-adapters) · [Language-aware presets](#language-aware-presets) · [Try features in the playground](#try-features-in-the-playground)
 
 ## GitHub Action
 
@@ -523,6 +529,13 @@ See [`playground/README.md`](playground/README.md) for the complete walkthrough.
 
 Run `pnpm playground:verify` to create a temporary sandbox and verify the whole
 playground workflow automatically.
+
+## Find your next step
+
+| Resource | Use it for |
+| --- | --- |
+| [Contributing](CONTRIBUTING.md) | Contributor setup and validation workflow. |
+| [Security policy](SECURITY.md) | Private vulnerability reporting and support boundaries. |
 
 ## Generated social images
 
