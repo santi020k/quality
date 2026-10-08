@@ -17,14 +17,14 @@ const isCurrent = (href: string) => href === '/getting-started/'
 	<div class="site-nav">
 		<a class="wordmark" href="/" aria-label="quality home">
 			<img class="wordmark-mark" src="/logo.svg" alt="" width="32" height="32" />
-			<span>quality<span class="wordmark-caption">Native tools. One workflow.</span></span>
+			<span>quality<span class="wordmark-period" aria-hidden="true">.</span></span>
 		</a>
 		<NavigationMenu class="nav-links" variant="unstyled" aria-label="Primary navigation">
 			{links.map((link) => <a class="nav-link" href={link.href} aria-current={isCurrent(link.href) ? 'page' : undefined}>{link.label}</a>)}
 		</NavigationMenu>
 		<div class="nav-actions">
 			<ThemeToggle aria-label="Toggle color theme" storageKey="quality-theme" />
-			<ButtonLink class="github-link" href="https://github.com/santi020k/quality" newTab variant="unstyled"><span>Source</span><Icon name="arrow-up-right" decorative /></ButtonLink>
+			<ButtonLink class="github-link" href="https://github.com/santi020k/quality" newTab variant="unstyled"><span>Source</span><span class="github-link-arrow"><Icon name="arrow-up-right" decorative /></span></ButtonLink>
 			<Button class="mobile-menu-trigger" variant="ghost" size="icon" data-ui-dialog-trigger="site-menu" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="site-menu"><Icon name="menu" decorative /></Button>
 		</div>
 	</div>

@@ -1,7 +1,7 @@
 # Quality documentation design
 
 Quality shares the sculpted composition of the santi020k website and theme:
-clear typography, a raised identity tab, one aligned grid, open numbered rows,
+clear typography, a compact floating navigation dock, one aligned grid, open numbered rows,
 quiet reading surfaces, and short purposeful motion. It retains its own blue
 identity and the deterministic developer-tool character of the product.
 
@@ -11,7 +11,9 @@ identity and the deterministic developer-tool character of the product.
   shared gutters, reading styles, header, and footer. The existing blue palette is
   explicit so future Lumen defaults cannot silently rebrand the site.
 - `src/components/SiteHeader.astro` uses Lumen navigation, theme, button, and
-  dialog primitives. The mobile dialog owns focus and dismissal through Lumen.
+  dialog primitives. Its solid dock keeps the identity, centered desktop links, and
+  grouped utilities together while scrolling. The mobile dialog owns focus and
+  dismissal through Lumen.
 - `src/lib/docs-navigation.ts` is the source of guide order for the sidebar,
   mobile menus, previous/next links, and language-model documentation endpoints.
 - `src/pages/index.astro` owns homepage composition and its scoped styles.

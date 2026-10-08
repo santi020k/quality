@@ -134,7 +134,7 @@ const exampleOutput = '$ quality check --changed origin/main\n\n  ✓ SwiftLint\
 </SiteLayout>
 
 <style>
-	.home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); column-gap: clamp(2rem, 5vw, 5rem); row-gap: 3.5rem; align-items: center; width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; border: 1px solid hsl(var(--line) / .65); border-radius: 0 1.75rem 1.75rem 1.75rem; background: hsl(var(--surface)); padding: clamp(2rem, 5.5vw, 5rem) clamp(1.5rem, 4.2vw, 4rem) 1.5rem; }
+	.home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); column-gap: clamp(2rem, 5vw, 5rem); row-gap: 3.5rem; align-items: center; width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; border: 1px solid hsl(var(--line) / .65); border-radius: 1.75rem; background: hsl(var(--surface)); padding: clamp(2rem, 5.5vw, 5rem) clamp(1.5rem, 4.2vw, 4rem) 1.5rem; }
 	.hero-copy { min-width: 0; }
 	.hero-kicker { display: flex; align-items: center; gap: .65rem; margin: 0 0 2rem; color: hsl(var(--ink-soft)); font-size: .625rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
 	.hero-kicker span { display: block; width: .4rem; height: .4rem; border-radius: 50%; background: hsl(var(--brand)); }
@@ -226,7 +226,7 @@ const exampleOutput = '$ quality check --changed origin/main\n\n  ✓ SwiftLint\
 		.home-docs-links { gap: 1.5rem; }
 	}
 	@media (max-width: 40rem) {
-		.home-hero { padding: 2.25rem 1.25rem 1.25rem; border-radius: 0 1.25rem 1.25rem 1.25rem; }
+		.home-hero { padding: 2.25rem 1.25rem 1.25rem; border-radius: 1.25rem; }
 		.hero-title { font-size: clamp(2.55rem, 10.8vw, 4.2rem); }
 		.hero-kicker { font-size: .575rem; letter-spacing: .1em; margin-bottom: 1.5rem; }
 		.hero-linebreak { display: none; }
