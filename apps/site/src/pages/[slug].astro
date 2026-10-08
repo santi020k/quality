@@ -45,7 +45,7 @@ const pageHeadings = headings
 		</aside>
 
 		<Collapsible class="docs-mobile-nav">
-			<summary><span>Browse documentation</span><Icon name="chevron-down" decorative /></summary>
+			<summary>Browse documentation</summary>
 			<div class="docs-mobile-groups">
 				{docsGroups.map((group) => (
 					<div class="docs-group">
@@ -79,7 +79,7 @@ const pageHeadings = headings
 
 			{pageHeadings.length > 1 && (
 				<Collapsible class="docs-mobile-toc">
-					<summary><span>On this page</span><Icon name="chevron-down" decorative /></summary>
+					<summary>On this page</summary>
 					<Anchor items={pageHeadings} activationOffset={128} aria-label="On this page, compact navigation" />
 				</Collapsible>
 			)}
@@ -155,21 +155,15 @@ const pageHeadings = headings
 	@media (max-width: 72rem) {
 		.docs-layout { grid-template-columns: 12rem minmax(0, 1fr); max-width: 66rem; gap: 2.5rem; }
 		.docs-toc { display: none; }
-		:global(.docs-mobile-toc) { display: block; margin-bottom: 2rem; border: 1px solid hsl(var(--line) / .7); border-radius: .8rem; background: transparent; padding: 0 1rem; }
-		:global(.docs-mobile-toc summary) { display: flex; align-items: center; justify-content: space-between; min-height: 3.3rem; padding: .5rem 0; font-size: .75rem; font-weight: 500; cursor: pointer; list-style: none; }
-		:global(.docs-mobile-toc summary::-webkit-details-marker) { display: none; }
-		:global(.docs-mobile-toc summary svg) { width: 1rem; height: 1rem; }
-		:global(.docs-mobile-toc[open] summary svg) { transform: rotate(180deg); }
+		:global(.docs-mobile-toc) { display: block; margin-bottom: 2rem; border: 1px solid hsl(var(--line) / .7); border-radius: .8rem; background: transparent; }
+		:global(.docs-mobile-toc summary) { font-size: .75rem; font-weight: 500; }
 		:global(.docs-mobile-toc [data-ui-anchor]) { padding-bottom: .8rem; }
 	}
 	@media (max-width: 52rem) {
 		.docs-layout { grid-template-columns: minmax(0, 1fr); max-width: 44rem; gap: 2rem; padding-block: 1.5rem 4rem; }
 		.docs-sidebar { display: none; }
-		:global(.docs-mobile-nav) { display: block; min-width: 0; border: 1px solid hsl(var(--line) / .7); border-radius: 1rem; background: hsl(var(--surface)); padding: 0 1rem; }
-		:global(.docs-mobile-nav summary) { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3.3rem; padding: .5rem 0; font-size: .8125rem; font-weight: 500; cursor: pointer; list-style: none; }
-		:global(.docs-mobile-nav summary::-webkit-details-marker) { display: none; }
-		:global(.docs-mobile-nav summary svg) { width: 1rem; height: 1rem; }
-		:global(.docs-mobile-nav[open] summary svg) { transform: rotate(180deg); }
+		:global(.docs-mobile-nav) { display: block; min-width: 0; border: 1px solid hsl(var(--line) / .7); border-radius: 1rem; background: hsl(var(--surface)); }
+		:global(.docs-mobile-nav summary) { font-size: .8125rem; font-weight: 500; }
 		.docs-mobile-groups { display: grid; gap: 1.5rem; padding-block: 1rem 1.5rem; }
 		.docs-mobile-groups .docs-group + .docs-group { margin-top: 0; }
 		:global(.docs-breadcrumb) { margin-bottom: 1.5rem; }
