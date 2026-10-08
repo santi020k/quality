@@ -10,7 +10,7 @@ On macOS or Linux:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v1.3.0
+  | sh -s -- santi020k/quality v1.4.0
 ```
 
 Install from a local checkout when developing the CLI itself:
@@ -86,6 +86,7 @@ File-capable tools receive relevant paths. Project analyzers such as Android Lin
 
 ## Next steps
 
+- Explore [language-aware presets](/presets/) for your repository.
 - Review [configuration](/configuration/) options.
 - Add [GitHub Actions](/github-actions/) annotations and SARIF.
 - Use a [baseline](/changed-files-and-baselines/) for an existing codebase.

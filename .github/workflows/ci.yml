@@ -52,4 +52,32 @@ jobs:
         run: pnpm run ci
       - name: Check user-visible release note
         if: github.head_ref != 'changeset-release/main' && github.actor != 'dependabot[bot]'
-        run: pnpm changeset status --since=origin/main
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [[ "$HEAD_BRANCH" == release/v* ]]; then
+            expected_version="${HEAD_BRANCH#release/v}"
+            test "$(node -p "require('./crates/quality-cli/package.json').version")" = "$expected_version"
+            test "$(node -p "require('./packages/action/package.json').version")" = "$expected_version"
+            pnpm run check:versions
+          else
+            pnpm changeset status --since=origin/main
+          fi
+
+  docs-browser:
+    name: Documentation browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./actions/setup-pnpm
+        with:
+          node-version: 24
+      - name: Install Chromium
+        run: pnpm --filter @quality/site exec playwright install --with-deps chromium
+      - name: Build documentation
+        run: pnpm --filter @quality/site build
+      - name: Check navigation, themes, and accessibility
+        run: pnpm test:site

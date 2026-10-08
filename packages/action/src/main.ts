@@ -89,6 +89,12 @@ async function run(): Promise<void> {
       ignoreReturnCode: true,
     });
 
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
+      core.setOutput("duration-ms", Date.now() - started);
+      core.setFailed(actionFailureMessage(result.exitCode, result.stderr));
+      return;
+    }
+
     let findings = 0;
     let tools = 0;
     if (sarif) {

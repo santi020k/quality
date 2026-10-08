@@ -1,0 +1,45 @@
+---
+import { Button, ButtonLink, Dialog, DialogClose, Icon, NavigationMenu, ThemeToggle } from '@santi020k/lumen-astro';
+import { docsGroups } from '../lib/docs-navigation';
+
+const path = Astro.url.pathname;
+const links = [
+	{ label: 'Why quality', href: '/overview/' },
+	{ label: 'Documentation', href: '/getting-started/' },
+	{ label: 'Adapters', href: '/adapters/' },
+];
+const isCurrent = (href: string) => href === '/getting-started/'
+	? path !== '/' && path !== '/overview/' && path !== '/adapters/'
+	: path === href;
+---
+
+<header class="site-header" data-site-header>
+	<div class="site-nav">
+		<a class="wordmark" href="/" aria-label="quality home">
+			<img class="wordmark-mark" src="/logo.svg" alt="" width="32" height="32" />
+			<span>quality<span class="wordmark-caption">Native tools. One workflow.</span></span>
+		</a>
+		<NavigationMenu class="nav-links" variant="unstyled" aria-label="Primary navigation">
+			{links.map((link) => <a class="nav-link" href={link.href} aria-current={isCurrent(link.href) ? 'page' : undefined}>{link.label}</a>)}
+		</NavigationMenu>
+		<div class="nav-actions">
+			<ThemeToggle aria-label="Toggle color theme" storageKey="quality-theme" />
+			<ButtonLink class="github-link" href="https://github.com/santi020k/quality" newTab variant="unstyled"><span>Source</span><Icon name="arrow-up-right" decorative /></ButtonLink>
+			<Button class="mobile-menu-trigger" variant="ghost" size="icon" data-ui-dialog-trigger="site-menu" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="site-menu"><Icon name="menu" decorative /></Button>
+		</div>
+	</div>
+</header>
+<Dialog id="site-menu" class="site-menu" aria-labelledby="site-menu-title">
+	<div class="site-menu-heading">
+		<div><span class="section-eyebrow">quality / field guide</span><h2 id="site-menu-title">Find your next step.</h2></div>
+		<DialogClose variant="secondary" size="icon" aria-label="Close navigation"><Icon name="x" decorative /></DialogClose>
+	</div>
+	<nav class="site-menu-links" aria-label="Mobile navigation">
+		<a class="site-menu-home" href="/" aria-current={path === '/' ? 'page' : undefined}>Home<Icon name="arrow-up-right" decorative /></a>
+		{docsGroups.map((group, index) => <div class="site-menu-group">
+			<h3><span>0{index + 1}</span>{group.label}</h3>
+			{group.items.map((item) => <a href={`/${item.slug}/`} aria-current={path === `/${item.slug}/` ? 'page' : undefined}>{item.label}<Icon name="arrow-up-right" decorative /></a>)}
+		</div>)}
+	</nav>
+	<a class="site-menu-source" href="https://github.com/santi020k/quality" target="_blank" rel="noopener noreferrer">View source on GitHub<Icon name="arrow-up-right" decorative /></a>
+</Dialog>

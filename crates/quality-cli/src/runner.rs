@@ -1155,11 +1155,6 @@ fn is_executable(path: &std::path::Path) -> bool {
     path.is_file()
 }
 
-#[allow(dead_code)]
-fn _duration(duration: Duration) -> u128 {
-    duration.as_millis()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

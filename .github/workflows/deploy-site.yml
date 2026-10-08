@@ -23,6 +23,7 @@ concurrency:
 jobs:
   build:
     name: Build site
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -42,6 +43,7 @@ jobs:
 
   prepare-deploy-toolchain:
     name: Prepare deploy toolchain
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -64,7 +66,8 @@ jobs:
         run: |
           pnpm --frozen-lockfile --ignore-scripts \
             --filter @quality-preset-e2e/quality-monorepo install
-          test "$(node_modules/.bin/wrangler --version)" = "4.137.0"
+          expected_wrangler_version="$(node -p "require('./package.json').devDependencies.wrangler")"
+          test "$(node_modules/.bin/wrangler --version)" = "$expected_wrangler_version"
           mkdir -p .deploy
           tar -czf .deploy/wrangler-toolchain.tgz package.json node_modules
       - name: Verify prepared deploy toolchain
@@ -104,7 +107,7 @@ jobs:
       - name: Restore deploy toolchain
         run: tar -C .deploy -xzf .deploy/wrangler-toolchain.tgz
       - name: Load production deployment secrets from Infisical
-        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}

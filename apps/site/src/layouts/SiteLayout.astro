@@ -1,5 +1,7 @@
 ---
-import { ButtonLink, SkipLink, ThemeToggle } from '@santi020k/lumen-astro';
+import { SkipLink, Icon } from '@santi020k/lumen-astro';
+import { ClientRouter, fade } from 'astro:transitions';
+import SiteHeader from '../components/SiteHeader.astro';
 import UIPrimitives from '@santi020k/lumen-astro/runtime';
 import MetadataHead from '@santi020k/og/astro/head';
 import {
@@ -34,10 +36,9 @@ const {
 const publicSiteUrl = Astro.site ?? new URL('https://quality.santi020k.com');
 const canonical = new URL(Astro.url.pathname, publicSiteUrl);
 const socialImage = new URL(getSocialImagePath(Astro.url.pathname), publicSiteUrl);
-const isDocs = Astro.url.pathname !== '/';
 const websiteId = new URL('/#website', publicSiteUrl).href;
 const softwareId = new URL('/#software', publicSiteUrl).href;
-const publisher = organizationSchema({ id: new URL('/#publisher', publicSiteUrl).href, name: 'quality contributors' });
+const publisher = organizationSchema({ id: new URL('/#publisher', publicSiteUrl).href, name: 'Santiago Molina', url: 'https://santi020k.com' });
 const website = webSiteSchema({
 	description: 'A deterministic, multi-ecosystem code-quality CLI.',
 	id: websiteId,
@@ -120,44 +121,38 @@ const page = site.page({
 		<meta name="theme-color" content="#2563eb" />
 		<meta property="og:image:secure_url" content={socialImage} />
 		<script is:inline type="application/ld+json" set:html={structuredData} />
-		<script is:inline>
-			const theme = localStorage.getItem('quality-theme');
-			if (theme) document.documentElement.dataset.theme = theme;
+		<ClientRouter />
+		<script is:inline data-astro-rerun>
+			(() => {
+				let theme = document.documentElement.dataset.theme;
+				if (theme !== 'light' && theme !== 'dark') {
+					try { theme = localStorage.getItem('quality-theme'); } catch { /* Storage may be unavailable. */ }
+				}
+				document.documentElement.dataset.theme = theme === 'light' || theme === 'dark'
+					? theme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+			})();
 		</script>
 	</head>
 	<body>
 		<UIPrimitives />
 		<SkipLink href="#main-content">Skip to content</SkipLink>
 		<div class="site-shell">
-			<header class="site-header">
-				<nav class="site-nav" aria-label="Primary navigation">
-					<a class="wordmark" href="/" aria-label="quality home">
-						<img class="wordmark-mark" src="/logo.svg" alt="" width="32" height="32" />
-						<span>quality</span>
-					</a>
-					<div class="nav-links">
-						<a class="nav-link" href="/overview/" aria-current={Astro.url.pathname === '/overview/' ? 'page' : undefined}>Why quality</a>
-						<a class="nav-link" href="/getting-started/" aria-current={isDocs ? 'page' : undefined}>Docs</a>
-						<a class="nav-link" href="/adapters/" aria-current={Astro.url.pathname === '/adapters/' ? 'page' : undefined}>Adapters</a>
-					</div>
-					<div class="nav-actions">
-						<ThemeToggle aria-label="Toggle color theme" storageKey="quality-theme" />
-						<ButtonLink class="github-link" href="https://github.com/santi020k/quality" newTab variant="ghost">GitHub</ButtonLink>
-					</div>
-				</nav>
-			</header>
-			<main class="site-main" id="main-content"><slot /></main>
+			<SiteHeader />
+			<main class="site-main" id="main-content" tabindex="-1" transition:name="quality-content" transition:animate={fade({ duration: '180ms' })}><slot /></main>
 			<footer class="site-footer">
 				<div class="footer-inner">
-					<span>Built for teams that care about the details.</span>
-					<div class="footer-links">
-						<a href="/getting-started/">Documentation</a>
-						<a href="https://github.com/santi020k/quality">Source</a>
-						<a href="https://santi020k.com">santi020k</a>
-						<a href="https://lumen.santi020k.com">Lumen</a>
-					</div>
+					<div class="footer-signature"><a href="/" class="footer-wordmark">quality<span aria-hidden="true">.</span></a><p>Keep your tools.<br />Find your rhythm.</p></div>
+					<nav class="footer-links" aria-label="Footer navigation">
+						<a href="/getting-started/">Read the docs <Icon name="arrow-up-right" decorative /></a>
+						<a href="https://github.com/santi020k/quality" target="_blank" rel="noopener noreferrer">View source <Icon name="arrow-up-right" decorative /></a>
+						<a href="/compatibility/">Compatibility <Icon name="arrow-up-right" decorative /></a>
+					</nav>
 				</div>
+				<div class="footer-colophon"><span>Deterministic by design. Open source by choice.</span><span>Made by <a href="https://santi020k.com" target="_blank" rel="noopener noreferrer">santi020k</a> · Built with <a href="https://lumen.santi020k.com" target="_blank" rel="noopener noreferrer">Lumen</a></span></div>
 			</footer>
 		</div>
+		<script>
+			import '../scripts/site';
+		</script>
 	</body>
 </html>

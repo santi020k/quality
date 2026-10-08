@@ -51,3 +51,21 @@ test("the registry documentation keeps credentials in the consuming workflow", a
   assert.match(documentation, /task-cache-path: \.turbo\/cache/);
   assert.match(documentation, /task-cache-key: quality/);
 });
+
+test("manual release and deployment runs require the main branch", async () => {
+  const workflows = [
+    { path: ".github/workflows/release.yml", entryJobs: ["prepare"] },
+    { path: ".github/workflows/deploy-site.yml", entryJobs: ["build", "prepare-deploy-toolchain"] },
+  ];
+
+  for (const { path, entryJobs } of workflows) {
+    const contents = await readFile(path, "utf8");
+    assert.match(contents, /^  workflow_dispatch:/m);
+    const jobs = contents.slice(contents.indexOf("\njobs:\n")).split(/(?=^  [a-z][a-z-]*:\n)/m);
+    for (const name of entryJobs) {
+      const job = jobs.find((section) => section.startsWith(`  ${name}:\n`));
+      assert.ok(job, `${path} must declare the ${name} entry job`);
+      assert.match(job, /^    if: github\.ref == 'refs\/heads\/main'$/m);
+    }
+  }
+});

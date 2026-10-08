@@ -8,40 +8,20 @@ allowBuilds:
   sharp: true
   workerd: true
 
+# Patch vulnerable versions pinned exactly by Satori and Miniflare.
 overrides:
-  fflate: 0.7.5
-  js-yaml: 4.3.2
-  sharp: 0.35.4
+  'fflate@<0.7.5': 0.7.5
+  'sharp@<0.35.5': 0.35.5
 
 minimumReleaseAgeExclude:
-  # OG 1.2 pins this stable renderer; retain the age gate for every other dependency.
+  # Reviewed stable releases required by the Lumen upgrade and browser checks.
+  - '@santi020k/lumen-astro@4.0.0'
+  - '@santi020k/lumen-core@4.0.0'
+  - '@santi020k/lumen@4.0.0'
+  - astro@7.3.7
+  - '@playwright/test@1.64.0'
+  - playwright@1.64.0
+  - playwright-core@1.64.0
+  # OG 1.2 pins this reviewed renderer.
+  - '@santi020k/og@1.2.0'
   - satori@0.36.0
-  - '@santi020k/og'
-  - '@santi020k/lumen-astro@2.1.0'
-  - '@santi020k/lumen-core@2.1.0'
-  - '@santi020k/lumen@2.1.0'
-  - '@cspell/cspell-bundled-dicts@10.1.0'
-  - '@cspell/cspell-json-reporter@10.1.0'
-  - '@cspell/cspell-performance-monitor@10.1.0'
-  - '@cspell/cspell-pipe@10.1.0'
-  - '@cspell/cspell-resolver@10.1.0'
-  - '@cspell/cspell-service-bus@10.1.0'
-  - '@cspell/cspell-types@10.1.0'
-  - '@cspell/cspell-worker@10.1.0'
-  - '@cspell/dynamic-import@10.1.0'
-  - '@cspell/filetypes@10.1.0'
-  - '@cspell/rpc@10.1.0'
-  - '@cspell/strong-weak-map@10.1.0'
-  - '@cspell/url@10.1.0'
-  - cspell-config-lib@10.1.0
-  - cspell-dictionary@10.1.0
-  - cspell-gitignore@10.1.0
-  - cspell-glob@10.1.0
-  - cspell-grammar@10.1.0
-  - cspell-io@10.1.0
-  - cspell-lib@10.1.0
-  - cspell-trie-lib@10.1.0
-  - cspell@10.1.0
-  - satori@0.33.4
-  - '@lucide/icons@1.37.0'
-  - wrangler@4.137.0

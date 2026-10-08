@@ -26,23 +26,25 @@
     "validate": "pnpm run check && pnpm run test && pnpm run build && pnpm run check:security && pnpm run check:versions && pnpm run check:action-dist",
     "version-packages": "changeset version && node scripts/sync-release-version.mjs && cargo check --quiet --package quality-cli && pnpm install --lockfile-only",
     "pre-push": "pnpm run validate",
-    "hooks:install": "cargo run --quiet --package quality-cli -- hooks install"
+    "hooks:install": "cargo run --quiet --package quality-cli -- hooks install",
+    "test:site": "pnpm --filter @quality/site test:browser"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "1.0.0",
-    "@changesets/cli": "3.0.1",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.3",
     "@santi020k/commitprompt": "1.1.0",
-    "cspell": "10.1.0",
-    "turbo": "2.10.11",
-    "wrangler": "4.137.0"
+    "cspell": "10.3.6",
+    "turbo": "2.11.7",
+    "wrangler": "4.148.0"
   },
-  "main": "index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/santi020k/quality.git"
   },
-  "keywords": [],
-  "author": "",
+  "author": {
+    "name": "Santiago Molina",
+    "url": "https://santi020k.com"
+  },
   "bugs": {
     "url": "https://github.com/santi020k/quality/issues"
   },

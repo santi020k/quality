@@ -3,7 +3,7 @@ title: Overview
 description: Understand what quality does and where it fits in your development workflow.
 ---
 
-`quality` is a fast command-line orchestrator for code-quality tools across Swift, Android/Kotlin, Python, JavaScript, and TypeScript projects.
+`quality` is a fast command-line orchestrator for code-quality tools across Rust, Swift, Android/Kotlin, Python, JavaScript, TypeScript, and Astro projects.
 
 It keeps each ecosystem's native analyzer as the source of truth. Instead of replacing Cargo, Clippy, SwiftLint, Android Lint, detekt, ktlint, ESLint, Astro Check, Prettier, CSpell, Codespell, Typos, Knip, Actionlint, or `@santi020k/og`, it gives them a shared workflow:
 
@@ -92,6 +92,7 @@ contract.
 ## Supported output
 
 - `pretty` for local development
+- `agent` for compact, file-grouped feedback to coding agents
 - `json` for automation
 - `sarif` for code-scanning platforms
 - `github` for native workflow annotations

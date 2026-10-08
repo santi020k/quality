@@ -4,6 +4,7 @@
   own `quality.yml`, including Rust, Astro, and GitHub Action checks.
 - Run `pnpm test` after behavior changes and `pnpm build` after release or site
   changes.
+- Run `pnpm test:site` against the production build after documentation UI changes.
 - Keep the CLI deterministic. AI features may consume normalized reports, but
   must not become part of the checking path.
 

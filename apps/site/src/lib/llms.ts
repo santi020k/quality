@@ -1,20 +1,9 @@
 import type { CollectionEntry } from 'astro:content';
+import { docsItems } from './docs-navigation';
 
 type DocEntry = CollectionEntry<'docs'>;
 
-const preferredOrder = [
-	'overview',
-	'getting-started',
-	'commands',
-	'configuration',
-	'changed-files-and-baselines',
-	'local-ci',
-	'github-actions',
-	'ai-agents',
-	'adapters',
-];
-
-const orderById = new Map(preferredOrder.map((id, index) => [id, index]));
+const orderById = new Map<string, number>(docsItems.map((item, index) => [item.slug, index]));
 
 export const sortDocs = (entries: DocEntry[]) =>
 	entries.toSorted((left, right) => {
