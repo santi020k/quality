@@ -14,6 +14,8 @@ overrides:
   sharp: 0.35.4
 
 minimumReleaseAgeExclude:
+  # OG 1.2 pins this stable renderer; retain the age gate for every other dependency.
+  - satori@0.36.0
   - '@santi020k/og'
   - '@santi020k/lumen-astro@2.1.0'
   - '@santi020k/lumen-core@2.1.0'

@@ -524,6 +524,14 @@ See [`playground/README.md`](playground/README.md) for the complete walkthrough.
 Run `pnpm playground:verify` to create a temporary sandbox and verify the whole
 playground workflow automatically.
 
+## Generated social images
+
+The site uses `@santi020k/og` 1.2 to generate route cards and a manifest before
+Astro builds. Social metadata reads the manifest's content-versioned WebP URLs so
+copy, asset, renderer, or generator updates invalidate preview caches. Run
+`pnpm --filter @quality/site build` to regenerate cards and audit the built site;
+`pnpm check` also verifies that generated images remain current.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

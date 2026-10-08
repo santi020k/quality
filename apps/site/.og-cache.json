@@ -1,79 +1,79 @@
 {
-  "cacheKey": "preset-v4",
+  "cacheKey": "preset-v6",
   "entries": {
     "index.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "d67b4df23ea151c5ba59d1ad0d3ac207c05a093c0afbf5da484170663db31507",
-      "fingerprint": "1ca74afa864e924a99055a55755a37f4b2a63b2c09415df6457cacd31aeb338b",
+      "digest": "f00b8ab1f67508990260e715ee55598222abe0258cf233cb8ffa124cb30e6a4f",
+      "fingerprint": "a97d334b13f133d1b49d5d7118c23e7fd7c14340a1000a359cddf86e9ef88e0a",
       "output": "index.webp"
     },
     "adapters.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "bf0cdd5e44c666d9ebc7e5561f26deb6faf60248bee7f5e416c8bfdddfe41ec6",
-      "fingerprint": "48aec8da51f2fa8c4528d03f01a69cdeaaf2d435bcd32bd74c388144f4037812",
+      "digest": "4e7fc5cf371a37db747229f5479faca823f16bffc5ba7bd4e35193e350a813a6",
+      "fingerprint": "10fd1f13020d8cc69735e42f613f361302e1c8d1afef1fe89a6afd4b3328deac",
       "output": "adapters.webp"
     },
     "ai-agents.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "4ddb34dc96695e606c54a8c9465e4f30798296e771ec8c1fca6494944e41d729",
-      "fingerprint": "0898860d2d8afaa2ff69537f9c453ca1bb29c2a03d1379322bcff81643a9b36c",
+      "digest": "8a8ca810ef6a0c06a0e5d99edeccd006e4d5508997a52bc7e9f26a4cd1dd429b",
+      "fingerprint": "9f3bb1090d8288932269d81641d81c46ccd4cfd064f3d4b45574f4e1e60ebb65",
       "output": "ai-agents.webp"
     },
     "changed-files-and-baselines.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "dcb88d9bf1b7a540406f698022b96f85d3e1be8e8f175b13141c1081ff004b25",
-      "fingerprint": "4f954b789b85f16beb9d75e1fc6fc23d9d4bc3d6778f2002ca518ddde6ee9689",
+      "digest": "0dbbbf9ce9700af808fd3890f3c9d45fe588578a76f497de49e66747c782783c",
+      "fingerprint": "99c7db6c5ba3d5101276526be27a41b3c22f27cf0dc7ab9bbeff9f0f4ad35531",
       "output": "changed-files-and-baselines.webp"
     },
     "commands.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "3095dc39f5e24c5ca74ac1d30ff42ce5f48ccbe3791c24b9dcdc21863048b988",
-      "fingerprint": "7afd264c72470d308cf56b013af7d69e58931de7b0415b6235470bdd42b7374d",
+      "digest": "de9047d7cd85705665cd0c29fb357465eff8359c4aa258fac207edff0d563c0a",
+      "fingerprint": "25c879e8194f8f4562c31600cd8f6726636c41269458117fc605e197c36c4d95",
       "output": "commands.webp"
     },
     "compatibility.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "a04cb5ea76b6e83092d56a2eaa7caf81697f4e52dcbb7c07ec7cdf9b8d3327da",
-      "fingerprint": "a834cac3b4e74fed37e37bfed4ca35950cbe60a0fea107feaaec090f23aefbf2",
+      "digest": "82b9b186f5b5c85581bfa4c41251c17a335c389a4a7512873bb8f5bc34c9244c",
+      "fingerprint": "0a97f3e35ca88b49bebd6f33c7ed27a051de9f5a010bacdb0e03639baa0cdc4c",
       "output": "compatibility.webp"
     },
     "configuration.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "51f5538be9748a8623478b467f0006fa1cd702eba32ee0b9282d025b19983401",
-      "fingerprint": "5e44a57d8665fc0c603a8f0861b5b6e2546caa76a44fbc3d5dbaf093f41275b5",
+      "digest": "2cb770f91293f562e302e0712fd13a7531f00ae181d7a0b77e0d95ca00658c94",
+      "fingerprint": "fc44d1df952c398a01cea45a4d50adc595976f891caf7d64ab3b0dc1e51a782f",
       "output": "configuration.webp"
     },
     "getting-started.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "430683ea1a78b175eee4e1c45bb501220f1a90555dd1a5e82b2081f5ca3b0cc7",
-      "fingerprint": "8ed854399b1b3aa45f5456b617effb0aa081f9f8d2c41e30b4fe9f6a69c6b0ca",
+      "digest": "abf25df2f7aa023cd495834215576ca759a9e62a1d59c16d3ebf087fa3e45548",
+      "fingerprint": "95214090ac3382ce2de7ee772239115736d4b375ae272a82aae08603263a17f0",
       "output": "getting-started.webp"
     },
     "github-actions.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "59fc75c41539d9dc915ff464f4afea9033eeb8b1dbe3238efec3736ec8ba91ab",
-      "fingerprint": "14267dc4e500e18624d468001a36711812ed12429f3bb7bd1fcd963a6e1530dc",
+      "digest": "23c6d70017e6953e111e3c65133bca1163e9d87cf409ef1843ea0442ce39378d",
+      "fingerprint": "fb6f09ba70486cf826eee9e49b210c8a7804cf85f7d751b0f7f1ee6b603ced5a",
       "output": "github-actions.webp"
     },
     "local-ci.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "f0ed984f45100419adf6ccc2969bbc49a9d8ca6c997e963a3b65e1b4dd58863e",
-      "fingerprint": "3bba35e123c97f75981d2f1240985bf2ebab4a6e1cbcc7580eadfe96894c3513",
+      "digest": "1f987acea578a81f36ea0611769bd5d259f7ea007f7c710e924fb95c7599ba26",
+      "fingerprint": "5370c9da5b286832bb46abc19d6c46a749c9beae52f1eb0cab21be4067c06c48",
       "output": "local-ci.webp"
     },
     "overview.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "48ddaa98f17911dbd671a46b2821baa15b7942948d9b3e7da9041a4a9699a96b",
-      "fingerprint": "195066c416fe9fd8efbe7901dbdaf4c2eb35852621dddf1f26696d1e573436e8",
+      "digest": "be482a8c4883c9dff8e9e4c49662fc68164e81e58235443fac580647c97f1a2f",
+      "fingerprint": "299a4e90abeae99bb29287d7e38a356232033f8a2ad3c8f261b4a4bb4344c482",
       "output": "overview.webp"
     },
     "presets.webp": {
       "baseDirectory": "public/og/pages",
-      "digest": "925b28e51e3820a8de58a12d061d28daaf2e8786818431449e17f8357b7b1194",
-      "fingerprint": "16836d4acc5919b606f1f394ace52cd2539a865af8460d03bb8929147ba4cb2f",
+      "digest": "605680c78d893a057fa2229f2babca63f31de914256c4e91a24adecf103f438e",
+      "fingerprint": "e27053be50a2553a6b089933f5df2a343106f815d2accaaf76f8063aa96b0645",
       "output": "presets.webp"
     }
   },
-  "generatorVersion": "1.1.1",
+  "generatorVersion": "1.2.0",
   "version": 3
 }
