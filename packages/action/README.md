@@ -1,10 +1,18 @@
 <p align="center">
-  <a href="../../README.md"><img src="../../apps/site/public/logo.svg" alt="quality" width="80"></a>
+  <a href="../../README.md">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/readme/workspace-dark.svg">
+      <img src="../../docs/assets/readme/workspace-light.svg" alt="quality — One command. A clearer quality workflow." width="1200" height="220">
+    </picture>
+  </a>
 </p>
 
-<p align="center"><a href="../../README.md">quality</a></p>
-
 <h1 align="center">GitHub Action</h1>
+
+<p align="center">
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-13967e?style=flat-square" alt="License: MIT"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/runs_on-GitHub_Actions-036b9f?style=flat-square" alt="Runs On: GitHub Actions"></a>
+</p>
 
 <p align="center">
   <a href="../../README.md">Project overview</a> ·

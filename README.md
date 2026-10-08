@@ -1,6 +1,22 @@
+<p align="center">
+  <a href="README.md">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.svg">
+      <img src="docs/assets/readme/hero-light.svg" alt="quality — One command. A clearer quality workflow." width="1200" height="360">
+    </picture>
+  </a>
+</p>
+
 <h1 align="center">quality</h1>
 
 <p align="center">One predictable quality workflow across languages and toolchains.</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
+  <a href="https://github.com/santi020k/quality/actions/workflows/ci.yml"><img src="https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/santi020k/quality/actions/workflows/codeql.yml"><img src="https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/santi020k/quality/releases/latest"><img src="https://img.shields.io/github/v/release/santi020k/quality" alt="GitHub release"></a>
+</p>
 
 `quality` is one fast, predictable code-quality workflow for repositories that
 contain Rust, Swift, Android/Kotlin, Python, JavaScript, and Astro projects. It does not replace the
@@ -15,13 +31,6 @@ Website and documentation: <https://quality.santi020k.com>
 [Changelog](CHANGELOG.md) ·
 [Issues](https://github.com/santi020k/quality/issues) ·
 [Contributing](CONTRIBUTING.md)
-
-<p align="center">
-  <a href="https://github.com/santi020k/quality/actions/workflows/ci.yml"><img src="https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/santi020k/quality/actions/workflows/codeql.yml"><img src="https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/santi020k/quality/releases/latest"><img src="https://img.shields.io/github/v/release/santi020k/quality" alt="GitHub release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
-</p>
 
 > Status: `1.x` stable. Public CLI, configuration, report, and Action contracts follow the
 > documented compatibility policy for this major release.
