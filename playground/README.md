@@ -1,4 +1,14 @@
-# quality playground
+<p align="center">
+  <a href="../README.md"><img src="../apps/site/public/logo.svg" alt="quality" width="80"></a>
+</p>
+
+<p align="center"><a href="../README.md">quality</a></p>
+
+<h1 align="center">CLI playground</h1>
+
+<p align="center">A disposable workspace for exploring Quality's feedback loop.</p>
+
+**On this page:** [Start fresh](#start-fresh) · [Walkthrough](#walk-through-the-main-features) · [Verification](#verify-the-playground-itself)
 
 This playground is a disposable project for manually trying `quality`. Its mock
 analyzers behave like real external tools but require only Git, a POSIX shell,
