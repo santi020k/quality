@@ -33,6 +33,7 @@ words:
   - labelledby
   - lede
   - linecap
+  - linejoin
   - llms
   - lucide
   - lockfiles
@@ -50,6 +51,7 @@ words:
   - Satteri
   - sendemail
   - serde
+  - Segoe
   - shiki
   - swfitlint
   - swiftlints

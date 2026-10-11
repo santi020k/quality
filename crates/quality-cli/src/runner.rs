@@ -463,6 +463,120 @@ pub fn execute(
     Ok(RunReport::new(results, scope, settings))
 }
 
+/// Build a read-only preview through the same invocation builder used by execution.
+pub fn print_check_plan(
+    project: &Project,
+    config: &Config,
+    changes: Option<&ChangeSet>,
+    selection: &AdapterSelection,
+    require_checks: bool,
+    explain: bool,
+) -> Result<()> {
+    let candidates = collect_invocations(
+        project,
+        config,
+        Operation::Check,
+        None,
+        &AdapterSelection::default(),
+    );
+    if require_checks
+        && !candidates.iter().any(|invocation| {
+            selection.includes(invocation.id.split('@').next().unwrap_or(&invocation.id))
+        })
+    {
+        anyhow::bail!(
+            "no configured adapters can run this operation; configure a check or remove `--require-checks`"
+        );
+    }
+    let selected = collect_invocations(project, config, Operation::Check, changes, selection);
+    println!("Check plan (preview only; analyzers are not executed)");
+    if let Some(changes) = changes {
+        println!("Base: {}", changes.base);
+        if explain {
+            println!("Changed inputs (including deletions):");
+            for path in &changes.files {
+                println!(
+                    "  {:?}{}",
+                    path,
+                    if changes.is_deleted(path) {
+                        " (deleted)"
+                    } else {
+                        ""
+                    }
+                );
+            }
+        }
+    }
+    for candidate in &candidates {
+        let adapter = candidate.id.split('@').next().unwrap_or(&candidate.id);
+        let planned = selected
+            .iter()
+            .find(|invocation| invocation.id == candidate.id);
+        if let Some(invocation) = planned {
+            println!("\nRUN {}", invocation.id);
+            println!("  Directory: {:?}", invocation.working_directory);
+            println!("  Executable: {:?}", invocation.command);
+            println!("  Arguments: {:?}", invocation.args);
+            if !invocation.env.is_empty() {
+                println!("  Environment: {:?}", invocation.env);
+            }
+            if explain {
+                let reason = if changes.is_none() {
+                    "Enabled check; full configured scope."
+                } else if invocation.args != candidate.args || invocation.env != candidate.env {
+                    "Changed-file scope; arguments or environment restrict the input."
+                } else {
+                    "Applicable changed inputs; full configured scope (project analyzer, configuration change, or command override)."
+                };
+                println!("  Reason: {reason}");
+            }
+        } else if explain {
+            let reason = if selection.exclude.iter().any(|id| id == adapter) {
+                "Excluded by --exclude."
+            } else if !selection.includes(adapter) {
+                "Not selected by --only."
+            } else {
+                "No applicable changed inputs; deleted source files are not passed to file-scoped tools."
+            };
+            println!("\nSKIP {}\n  Reason: {reason}", candidate.id);
+        }
+    }
+    if explain {
+        for tool in tools::catalog() {
+            let policy = config.tool(tool.id);
+            let reason = if policy.enabled == Some(false) {
+                Some("Disabled in configuration.")
+            } else if policy.enabled.is_none() && !tool.detect(project) {
+                Some("No repository intent detected.")
+            } else if policy.check == Some(false) {
+                Some("Check disabled; formatting or fixing may remain available.")
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                println!("\nSKIP {}\n  Reason: {reason}", tool.id);
+            }
+        }
+        for (id, policy) in &config.custom_tools {
+            if !policy.enabled || !tools::external_detects(project, policy) {
+                println!(
+                    "\nSKIP {id}\n  Reason: {}",
+                    if policy.enabled {
+                        "No configured source extensions detected."
+                    } else {
+                        "Disabled in configuration."
+                    }
+                );
+            }
+        }
+    }
+    println!(
+        "\n{} check command(s) planned. A preview does not verify tool availability or check results.",
+        selected.len()
+    );
+    Ok(())
+}
+
 fn collect_invocations(
     project: &Project,
     config: &Config,

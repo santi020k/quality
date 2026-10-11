@@ -4,6 +4,8 @@
 
 ### Minor Changes
 
+- Add `quality check --dry-run` and optional `--explain` output to preview commands, workspace scope, changed inputs, and selection or skip reasons without executing analyzers. Preserve existing execution and report contracts.
+
 - Refresh the documentation with Lumen 4, Quality's blue identity, responsive navigation, accessible code examples, page transitions, and complete guide navigation. Upgrade compatible dependencies and address known dependency vulnerabilities. Preserve operational CLI errors in the GitHub Action when no SARIF report was written, and restrict release and deployment workflows to merged main commits. Remove an unused internal helper without changing stable CLI contracts.
 
 ## 1.3.0

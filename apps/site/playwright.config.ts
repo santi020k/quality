@@ -21,7 +21,7 @@ export default defineConfig({
 		{ name: 'mobile', use: { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true } },
 	],
 	webServer: {
-		command: `pnpm exec astro preview --host 127.0.0.1 --port ${port}`,
+		command: `ASTRO_PREVIEW_BACKGROUND=0 pnpm exec astro preview --host 127.0.0.1 --port ${port}`,
 		url: `http://127.0.0.1:${port}`,
 		reuseExistingServer: !process.env.CI,
 		timeout: 60_000,

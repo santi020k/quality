@@ -3142,3 +3142,171 @@ fn preset_setup_install_executes_supported_native_steps() {
         "component\nadd\nrustfmt\nclippy\n"
     );
 }
+
+#[test]
+fn check_preview_does_not_execute_repository_tasks() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = format!(
+        "version: 1\ntools: {{}}\ntasks:\n  mutate:\n    command: {:?}\n    args: [init, --force]\n",
+        env!("CARGO_BIN_EXE_quality")
+    );
+    fs::write(temp.path().join("quality.yml"), &config).unwrap();
+    let output = quality(temp.path(), &["check", "--dry-run", "--explain"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("RUN mutate"));
+    assert!(text.contains("Arguments: [\"init\", \"--force\"]"));
+    assert!(text.contains("full configured scope"));
+    assert_eq!(
+        fs::read_to_string(temp.path().join("quality.yml")).unwrap(),
+        config
+    );
+    assert!(!temp.path().join(".quality-baseline.json").exists());
+}
+
+#[test]
+fn check_preview_explains_selection_and_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("quality.yml"), "version: 1\ntools:\n  eslint:\n    enabled: false\n  cargo-fmt:\n    enabled: true\n    check: false\ntasks:\n  selected:\n    command: missing-check\n  excluded:\n    command: missing-check\n  other:\n    command: missing-check\ncustom:\n  disabled:\n    command: missing-check\n    enabled: false\n").unwrap();
+    let output = quality(
+        temp.path(),
+        &[
+            "check",
+            "--dry-run",
+            "--explain",
+            "--only",
+            "selected,excluded",
+            "--exclude",
+            "excluded",
+            "--require-checks",
+        ],
+    );
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("RUN selected"));
+    assert!(text.contains("SKIP excluded\n  Reason: Excluded by --exclude."));
+    assert!(text.contains("SKIP other\n  Reason: Not selected by --only."));
+    assert!(text.contains("SKIP eslint\n  Reason: Disabled in configuration."));
+    assert!(text.contains("SKIP cargo-fmt\n  Reason: Check disabled"));
+    assert!(text.contains("SKIP disabled\n  Reason: Disabled in configuration."));
+}
+
+#[test]
+fn check_preview_tracks_changed_inputs_and_configuration_changes() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    fs::write(temp.path().join("quality.yml"), "version: 1\ntools:\n  eslint:\n    enabled: true\n    command: missing-eslint\ntasks:\n  rust:\n    command: missing-rust\n    extensions: [rs]\n").unwrap();
+    fs::write(temp.path().join("index.ts"), "export {};\n").unwrap();
+    fs::write(
+        temp.path().join("eslint.config.mjs"),
+        "export default [];\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "Initial fixture"]);
+    fs::write(temp.path().join("index.ts"), "export const value = 1;\n").unwrap();
+    let output = quality(
+        temp.path(),
+        &["check", "--dry-run", "--explain", "--changed"],
+    );
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("Changed-file scope"));
+    assert!(text.contains("SKIP rust\n  Reason: No applicable changed inputs"));
+    assert!(text.contains("index.ts"));
+    fs::remove_file(temp.path().join("index.ts")).unwrap();
+    let output = quality(
+        temp.path(),
+        &["check", "--dry-run", "--explain", "--changed"],
+    );
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("(deleted)"));
+    assert!(text.contains("SKIP eslint"));
+    fs::remove_file(temp.path().join("eslint.config.mjs")).unwrap();
+    let output = quality(
+        temp.path(),
+        &["check", "--dry-run", "--explain", "--changed"],
+    );
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("RUN eslint"));
+    assert!(text.contains("full configured scope (project analyzer"));
+    assert!(!text.contains("Arguments: [\"--format\", \"json\", \"index.ts\"]"));
+}
+
+#[test]
+fn check_preview_validates_flags_selection_and_empty_policy() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join("quality.yml"), "version: 1\ntools: {}\n").unwrap();
+    for args in [
+        vec!["check", "--explain"],
+        vec!["check", "--dry-run", "--format", "json"],
+        vec!["check", "--dry-run", "--report", "preview.sarif"],
+        vec!["check", "--dry-run", "--only", "unknown"],
+        vec!["check", "--dry-run", "--require-checks"],
+    ] {
+        let output = quality(temp.path(), &args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+    }
+    let output = quality(temp.path(), &["check", "--dry-run"]);
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("0 check command(s) planned")
+    );
+    assert!(!temp.path().join("preview.sarif").exists());
+}
+
+#[test]
+fn check_preview_preserves_workspace_and_custom_arguments() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("apps/api")).unwrap();
+    fs::write(temp.path().join("apps/api/input.ts"), "export {};\n").unwrap();
+    fs::write(temp.path().join("quality.yml"), "version: 1\ntools:\n  eslint:\n    enabled: true\n    working_directory: apps/api\n    command: missing-eslint\n    check_args: [scan, 'argument with spaces']\ncustom:\n  api-lint:\n    command: missing-custom\n    working_directory: apps/api\n    extensions: [ts]\n    check_args: [scan]\n    file_mode: append\n").unwrap();
+    initialize_git(temp.path());
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "Initial fixture"]);
+    fs::write(
+        temp.path().join("apps/api/input.ts"),
+        "export const value = 1;\n",
+    )
+    .unwrap();
+    let output = quality(
+        temp.path(),
+        &[
+            "check",
+            "--dry-run",
+            "--explain",
+            "--changed",
+            "--require-checks",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("RUN eslint@apps/api") || text.contains("RUN eslint@apps\\api"));
+    assert!(text.contains("RUN api-lint"));
+    assert!(text.contains("Arguments: [\"scan\", \"argument with spaces\"]"));
+    assert!(text.contains("Arguments: [\"scan\", \"input.ts\"]"));
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "Update fixture"]);
+    let output = quality(
+        temp.path(),
+        &["check", "--dry-run", "--changed", "--require-checks"],
+    );
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("0 check command(s) planned")
+    );
+}

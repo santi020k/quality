@@ -46,6 +46,12 @@ pub enum Command {
     },
     /// Run every applicable analyzer.
     Check {
+        /// Preview the check commands without executing analyzers (text output only).
+        #[arg(long, conflicts_with_all = ["format", "report"])]
+        dry_run: bool,
+        /// Include selection and scope reasons in the preview.
+        #[arg(long, requires = "dry_run")]
+        explain: bool,
         #[command(flatten)]
         adapters: AdapterSelection,
         #[command(flatten)]
