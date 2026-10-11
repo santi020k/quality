@@ -3310,3 +3310,50 @@ fn check_preview_preserves_workspace_and_custom_arguments() {
             .contains("0 check command(s) planned")
     );
 }
+
+#[test]
+fn check_preview_keeps_forced_analyzers_without_workspace_markers() {
+    for adapter in [
+        "cargo-clippy",
+        "cargo-fmt",
+        "swiftlint",
+        "detekt",
+        "astro-check",
+        "santi-og",
+        "android-lint",
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("quality.yml"),
+            format!("version: 1\ntools:\n  {adapter}:\n    enabled: true\n"),
+        )
+        .unwrap();
+
+        let output = quality(
+            temp.path(),
+            &[
+                "check",
+                "--dry-run",
+                "--explain",
+                "--only",
+                adapter,
+                "--require-checks",
+            ],
+        );
+
+        assert!(
+            output.status.success(),
+            "{adapter}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            text.contains(&format!("RUN {adapter}\n")),
+            "{adapter}: {text}"
+        );
+        assert!(
+            text.contains("1 check command(s) planned"),
+            "{adapter}: {text}"
+        );
+    }
+}
