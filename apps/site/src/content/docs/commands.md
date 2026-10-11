@@ -80,6 +80,30 @@ next run. Doctor retains the same exit status in every output format.
 
 Run all applicable analyzers concurrently and normalize their diagnostics.
 
+Preview the exact invocation inputs without starting analyzers:
+
+```bash
+quality check --dry-run
+quality check --dry-run --explain --changed origin/main
+quality check --dry-run --explain --only eslint,astro-check
+```
+
+The text plan displays executables, argument arrays, working directories, and
+analyzer-specific environment overrides. Add `--explain` to see changed inputs,
+including deleted paths, selection and skip reasons, and whether an applicable
+check retains its full configured scope or receives changed-file arguments.
+Changed inputs are the Git change set; each command determines the actual
+analyzer scope. Tasks and custom adapters participate in the same plan.
+
+No analyzers run, no baseline is applied, and no report is written. A successful
+preview means planning succeeded, not that tools are installed or checks pass.
+Use `quality doctor` and `quality check` for verification. `--require-checks`
+retains its normal policy: no configured selected checks is an error, but a
+changed-file run can legitimately skip every configured check.
+
+`--explain` requires `--dry-run`. Preview output is text only and conflicts with
+`--format` and `--report`; existing JSON and SARIF run contracts are unchanged.
+
 ```bash
 quality check --format github --report quality.sarif
 quality check --format agent

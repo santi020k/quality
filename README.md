@@ -159,6 +159,20 @@ a rules or configuration file—including deleting one—triggers the correspond
 full check. Deleted source paths can trigger project-wide checks but are never
 passed to file-scoped tools.
 
+Preview check commands without executing analyzers:
+
+```bash
+quality check --dry-run
+quality check --dry-run --explain --changed origin/main
+```
+
+The text preview shows each executable, argument list, and working directory.
+`--explain` also lists changed inputs and explains why checks run or skip. It
+uses the same invocation builder as execution, including workspace scope,
+configuration changes, tasks, and custom adapters. A preview does not verify
+installed tools or prove that checks pass; use `quality doctor` and a real run.
+`--explain` requires `--dry-run`; previews cannot use `--format` or `--report`.
+
 Select adapters by ID for focused local or CI runs. Flags can be repeated or
 receive comma-separated IDs, and work with `check`, `format`, and `fix`:
 
