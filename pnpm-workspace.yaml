@@ -15,9 +15,9 @@ overrides:
 
 minimumReleaseAgeExclude:
   # Reviewed stable releases required by the Lumen upgrade and browser checks.
-  - '@santi020k/lumen-astro@4.0.0'
-  - '@santi020k/lumen-core@4.0.0'
-  - '@santi020k/lumen@4.0.0'
+  - '@santi020k/lumen-astro@4.1.0'
+  - '@santi020k/lumen-core@4.1.0'
+  - '@santi020k/lumen@4.2.0'
   - astro@7.3.7
   - '@playwright/test@1.64.0'
   - playwright@1.64.0

@@ -34,8 +34,8 @@ importers:
   apps/site:
     dependencies:
       '@santi020k/lumen-astro':
-        specifier: ^4.0.0
-        version: 4.0.0(astro@7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1))
+        specifier: 4.1.0
+        version: 4.1.0(astro@7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1))
       astro:
         specifier: ^7.3.7
         version: 7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1)
@@ -1431,15 +1431,15 @@ packages:
     engines: {node: '>=22.18.0'}
     hasBin: true
 
-  '@santi020k/lumen-astro@4.0.0':
-    resolution: {integrity: sha512-CTxxQJAhNI1P+kK/SwbZkWZp8RrsQmvIeP7V6JKbbUu74l8JCz0BWMOWIUv6aTOnWqisJQwRNggW/XFeUiz9zQ==}
+  '@santi020k/lumen-astro@4.1.0':
+    resolution: {integrity: sha512-UCJhutjl8rmxSofNIJcNfUz4dA40PzVtSd/YPZ8ZhJkzPi8Eap2HEqFU2xxIRLyHwZM3DpksRV7I7Yy5Wkg5LQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
     peerDependencies:
       astro: '>=5'
 
-  '@santi020k/lumen-core@4.0.0':
-    resolution: {integrity: sha512-7QbD8LKlkeqwLIsYbwW7zdl1DAKV7flI1lOwA3qd1/CbdKDvz2T1BeBGEuDf2b0+oABOUotHH/Ixt4z5Z9fdpg==}
+  '@santi020k/lumen-core@4.1.0':
+    resolution: {integrity: sha512-2z12kwmwn8IqiNbHs9XKpBLcJo3jdOR6Zst7Y9q5cyeA8JTs9lvn1htgnm9D0KlVzBbAj4WC7fFNbtrp/ygpog==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@rive-app/canvas': ^2.44.0
@@ -1447,8 +1447,8 @@ packages:
       '@rive-app/canvas':
         optional: true
 
-  '@santi020k/lumen@4.0.0':
-    resolution: {integrity: sha512-atZaZzf4IN7Yb1na1Xf2bJV7CT+htC3Mnar0whyoqT6jRzEUngTIH4wIAbL1cXWrRc7jhZanlEZ6SL3Nk1q+Xg==}
+  '@santi020k/lumen@4.2.0':
+    resolution: {integrity: sha512-WobT7OFtgI1YiAw6HamWeXOO8FuWC7ixGWKsR25imsrCJAboeJsgjgH/SLuHfCYmT3mTtewcW7Ly9o6bCyGXuQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
     peerDependencies:
@@ -4292,24 +4292,24 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@santi020k/lumen-astro@4.0.0(astro@7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1))':
+  '@santi020k/lumen-astro@4.1.0(astro@7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1))':
     dependencies:
-      '@santi020k/lumen': 4.0.0
-      '@santi020k/lumen-core': 4.0.0
+      '@santi020k/lumen': 4.2.0
+      '@santi020k/lumen-core': 4.1.0
       astro: 7.3.7(@types/node@26.2.0)(jiti@2.6.1)(yaml@2.9.1)
       uqr: 0.1.3
     transitivePeerDependencies:
       - '@rive-app/canvas'
       - react
 
-  '@santi020k/lumen-core@4.0.0':
+  '@santi020k/lumen-core@4.1.0':
     dependencies:
       '@lucide/icons': 1.52.0
       libphonenumber-js: 1.13.14
 
-  '@santi020k/lumen@4.0.0':
+  '@santi020k/lumen@4.2.0':
     dependencies:
-      '@santi020k/lumen-core': 4.0.0
+      '@santi020k/lumen-core': 4.1.0
       semver: 7.8.5
       typescript: 6.0.3
     transitivePeerDependencies:

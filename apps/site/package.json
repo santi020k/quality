@@ -16,7 +16,7 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@santi020k/lumen-astro": "^4.0.0",
+    "@santi020k/lumen-astro": "4.1.0",
     "astro": "^7.3.7"
   },
   "devDependencies": {
