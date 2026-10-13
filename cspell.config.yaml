@@ -33,6 +33,7 @@ words:
   - labelledby
   - lede
   - linecap
+  - linejoin
   - llms
   - lucide
   - lockfiles
@@ -40,6 +41,7 @@ words:
   - Miniflare
   - noopener
   - noreferrer
+  - NOSYSTEM
   - pbxproj
   - prepush
   - pyproject
@@ -50,6 +52,7 @@ words:
   - Satteri
   - sendemail
   - serde
+  - Segoe
   - shiki
   - swfitlint
   - swiftlints

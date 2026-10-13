@@ -1093,9 +1093,11 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
                 }],
                 "results": results
             });
+            let mut properties = json!({ "qualityExecuted": tool_result.executed });
             if let Some(scope) = &report.scope {
-                run["properties"] = json!({ "qualityScope": scope });
+                properties["qualityScope"] = json!(scope);
             }
+            run["properties"] = properties;
             run
         })
         .collect::<Vec<_>>();
@@ -1161,6 +1163,7 @@ mod tests {
                 tool: "example".to_owned(),
                 name: "Example".to_owned(),
                 status: Status::Failed,
+                executed: true,
                 failure_kind: Some(FailureKind::Code),
                 duration_ms: 1,
                 command: "example".to_owned(),
@@ -1197,5 +1200,80 @@ mod tests {
 
         assert!(output.contains("### General findings"));
         assert!(output.contains("### `General`"));
+    }
+
+    fn tool_result(executed: bool) -> crate::runner::ToolResult {
+        ToolResult {
+            tool: "example".to_owned(),
+            name: "Example".to_owned(),
+            status: if executed {
+                Status::Passed
+            } else {
+                Status::Missing
+            },
+            executed,
+            failure_kind: None,
+            duration_ms: 0,
+            command: "example".to_owned(),
+            diagnostics: Vec::new(),
+            output: String::new(),
+            output_truncated: false,
+            guidance: (!executed).then(|| "install example".to_owned()),
+            baseline_safe: executed,
+        }
+    }
+
+    #[test]
+    fn sarif_marks_each_run_with_whether_it_executed() {
+        let executed_report = RunReport::new(
+            vec![tool_result(true)],
+            None,
+            crate::runner::ExecutionSettings::default(),
+        );
+        let missing_report = RunReport::new(
+            vec![tool_result(false)],
+            None,
+            crate::runner::ExecutionSettings::default(),
+        );
+
+        let executed_sarif = to_sarif(&executed_report, Severity::Info);
+        let missing_sarif = to_sarif(&missing_report, Severity::Info);
+
+        assert_eq!(
+            executed_sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(true)
+        );
+        assert_eq!(
+            missing_sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn sarif_properties_still_carry_the_scope_alongside_the_execution_marker() {
+        let scope = crate::runner::RunScope {
+            mode: Some("changed"),
+            base: Some("origin/main".to_owned()),
+            rerun_base: None,
+            files: Some(3),
+            only: vec!["eslint".to_owned()],
+            exclude: Vec::new(),
+        };
+        let report = RunReport::new(
+            vec![tool_result(true)],
+            Some(scope),
+            crate::runner::ExecutionSettings::default(),
+        );
+
+        let sarif = to_sarif(&report, Severity::Info);
+
+        assert_eq!(
+            sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(true)
+        );
+        assert_eq!(
+            sarif["runs"][0]["properties"]["qualityScope"]["only"],
+            json!(["eslint"])
+        );
     }
 }

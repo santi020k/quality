@@ -99,7 +99,7 @@ pub fn uninstall(root: &Path, config: &Config) -> Result<()> {
 
 fn configured_hooks_path(root: &Path) -> Result<Option<String>> {
     let output = Command::new("git")
-        .args(["config", "--local", "--get", "core.hooksPath"])
+        .args(["config", "--get", "core.hooksPath"])
         .current_dir(root)
         .output()
         .context("could not inspect Git hook configuration")?;

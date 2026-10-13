@@ -17,7 +17,18 @@ use crate::project::Project;
 use crate::tools::{self, Invocation};
 
 type CapturedOutput = (Vec<u8>, bool);
-type OutputReader = thread::JoinHandle<io::Result<CapturedOutput>>;
+
+/// Captures a child's stdout/stderr on a background thread without ever
+/// blocking the collector on that thread's `read`. A killed or exited
+/// process can leave its pipe open if an inherited-fd descendant (e.g. a
+/// background `sleep &` under `sh -c`) keeps writing to or simply holding
+/// the same pipe, so the reader thread may never see EOF. `state` lets the
+/// collector take a snapshot of whatever has been read so far instead of
+/// joining the thread.
+struct OutputReader {
+    state: Arc<Mutex<CapturedOutput>>,
+    completed: mpsc::Receiver<()>,
+}
 
 pub const REPORT_SCHEMA_VERSION: u8 = 1;
 
@@ -74,6 +85,8 @@ pub struct ToolResult {
     pub guidance: Option<String>,
     #[serde(skip)]
     pub baseline_safe: bool,
+    #[serde(skip)]
+    pub executed: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -226,7 +239,8 @@ impl RunReport {
     pub fn result_failed_at(result: &ToolResult, level: Severity) -> bool {
         (matches!(result.status, Status::Missing) && result.guidance.is_some())
             || (matches!(result.status, Status::Failed)
-                && (result.diagnostics.is_empty()
+                && (!result.baseline_safe
+                    || result.diagnostics.is_empty()
                     || result
                         .diagnostics
                         .iter()
@@ -505,14 +519,14 @@ fn run_one(
 
     match child {
         Ok(mut child) => {
-            let stdout = child.stdout.take().map(|stdout| {
-                let limit = settings.max_output_bytes;
-                thread::spawn(move || read_limited(stdout, limit))
-            });
-            let stderr = child.stderr.take().map(|stderr| {
-                let limit = settings.max_output_bytes;
-                thread::spawn(move || read_limited(stderr, limit))
-            });
+            let stdout = child
+                .stdout
+                .take()
+                .map(|stdout| spawn_output_reader(stdout, settings.max_output_bytes));
+            let stderr = child
+                .stderr
+                .take()
+                .map(|stderr| spawn_output_reader(stderr, settings.max_output_bytes));
             let timeout = settings.timeout_seconds.or(invocation.timeout_seconds);
             let (status, timed_out) = match timeout {
                 Some(seconds) => match child.wait_timeout(Duration::from_secs(seconds)) {
@@ -525,8 +539,8 @@ fn run_one(
                 },
                 None => (child.wait(), false),
             };
-            let stdout = join_output(stdout);
-            let stderr = join_output(stderr);
+            let stdout = collect_output(stdout);
+            let stderr = collect_output(stderr);
             let (combined, output_truncated) =
                 combine_limited_output(stdout, stderr, settings.max_output_bytes);
             if timed_out {
@@ -551,6 +565,7 @@ fn run_one(
                     output_truncated,
                     guidance: None,
                     baseline_safe: false,
+                    executed: true,
                 };
             }
             let status = match status {
@@ -570,11 +585,21 @@ fn run_one(
                 &combined,
                 !status.success(),
             );
+            let failure_kind = (!status.success()).then(|| {
+                if baseline_safe {
+                    FailureKind::Code
+                } else {
+                    classify_failure(&combined)
+                }
+            });
+            // A truncated or unfinished capture never proves the output is complete,
+            // even when the retained prefix happens to parse cleanly on its own.
+            let baseline_safe = baseline_safe && !output_truncated;
             ToolResult {
                 tool: invocation.id,
                 name: invocation.name,
                 status: result_status,
-                failure_kind: (!status.success()).then(|| classify_failure(&combined)),
+                failure_kind,
                 duration_ms: started.elapsed().as_millis(),
                 command: command_display,
                 diagnostics,
@@ -582,6 +607,7 @@ fn run_one(
                 output_truncated,
                 guidance: None,
                 baseline_safe,
+                executed: true,
             }
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -612,6 +638,7 @@ fn run_one(
                 output_truncated: false,
                 guidance,
                 baseline_safe: false,
+                executed: false,
             }
         }
         Err(error) => ToolResult {
@@ -634,6 +661,7 @@ fn run_one(
             output_truncated: false,
             guidance: None,
             baseline_safe: false,
+            executed: false,
         },
     }
 }
@@ -664,31 +692,62 @@ fn execution_error(
         output_truncated: false,
         guidance: None,
         baseline_safe: false,
+        executed: true,
     }
 }
 
-fn read_limited(mut reader: impl Read, limit: usize) -> io::Result<CapturedOutput> {
-    let mut retained = Vec::new();
+fn spawn_output_reader(mut reader: impl Read + Send + 'static, limit: usize) -> OutputReader {
+    let state = Arc::new(Mutex::new((Vec::new(), false)));
+    let thread_state = Arc::clone(&state);
+    let (completed_tx, completed) = mpsc::channel();
+    thread::spawn(move || {
+        read_limited(&mut reader, limit, &thread_state);
+        let _ = completed_tx.send(());
+    });
+    OutputReader { state, completed }
+}
+
+fn read_limited(reader: &mut impl Read, limit: usize, state: &Mutex<CapturedOutput>) {
     let mut buffer = [0_u8; 8192];
-    let mut truncated = false;
     loop {
-        let read = reader.read(&mut buffer)?;
+        let Ok(read) = reader.read(&mut buffer) else {
+            if let Ok(mut captured) = state.lock() {
+                captured.1 = true;
+            }
+            break;
+        };
         if read == 0 {
             break;
         }
-        let remaining = limit.saturating_sub(retained.len());
-        let keep = read.min(remaining);
-        retained.extend_from_slice(&buffer[..keep]);
-        truncated |= keep < read;
+        if let Ok(mut captured) = state.lock() {
+            let remaining = limit.saturating_sub(captured.0.len());
+            let keep = read.min(remaining);
+            captured.0.extend_from_slice(&buffer[..keep]);
+            captured.1 |= keep < read;
+        }
     }
-    Ok((retained, truncated))
 }
 
-fn join_output(handle: Option<OutputReader>) -> CapturedOutput {
-    handle
-        .and_then(|handle| handle.join().ok())
-        .and_then(Result::ok)
-        .unwrap_or_else(|| (Vec::new(), false))
+/// Takes a snapshot of the captured output without blocking on the reader
+/// thread, which may still be stuck in a blocking `read` on a pipe an
+/// inherited-fd descendant keeps open well past the parent process's exit.
+/// Any capture that hasn't finished within the grace window is marked
+/// truncated, since there is no way to know whether more output was coming.
+fn collect_output(handle: Option<OutputReader>) -> CapturedOutput {
+    let Some(handle) = handle else {
+        return (Vec::new(), false);
+    };
+    let completed = handle
+        .completed
+        .recv_timeout(Duration::from_millis(250))
+        .is_ok();
+    let mut captured = handle
+        .state
+        .lock()
+        .map(|state| state.clone())
+        .unwrap_or_else(|_| (Vec::new(), true));
+    captured.1 |= !completed;
+    captured
 }
 
 fn combine_limited_output(

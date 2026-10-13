@@ -115,6 +115,9 @@ pub fn apply(report: &mut RunReport, path: &Path) -> Result<()> {
         .collect();
 
     for result in &mut report.results {
+        if matches!(result.status, Status::Failed) && !result.baseline_safe {
+            continue;
+        }
         let before = result.diagnostics.len();
         result.diagnostics.retain(|diagnostic| {
             let fingerprint = fingerprint(diagnostic);
@@ -213,6 +216,23 @@ mod tests {
         assert!(matches!(current.results[0].status, Status::Failed));
     }
 
+    #[test]
+    fn unsafe_execution_failures_preserve_existing_findings() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("baseline.json");
+        let mut report =
+            RunReport::new(vec![result(vec![diagnostic(2)])], None, Default::default());
+        create(&report, &path, false).unwrap();
+        report.results[0].baseline_safe = false;
+
+        apply(&mut report, &path).unwrap();
+
+        assert_eq!(report.suppressed, 0);
+        assert_eq!(report.results[0].diagnostics.len(), 1);
+        assert!(report.failed());
+        assert_eq!(report.summary.failed, 1);
+    }
+
     fn result(diagnostics: Vec<Diagnostic>) -> ToolResult {
         ToolResult {
             tool: "swiftlint".to_owned(),
@@ -226,6 +246,7 @@ mod tests {
             output_truncated: false,
             guidance: None,
             baseline_safe: true,
+            executed: true,
         }
     }
 }
