@@ -56,6 +56,54 @@ test('theme and interactive controls survive client navigation and history', asy
 	await expect(page.locator('html')).not.toHaveAttribute('data-theme', theme ?? 'dark');
 });
 
+test('mobile menu accepts pointer and keyboard input before the dialog controller loads', async ({ page }, testInfo) => {
+	test.skip(testInfo.project.name !== 'mobile', 'Mobile navigation contract');
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	let releaseController = () => {};
+	const controllerGate = new Promise<void>((resolve) => { releaseController = resolve; });
+	await page.route('**/_astro/dialogs.*.js', async (route) => {
+		await controllerGate;
+		await route.continue();
+	});
+	const controllerRequested = page.waitForRequest('**/_astro/dialogs.*.js');
+	try {
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
+		await controllerRequested;
+		const trigger = page.getByRole('button', { name: 'Open navigation' });
+		const menu = page.getByRole('dialog', { name: 'Find your next step.' });
+		await trigger.click();
+		await expect(menu).toBeVisible();
+		expect(await menu.evaluate((element) => element.matches(':modal'))).toBe(true);
+		await menu.getByRole('button', { name: 'Close navigation' }).click();
+		await expect(menu).not.toBeVisible();
+		await trigger.focus();
+		await page.keyboard.press('Enter');
+		await expect(menu).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(menu).not.toBeVisible();
+		await expect(trigger).toBeFocused();
+		const controllerLoaded = page.waitForResponse('**/_astro/dialogs.*.js');
+		releaseController();
+		await controllerLoaded;
+		await page.waitForLoadState('networkidle');
+		// Simulate a browser without native commands after Lumen has loaded.
+		for (const button of [trigger, page.getByRole('button', { name: 'Close navigation', includeHidden: true })]) {
+			await button.evaluate((element) => {
+				element.removeAttribute('command');
+				element.removeAttribute('commandfor');
+			});
+		}
+		await trigger.click();
+		await expect(menu).toBeVisible();
+		await menu.getByRole('button', { name: 'Close navigation' }).click();
+		await expect(menu).not.toBeVisible();
+		expect(errors).toEqual([]);
+	} finally {
+		releaseController();
+	}
+});
+
 test('mobile menu isolates background focus, escapes, and opens again after a page swap', async ({ page }, testInfo) => {
 	test.skip(testInfo.project.name !== 'mobile', 'Mobile navigation contract');
 	await page.goto('/');

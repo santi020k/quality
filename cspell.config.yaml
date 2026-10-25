@@ -21,10 +21,12 @@ words:
   - codespell
   - codespellrc
   - commitprompt
+  - commandfor
   - ContracTrack
   - Deque
   - detekt
   - dtolnay
+  - domcontentloaded
   - esac
   - esbuild
   - fflate
@@ -39,6 +41,7 @@ words:
   - lockfiles
   - msvc
   - Miniflare
+  - networkidle
   - noopener
   - noreferrer
   - pbxproj
