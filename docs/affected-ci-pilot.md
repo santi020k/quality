@@ -150,7 +150,9 @@ For context, the release revision's full validation task took 67.76 seconds in
 [run 40232066462](https://github.com/santi020k/quality/actions/runs/40232066462).
 Its separate browser job failed an immediate enlarged-text measurement; the
 test was subsequently strengthened to require the requested font size before
-measuring overflow. That run is not a successful release gate. These hosted
+measuring overflow. That exposed a heading that overflowed with wider platform
+fonts; the heading now wraps inside its container, with direct regression
+coverage. That run is not a successful release gate. These hosted
 samples have different cache and runner conditions, so they prove selection
 and retained coverage, not a controlled speedup or total workflow duration.
 Setup and queueing are excluded from the task times above. Consult PR #56 for

@@ -118,8 +118,12 @@ test('320px and enlarged text keep the entire page within the viewport', async (
 	await page.setViewportSize({ width: 320, height: 700 });
 	for (const route of ['/', '/adapters/', '/commands/']) {
 		await page.goto(route);
-		await page.addStyleTag({ content: 'html { font-size: 125%; }' });
+		await page.evaluate(() => { document.documentElement.style.fontSize = '125%'; });
 		await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+		if (route === '/') {
+			const heading = await page.locator('.hero-title').evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth }));
+			expect(heading.content, 'The enlarged heading must fit its own container').toBeLessThanOrEqual(heading.width);
+		}
 		const layout = await page.evaluate(() => ({
 			width: document.documentElement.scrollWidth,
 			overflow: [...document.querySelectorAll('body *')]
