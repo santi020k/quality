@@ -13,6 +13,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  QUALITY_CI_BASE: ${{ github.event.pull_request.base.sha }}
+  QUALITY_CI_FULL: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'changeset-release/') }}
+
 jobs:
   ci:
     name: Affected checks
@@ -49,7 +53,15 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
       - name: Check affected projects
-        run: pnpm run ci
+        run: pnpm run ci --report "$RUNNER_TEMP/quality-ci.json"
+      - name: Save validation timing and selection
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-ci-plan
+          path: ${{ runner.temp }}/quality-ci.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Check user-visible release note
         if: github.head_ref != 'changeset-release/main' && github.actor != 'dependabot[bot]'
         env:
@@ -71,13 +83,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./actions/setup-pnpm
         with:
           node-version: 24
+          task-cache-path: .turbo/cache
+          task-cache-key: docs-browser
+      - name: Plan documentation checks
+        id: plan
+        run: pnpm run ci:plan --github-output
       - name: Install Chromium
+        if: steps.plan.outputs.docs-browser == 'true'
         run: pnpm --filter @quality/site exec playwright install --with-deps chromium
       - name: Build documentation
-        run: pnpm --filter @quality/site build
+        if: steps.plan.outputs.docs-browser == 'true'
+        run: pnpm exec turbo run build --filter=@quality/site
       - name: Check navigation, themes, and accessibility
+        if: steps.plan.outputs.docs-browser == 'true'
         run: pnpm test:site
