@@ -17,14 +17,14 @@
   },
   "dependencies": {
     "@santi020k/lumen-astro": "4.1.0",
-    "astro": "^7.3.7"
+    "astro": "^7.4.2"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.10",
-    "@astrojs/markdown-satteri": "0.4.3",
-    "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.64.0",
-    "@santi020k/og": "1.2.0",
-    "typescript": "^6.0.3"
+    "@astrojs/check": "^0.9.12",
+    "@astrojs/markdown-satteri": "0.4.5",
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "@santi020k/og": "1.2.1",
+    "typescript": "^7.0.2"
   }
 }
