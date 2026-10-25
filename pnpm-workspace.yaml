@@ -8,10 +8,17 @@ allowBuilds:
   sharp: true
   workerd: true
 
-# Patch vulnerable versions pinned exactly by Satori and Miniflare.
+# Keep security fixes within each consumer's existing dependency major.
+# See RELEASING.md for the reviewed advisories and removal criteria.
 overrides:
   'fflate@<0.7.5': 0.7.5
   'sharp@<0.35.5': 0.35.5
+  'launch-editor@<2.14.2': 2.14.2
+  'zod@>=4.0.0 <4.6.6': 4.6.7
+  'undici@>=6.0.0 <6.29.1': 6.29.1
+  'undici@>=7.0.0 <7.30.1': 7.30.1
+  'undici@>=8.0.0 <8.12.2': 8.12.3
+  'fast-uri@>=3.0.0 <3.1.9': 3.1.9
 
 minimumReleaseAgeExclude:
   # Reviewed stable releases required by the Lumen upgrade and browser checks.

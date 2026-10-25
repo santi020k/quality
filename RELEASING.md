@@ -67,6 +67,32 @@ CLI flags, configuration, reports, exit codes, and Action inputs remain compatib
 with 1.x. Documentation URLs and machine-readable Markdown endpoints are retained.
 The site consumes published Lumen 4 packages; no local package links are required.
 
+### Dependency security follow-up — 2026-10-25
+
+The affected-validation pilot initially exposed 16 existing audit findings
+(5 high, 9 moderate, 2 low). The workspace now pins patched transitive versions
+within each consumer's existing major version, and `pnpm check:security` reports
+no known vulnerabilities. These changes remain part of the prepared 1.4.0
+candidate; the generated release notes already include dependency remediation.
+
+| Dependency | Previous version | Patched version | Upstream security notes |
+| --- | --- | --- | --- |
+| launch-editor | 2.14.1 | 2.14.2 | [Windows argument escaping](https://github.com/advisories/GHSA-698v-4r3x-3vcv), [editor flag injection](https://github.com/advisories/GHSA-r825-w8mm-5pxw), [Windows file validation](https://github.com/advisories/GHSA-587h-7wmj-h5pm) |
+| Zod | 4.6.5 | 4.6.7 | [Collection bounds fix in 4.6.6](https://github.com/colinhacks/zod/releases/tag/v4.6.6) |
+| Undici | 6.29.0 / 7.29.1 / 8.11.2 | 6.29.1 / 7.30.1 / 8.12.3 | [6.x fixes](https://github.com/nodejs/undici/releases/tag/v6.29.1), [7.x fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1), [8.x security fixes](https://github.com/nodejs/undici/releases/tag/v8.12.2) and [follow-up fixes](https://github.com/nodejs/undici/releases/tag/v8.12.3) |
+| fast-uri | 3.1.8 | 3.1.9 | [URI parsing security fixes](https://github.com/fastify/fast-uri/releases/tag/v3.1.9) |
+
+Versions and runtime requirements were checked against the official npm
+registry and upstream security notes. Miniflare pins its Undici dependency
+exactly, so a normal lockfile refresh cannot resolve that finding. The bounded
+overrides in `pnpm-workspace.yaml` prevent vulnerable versions from returning
+without crossing dependency majors. Remove an override when every upstream
+consumer permits a patched version, then regenerate the lockfile and require a
+clean audit and full validation. The Action distribution is rebuilt to include
+Undici 6.29.1; updating the lockfile alone does not patch the shipped bundle.
+
+### Runtime and recovery
+
 The inherited workspace Node floor needs confirmation before publication:
 `package.json` still declares `>=22.18.0`, while Astro's existing Undici 8
 dependency requires `>=22.19.0`. This candidate preserves the declared floor

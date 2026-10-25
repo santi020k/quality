@@ -108,9 +108,12 @@ measured separately. Unrelated edits skip that browser workload in CI, while
 retaining the documentation job's setup and planning costs.
 
 The live audit took 0.75 seconds and failed on 16 existing dependency advisories
-(5 high, 9 moderate, 2 low), also observed before the pilot. Affected validation
-and full release validation both retain this failing gate. The benchmark exits
-with failure for that audit; these timings do not establish release readiness.
+(5 high, 9 moderate, 2 low), also observed before the pilot. That benchmark
+exited with failure for the audit; these timings do not establish release
+readiness. A subsequent [dependency security follow-up](../RELEASING.md#dependency-security-follow-up--2026-10-25)
+patched those dependencies, and a fresh `pnpm check:security` reported no known
+vulnerabilities. Both affected and full validation retain the live audit gate.
+The original timing samples were not rerun or rewritten after remediation.
 
 Measurements used the working source snapshot recorded in `results.json`;
 Git-hook isolation and its regression test were hardened afterward without
