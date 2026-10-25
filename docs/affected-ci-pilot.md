@@ -125,6 +125,37 @@ Git-hook isolation and its regression test were hardened afterward without
 changing task selection. Reproduce the benchmark on CI before treating these
 local timings as an expected hosted-runner improvement.
 
+## Ordinary PR verification — 2026-10-25
+
+[PR #57](https://github.com/santi020k/quality/pull/57) exercised real
+`pull_request` events from `test/affected-ci-verification` into the unmerged
+`release/v1.4.0`. Both runs used the actual base
+`448f4d8a62c506c8e5bb96a3a21e41d1841f2166`; no base or full-mode override was
+injected. The probe contains only harmless comments and an empty Changeset,
+and is retained as verification evidence without merging it into the release.
+
+| Revision and run | Selected workspace | Validation task | Browser result |
+| --- | --- | ---: | --- |
+| [Action comment, `2fa570b`](https://github.com/santi020k/quality/actions/runs/40232145573) | `@quality/action` | 24.95 s | Installation, build and tests skipped; planning job passed |
+| [Site comment, `84f8337`](https://github.com/santi020k/quality/actions/runs/40232368546) | `@quality/site` | 8.91 s | Required; 63 passed, one expected skip, 40.2 s |
+
+Both uploaded `quality-ci-plan` reports show `mode: affected`, exit code zero,
+the intended workspace, and all selected steps passing. The Action run executes
+all 12 Action tests, its build and committed-bundle verification. The site run
+executes its complete workspace tests/build and production browser suite. Both
+retain the live npm audit and all 32 repository script checks. Their Changeset
+checks pass against the release base.
+
+For context, the release revision's full validation task took 67.76 seconds in
+[run 40232066462](https://github.com/santi020k/quality/actions/runs/40232066462).
+Its separate browser job failed an immediate enlarged-text measurement; the
+test was subsequently strengthened to require the requested font size before
+measuring overflow. That run is not a successful release gate. These hosted
+samples have different cache and runner conditions, so they prove selection
+and retained coverage, not a controlled speedup or total workflow duration.
+Setup and queueing are excluded from the task times above. Consult PR #56 for
+the latest complete release checks and outstanding upstream audit warning.
+
 ## Rollback
 
 Run `pnpm validate` and `pnpm test:site` at any time. To disable affected CI,

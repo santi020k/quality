@@ -28,10 +28,10 @@ jobs:
           key: cargo-audit-${{ runner.os }}-${{ runner.arch }}-0.22.2
       - name: Install pinned audit tool
         run: |
-          if [ "$(cargo audit --version 2>/dev/null)" != "cargo-audit 0.22.2" ]; then
+          if [ "$(cargo-audit --version 2>/dev/null)" != "cargo-audit 0.22.2" ]; then
             cargo install cargo-audit --locked --version 0.22.2 --force
           fi
       - name: Reject vulnerable or unmaintained dependencies
         run: |
-          test "$(cargo audit --version)" = "cargo-audit 0.22.2"
+          test "$(cargo-audit --version)" = "cargo-audit 0.22.2"
           cargo audit --file Cargo.lock --deny warnings

@@ -119,7 +119,9 @@ test('320px and enlarged text keep the entire page within the viewport', async (
 	for (const route of ['/', '/adapters/', '/commands/']) {
 		await page.goto(route);
 		await page.addStyleTag({ content: 'html { font-size: 125%; }' });
-		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+		await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+		const width = await page.evaluate(() => document.documentElement.scrollWidth);
+		expect(width, `${route} overflows at 320px with enlarged text`).toBeLessThanOrEqual(320);
 	}
 });
 

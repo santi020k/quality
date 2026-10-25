@@ -75,6 +75,8 @@ test("Rust audits reject warnings without giving pull requests write credentials
   assert.match(workflow, /permissions:\n  contents: read\n/);
   assert.doesNotMatch(workflow, /: write|secrets\.|rustsec\/audit-check|--ignore/);
   assert.match(workflow, /cargo install cargo-audit --locked --version 0\.22\.2/);
+  assert.match(workflow, /test "\$\(cargo-audit --version\)" = "cargo-audit 0\.22\.2"/);
+  assert.doesNotMatch(workflow, /cargo audit --version/);
   assert.match(workflow, /cargo audit --file Cargo\.lock --deny warnings/);
 });
 
