@@ -35,9 +35,9 @@
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@santi020k/commitprompt": "1.1.0",
-    "cspell": "10.3.6",
-    "turbo": "2.11.7",
-    "wrangler": "4.148.0"
+    "cspell": "10.4.0",
+    "turbo": "2.11.10",
+    "wrangler": "4.152.0"
   },
   "repository": {
     "type": "git",
