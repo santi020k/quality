@@ -1,7 +1,7 @@
 # Contributing
 
 Install Rust 1.85 or newer, Node.js 24 (the CI version), and pnpm 11.22. The
-inherited Node engine-floor discrepancy is tracked in [Releasing](RELEASING.md).
+private development workspace requires Node.js 22.19.0 or newer.
 Then run:
 
 ```sh

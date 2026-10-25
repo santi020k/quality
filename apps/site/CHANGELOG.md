@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- Refresh the documentation with Lumen 4, Quality's blue identity, responsive navigation, accessible code examples, page transitions, and complete guide navigation. Upgrade compatible dependencies and address known dependency vulnerabilities. Preserve operational CLI errors in the GitHub Action when no SARIF report was written, and restrict release and deployment workflows to merged main commits. Remove an unused internal helper without changing stable CLI contracts.
+- Refresh the documentation with Lumen 4, Quality's blue identity, responsive navigation, accessible code examples, page transitions, and complete guide navigation. Upgrade compatible dependencies and address known dependency vulnerabilities. Preserve operational CLI errors in the GitHub Action when no SARIF report was written, and restrict release and deployment workflows to merged main commits. Remove an unused internal helper without changing stable CLI contracts. Pilot affected repository validation with full release checks, conservative fallbacks, and recorded local benchmarks. Patch audited transitive dependencies and rebuild the Action distribution. Align the private development workspace with its existing Node.js 22.19.0 dependency minimum.
 
 ## 0.2.0
 

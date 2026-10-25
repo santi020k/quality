@@ -93,10 +93,10 @@ Undici 6.29.1; updating the lockfile alone does not patch the shipped bundle.
 
 ### Runtime and recovery
 
-The inherited workspace Node floor needs confirmation before publication:
-`package.json` still declares `>=22.18.0`, while Astro's existing Undici 8
-dependency requires `>=22.19.0`. This candidate preserves the declared floor
-pending that decision. Local validation uses Node 22.23.1; CI uses Node 24.
+The private development workspace now declares Node `>=22.19.0`, matching
+Astro's existing Undici 8 requirement. Contributors on Node 22.18 must update
+their development runtime. Native CLI compatibility and the Action's Node 24
+runtime are unchanged. Local validation uses Node 22.23.1; CI uses Node 24.
 
 There is no persisted-data migration. If validation or publication fails, fix the
 candidate and rerun GitHub Actions. If an issue is discovered after publication,
