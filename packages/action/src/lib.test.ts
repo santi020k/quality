@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+// Exercise Action-only selection in the hosted affected validation pilot.
 import {
   checkArguments,
   actionFailureMessage,
