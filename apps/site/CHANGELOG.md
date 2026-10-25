@@ -1,5 +1,11 @@
 # @quality/site
 
+## 0.3.1
+
+### Patch Changes
+
+- Keep mobile navigation responsive while its dialog controller downloads by using native dialog commands. Verify early pointer and keyboard activation, dismissal, and the loaded Lumen fallback.
+
 ## 0.3.0
 
 ### Minor Changes

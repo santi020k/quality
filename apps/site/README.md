@@ -43,6 +43,10 @@ It also exposes Markdown and language-model-friendly documentation endpoints fro
 
 Run `check` for Astro diagnostics and `test` for documentation behavior. Browser tests run through
 `test:browser`; the root `test:site` command exercises the site against its production build.
+The mobile menu uses native dialog commands so its first activation does not depend on
+Lumen's lazy controller download. Lumen remains the fallback in browsers without native
+command support. The browser suite holds the dialog controller request to exercise early
+pointer and keyboard input, then checks the loaded controller without native commands.
 
 ## Workspace commands
 
