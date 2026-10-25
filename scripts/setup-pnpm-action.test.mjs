@@ -69,3 +69,25 @@ test("manual release and deployment runs require the main branch", async () => {
     }
   }
 });
+
+test("Rust audits reject warnings without giving pull requests write credentials", async () => {
+  const workflow = await readFile(".github/workflows/rust-audit.yml", "utf8");
+  assert.match(workflow, /permissions:\n  contents: read\n/);
+  assert.doesNotMatch(workflow, /: write|secrets\.|rustsec\/audit-check|--ignore/);
+  assert.match(workflow, /cargo install cargo-audit --locked --version 0\.22\.2/);
+  assert.match(workflow, /cargo audit --file Cargo\.lock --deny warnings/);
+});
+
+test("ordinary PRs use their actual base while release and manual CI stay full", async () => {
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  assert.match(workflow, /branches: \[main, "release\/v\*"\]/);
+  assert.match(workflow, /QUALITY_CI_BASE: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(workflow, /QUALITY_CI_FULL:.*github\.event_name == 'workflow_dispatch'.*startsWith\(github\.head_ref, 'release\/'\)/);
+  assert.match(workflow, /pnpm changeset status --since="\$QUALITY_CI_BASE"/);
+  assert.match(workflow, /if: github\.event_name == 'pull_request' && github\.head_ref/);
+});
+
+test("CodeQL refreshes the default branch baseline after merges", async () => {
+  const workflow = await readFile(".github/workflows/codeql.yml", "utf8");
+  assert.match(workflow, /on:\n  push:\n    branches: \[main\]\n  pull_request:/);
+});

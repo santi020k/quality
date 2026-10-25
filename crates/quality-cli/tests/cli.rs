@@ -1727,7 +1727,7 @@ fn ci_generates_a_workflow_without_overwriting_by_default() {
     assert!(!workflow_text.contains("__QUALITY_INSTALL_COMMAND__"));
     assert!(!workflow_text.contains("__QUALITY_RUNNER__"));
     assert!(!workflow_text.contains("__QUALITY_PROJECT_SETUP__"));
-    let _: serde_yaml::Value = serde_yaml::from_str(&workflow_text).unwrap();
+    let _: yaml_serde::Value = yaml_serde::from_str(&workflow_text).unwrap();
 
     let second = quality(temp.path(), &["ci", "github", "--install", install]);
     assert_eq!(second.status.code(), Some(2));
@@ -1760,7 +1760,7 @@ fn ci_generates_pnpm_setup_and_dependency_installation() {
     assert!(workflow.contains("cache: pnpm"));
     assert!(workflow.contains("pnpm install --frozen-lockfile"));
     assert!(!workflow.contains("dtolnay/rust-toolchain"));
-    let _: serde_yaml::Value = serde_yaml::from_str(&workflow).unwrap();
+    let _: yaml_serde::Value = yaml_serde::from_str(&workflow).unwrap();
 }
 
 #[test]
@@ -1872,7 +1872,7 @@ fn ci_generates_a_thin_shared_pnpm_workflow() {
     assert!(workflow.contains("node-version-file: .node-version"));
     assert!(workflow.contains("pnpm-version: \"11.22.0\""));
     assert!(workflow.contains("command: \"pnpm run verify\""));
-    serde_yaml::from_str::<serde_yaml::Value>(&workflow).expect("generated workflow must be YAML");
+    yaml_serde::from_str::<yaml_serde::Value>(&workflow).expect("generated workflow must be YAML");
 }
 
 #[test]

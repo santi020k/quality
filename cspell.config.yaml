@@ -33,6 +33,7 @@ words:
   - labelledby
   - lede
   - linecap
+  - libyaml
   - llms
   - lucide
   - lockfiles
@@ -44,6 +45,7 @@ words:
   - prepush
   - pyproject
   - rhysd
+  - rustsec
   - retrieve
   - retrive
   - SARIF

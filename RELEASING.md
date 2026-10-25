@@ -91,6 +91,30 @@ consumer permits a patched version, then regenerate the lockfile and require a
 clean audit and full validation. The Action distribution is rebuilt to include
 Undici 6.29.1; updating the lockfile alone does not patch the shipped bundle.
 
+### Rust audit and workflow follow-up
+
+The CLI now uses the YAML organization's maintained `yaml_serde` 0.10.7 with
+`libyaml-rs`, removing deprecated `serde_yaml` and unmaintained `unsafe-libyaml`.
+The [upstream migration guide](https://github.com/yaml/yaml-serde#migrating-from-serde_yaml)
+documents the compatible API. Rust 1.85 compilation and regression tests cover
+configuration validation, aliases, quoted scalars, multiline commands, tags,
+workflow triggers, serialization, and existing CLI behavior.
+
+Rust CI runs pinned `cargo-audit` 0.22.2 directly with `--deny warnings`, retaining
+a read-only token and avoiding the old Action's deprecated Node runtime and
+failed Checks API writes. The live advisory database is not cached. CodeQL now
+also scans pushes to `main` so PR comparisons have a current default-branch
+baseline.
+
+The upstream `http-cache-semantics` Scorecard warning remains visible. Version
+4.3.0 is the latest stable release and is required by Astro; even current Astro
+still depends on it. Its upstream OpenSSF score is 2.9 (2026-10-19), below the
+existing warning threshold of 3, because of upstream review, branch protection,
+security policy, fuzzing, and static analysis practices. Quality cannot change
+those upstream controls. No exclusion or lower threshold is added. Track this
+warning in PR #56 and reassess upstream releases and the score before rollout;
+removing Astro's caching dependency would require a separate compatibility review.
+
 ### Runtime and recovery
 
 The private development workspace now declares Node `>=22.19.0`, matching

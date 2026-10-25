@@ -47,6 +47,11 @@ Manual workflow runs and release branches use full validation. The full
 verification remains a separate job / `pnpm test:site` command; the local
 `pnpm run ci` report indicates when it is required but does not launch a browser.
 
+Ordinary pull requests may target `main` or an active `release/v*` branch. Both
+change selection and the Changeset check use the actual PR base commit. This
+allows a normal feature PR to exercise affected mode before the release is
+merged, while a PR whose head is a release branch still runs full validation.
+
 Use the explicit `run` here: pnpm 11's built-in `pnpm ci` performs a clean
 dependency installation rather than running the repository's validation script.
 

@@ -111,7 +111,7 @@ fn inspect_one(parent: &Path, root: &Path, apply: bool, dry_run: bool) -> Reposi
         .collect();
     let generated = config::initial_text(&project)
         .ok()
-        .and_then(|text| serde_yaml::from_str::<Config>(&text).ok());
+        .and_then(|text| yaml_serde::from_str::<Config>(&text).ok());
     let generated_tasks = generated
         .as_ref()
         .map(|config| config.tasks.keys().cloned().collect())

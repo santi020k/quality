@@ -178,7 +178,7 @@ impl Config {
         }
         let text = fs::read_to_string(&path)
             .with_context(|| format!("could not read {}", path.display()))?;
-        let config: Self = serde_yaml::from_str(&text)
+        let config: Self = yaml_serde::from_str(&text)
             .with_context(|| format!("invalid configuration in {}", path.display()))?;
         if config.version != 1 {
             anyhow::bail!(
@@ -500,7 +500,7 @@ pub fn merge_preset_text_with_gate(
     text.push_str(&format!(
         "# Generated from the `{profile}` preset; rerun `quality preset update` to refresh it.\n"
     ));
-    text.push_str(&serde_yaml::to_string(&config).context("could not serialize configuration")?);
+    text.push_str(&yaml_serde::to_string(&config).context("could not serialize configuration")?);
     Ok(text)
 }
 
@@ -557,7 +557,7 @@ fn policy_text_with_tools(
             "# Generated from the `{profile}` preset; rerun `quality preset apply {profile}` to refresh it.\n"
         ));
     }
-    text.push_str(&serde_yaml::to_string(&config).context("could not serialize configuration")?);
+    text.push_str(&yaml_serde::to_string(&config).context("could not serialize configuration")?);
     Ok(text)
 }
 
@@ -841,6 +841,80 @@ fn command_invokes_script(command: &str, script: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yaml_configuration_preserves_aliases_strings_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("quality.yml");
+        fs::write(
+            &path,
+            r#"version: 1
+output: json
+tools:
+  cspell: &policy
+    enabled: false
+    required: true
+  eslint: *policy
+tasks:
+  example:
+    command: node
+    args: ['on', 'off', 'true', 'null', '0123', '${{ github.ref }}', 'hello world']
+    required: false
+hooks:
+  pre-push:
+    steps:
+      - command: node
+        args:
+          - |-
+            console.log('first');
+            console.log('second');
+"#,
+        )
+        .unwrap();
+        let config = Config::load_or_default(directory.path()).unwrap();
+        assert_eq!(config.tool("eslint").enabled, Some(false));
+        assert_eq!(config.tool("eslint").required, Some(true));
+        assert_eq!(
+            config.tasks["example"].args,
+            [
+                "on",
+                "off",
+                "true",
+                "null",
+                "0123",
+                "${{ github.ref }}",
+                "hello world"
+            ]
+        );
+        assert_eq!(
+            config.hooks["pre-push"].steps[0].args,
+            ["console.log('first');\nconsole.log('second');"]
+        );
+        let expected = serde_json::to_value(&config).unwrap();
+        fs::write(&path, yaml_serde::to_string(&config).unwrap()).unwrap();
+        let reloaded = Config::load_or_default(directory.path()).unwrap();
+        assert_eq!(serde_json::to_value(reloaded).unwrap(), expected);
+    }
+
+    #[test]
+    fn yaml_configuration_rejects_ambiguous_or_invalid_input() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("quality.yml");
+        for text in [
+            "version: 1\nversion: 1\n",
+            "version: 1\nunknown_field: true\n",
+            "version: 1\ntools: [\n",
+            "version: 1\ntools: *missing\n",
+            "version: 1\n---\nversion: 1\n",
+            "version: 1\ntools:\n  cspell:\n    enabled: 'false'\n",
+        ] {
+            fs::write(&path, text).unwrap();
+            assert!(
+                Config::load_or_default(directory.path()).is_err(),
+                "must reject {text:?}"
+            );
+        }
+    }
 
     #[test]
     fn edit_distance_handles_insertions_and_transpositions() {

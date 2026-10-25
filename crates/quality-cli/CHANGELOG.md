@@ -14,6 +14,8 @@
 
 - Preserve exact existing file permissions during atomic writes, including restrictive and shared modes, and use umask-respecting modes for new files. Scope `--changed` paths to nested `--root` directories so tracked, deleted, and untracked files resolve consistently and sibling changes do not leak into reports.
 
+- Replace deprecated YAML dependencies with the YAML organization's maintained yaml_serde parser while preserving configuration and workflow behavior on Rust 1.85. Run Rust audits without write credentials and reject informational warnings. Refresh CodeQL on main and support ordinary affected-validation pull requests into release branches.
+
 ## 1.3.0
 
 ### Minor Changes
