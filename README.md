@@ -1,4 +1,22 @@
-# quality
+<p align="center">
+  <a href="README.md">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.svg">
+      <img src="docs/assets/readme/hero-light.svg" alt="quality — One command. A clearer quality workflow." width="1200" height="360">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">quality</h1>
+
+<p align="center">One predictable quality workflow across languages and toolchains.</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
+  <a href="https://github.com/santi020k/quality/actions/workflows/ci.yml"><img src="https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/santi020k/quality/actions/workflows/codeql.yml"><img src="https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/santi020k/quality/releases/latest"><img src="https://img.shields.io/github/v/release/santi020k/quality" alt="GitHub release"></a>
+</p>
 
 `quality` is one fast, predictable code-quality workflow for repositories that
 contain Rust, Swift, Android/Kotlin, Python, JavaScript, and Astro projects. It does not replace the
@@ -14,13 +32,10 @@ Website and documentation: <https://quality.santi020k.com>
 [Issues](https://github.com/santi020k/quality/issues) ·
 [Contributing](CONTRIBUTING.md)
 
-[![CI](https://github.com/santi020k/quality/actions/workflows/ci.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/santi020k/quality/actions/workflows/codeql.yml/badge.svg)](https://github.com/santi020k/quality/actions/workflows/codeql.yml)
-[![GitHub release](https://img.shields.io/github/v/release/santi020k/quality)](https://github.com/santi020k/quality/releases/latest)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 > Status: `1.x` stable. Public CLI, configuration, report, and Action contracts follow the
 > documented compatibility policy for this major release.
+
+**Explore:** [GitHub Action](#github-action) · [The developer experience](#the-developer-experience) · [Install for development](#install-for-development) · [Supported adapters](#supported-adapters) · [Language-aware presets](#language-aware-presets) · [Try features in the playground](#try-features-in-the-playground)
 
 ## GitHub Action
 
@@ -29,9 +44,9 @@ Website and documentation: <https://quality.santi020k.com>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v1.3.0
+- uses: santi020k/quality@v1.4.0
   with:
-    version: v1.3.0
+    version: v1.4.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -93,7 +108,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v1.3.0
+  | sh -s -- santi020k/quality v1.4.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -143,6 +158,20 @@ as Android Lint still run at project scope when Android files change. Changing
 a rules or configuration file—including deleting one—triggers the corresponding
 full check. Deleted source paths can trigger project-wide checks but are never
 passed to file-scoped tools.
+
+Preview check commands without executing analyzers:
+
+```bash
+quality check --dry-run
+quality check --dry-run --explain --changed origin/main
+```
+
+The text preview shows each executable, argument list, and working directory.
+`--explain` also lists changed inputs and explains why checks run or skip. It
+uses the same invocation builder as execution, including workspace scope,
+configuration changes, tasks, and custom adapters. A preview does not verify
+installed tools or prove that checks pass; use `quality doctor` and a real run.
+`--explain` requires `--dry-run`; previews cannot use `--format` or `--report`.
 
 Select adapters by ID for focused local or CI runs. Flags can be repeated or
 receive comma-separated IDs, and work with `check`, `format`, and `fix`:
@@ -416,7 +445,9 @@ quality completions fish > ~/.config/fish/completions/quality.fish
 ```
 
 The release workflow builds native archives for Linux, Apple Silicon and Intel
-macOS, and Windows whenever a version tag such as `v1.3.0` is pushed.
+macOS, and Windows after a prepared version change is merged into `main`. GitHub
+Actions creates the version tag and release after validation; see
+[Releasing](RELEASING.md) for the complete process.
 
 Workflow generation requires an explicit installation command, preventing the
 generated CI from assuming a crate or repository that does not exist. It
@@ -426,7 +457,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.3.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v1.4.0 --locked'
 ```
 
 Run the configured `pre-push` gate before spending a GitHub-hosted runner:
@@ -523,6 +554,21 @@ See [`playground/README.md`](playground/README.md) for the complete walkthrough.
 
 Run `pnpm playground:verify` to create a temporary sandbox and verify the whole
 playground workflow automatically.
+
+## Find your next step
+
+| Resource | Use it for |
+| --- | --- |
+| [Contributing](CONTRIBUTING.md) | Contributor setup and validation workflow. |
+| [Security policy](SECURITY.md) | Private vulnerability reporting and support boundaries. |
+
+## Generated social images
+
+The site uses `@santi020k/og` 1.2 to generate route cards and a manifest before
+Astro builds. Social metadata reads the manifest's content-versioned WebP URLs so
+copy, asset, renderer, or generator updates invalidate preview caches. Run
+`pnpm --filter @quality/site build` to regenerate cards and audit the built site;
+`pnpm check` also verifies that generated images remain current.
 
 ## License
 

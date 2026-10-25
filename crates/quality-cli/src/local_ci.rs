@@ -691,7 +691,7 @@ fn inspect_pull_request_workflows(
     for path in paths {
         let text = fs::read_to_string(&path)
             .with_context(|| format!("could not read {}", path.display()))?;
-        let value: serde_yaml::Value = serde_yaml::from_str(&text)
+        let value: yaml_serde::Value = yaml_serde::from_str(&text)
             .with_context(|| format!("invalid workflow in {}", path.display()))?;
         if !has_pull_request_trigger(&value) {
             continue;
@@ -703,13 +703,13 @@ fn inspect_pull_request_workflows(
             .and_then(OsStr::to_str)
             .unwrap_or("workflow")
             .to_owned();
-        let Some(jobs) = mapping_value(&value, "jobs").and_then(serde_yaml::Value::as_mapping)
+        let Some(jobs) = mapping_value(&value, "jobs").and_then(yaml_serde::Value::as_mapping)
         else {
             continue;
         };
         for (job_id, job) in jobs {
             let job_name = job_id.as_str().unwrap_or("job").to_owned();
-            if let Some(reusable) = mapping_value(job, "uses").and_then(serde_yaml::Value::as_str) {
+            if let Some(reusable) = mapping_value(job, "uses").and_then(yaml_serde::Value::as_str) {
                 results.push(WorkflowStepPlan {
                     workflow: workflow.clone(),
                     job: job_name,
@@ -719,7 +719,7 @@ fn inspect_pull_request_workflows(
                 });
                 continue;
             }
-            let Some(steps) = mapping_value(job, "steps").and_then(serde_yaml::Value::as_sequence)
+            let Some(steps) = mapping_value(job, "steps").and_then(yaml_serde::Value::as_sequence)
             else {
                 continue;
             };
@@ -728,11 +728,11 @@ fn inspect_pull_request_workflows(
             let job_defaults = run_defaults(job);
             for (step_index, step) in steps.iter().enumerate() {
                 let name = mapping_value(step, "name")
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(yaml_serde::Value::as_str)
                     .map(str::to_owned)
                     .unwrap_or_else(|| format!("Step {}", step_index + 1));
                 if let Some(action) =
-                    mapping_value(step, "uses").and_then(serde_yaml::Value::as_str)
+                    mapping_value(step, "uses").and_then(yaml_serde::Value::as_str)
                 {
                     results.push(WorkflowStepPlan {
                         workflow: workflow.clone(),
@@ -743,7 +743,7 @@ fn inspect_pull_request_workflows(
                     });
                     continue;
                 }
-                let Some(run) = mapping_value(step, "run").and_then(serde_yaml::Value::as_str)
+                let Some(run) = mapping_value(step, "run").and_then(yaml_serde::Value::as_str)
                 else {
                     continue;
                 };
@@ -770,7 +770,7 @@ fn inspect_pull_request_workflows(
                 }
                 let step_env = mapping_value(step, "env");
                 let shell = mapping_value(step, "shell")
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(yaml_serde::Value::as_str)
                     .or_else(|| defaults_value(job_defaults, "shell"))
                     .or_else(|| defaults_value(workflow_defaults, "shell"));
                 if let Some((status, detail)) =
@@ -796,7 +796,7 @@ fn inspect_pull_request_workflows(
                     continue;
                 }
                 let workflow_directory = mapping_value(step, "working-directory")
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(yaml_serde::Value::as_str)
                     .or_else(|| defaults_value(job_defaults, "working-directory"))
                     .or_else(|| defaults_value(workflow_defaults, "working-directory"));
                 if workflow_directory.is_some_and(|directory| directory.contains("${{")) {
@@ -842,20 +842,20 @@ fn inspect_pull_request_workflows(
     Ok(results)
 }
 
-fn run_defaults(value: &serde_yaml::Value) -> Option<&serde_yaml::Value> {
+fn run_defaults(value: &yaml_serde::Value) -> Option<&yaml_serde::Value> {
     mapping_value(value, "defaults").and_then(|defaults| mapping_value(defaults, "run"))
 }
 
-fn defaults_value<'a>(defaults: Option<&'a serde_yaml::Value>, key: &str) -> Option<&'a str> {
+fn defaults_value<'a>(defaults: Option<&'a yaml_serde::Value>, key: &str) -> Option<&'a str> {
     defaults
         .and_then(|value| mapping_value(value, key))
-        .and_then(serde_yaml::Value::as_str)
+        .and_then(yaml_serde::Value::as_str)
 }
 
 fn execution_context_reason(
-    workflow_env: Option<&serde_yaml::Value>,
-    job_env: Option<&serde_yaml::Value>,
-    step_env: Option<&serde_yaml::Value>,
+    workflow_env: Option<&yaml_serde::Value>,
+    job_env: Option<&yaml_serde::Value>,
+    step_env: Option<&yaml_serde::Value>,
     shell: Option<&str>,
 ) -> Option<(WorkflowStepStatus, String)> {
     let environments = [workflow_env, job_env, step_env]
@@ -893,39 +893,39 @@ fn execution_context_reason(
     })
 }
 
-fn context_value_present(value: &serde_yaml::Value) -> bool {
+fn context_value_present(value: &yaml_serde::Value) -> bool {
     match value {
-        serde_yaml::Value::Null => false,
-        serde_yaml::Value::String(text) => !text.is_empty(),
-        serde_yaml::Value::Sequence(values) => !values.is_empty(),
-        serde_yaml::Value::Mapping(values) => !values.is_empty(),
-        serde_yaml::Value::Tagged(tagged) => context_value_present(&tagged.value),
+        yaml_serde::Value::Null => false,
+        yaml_serde::Value::String(text) => !text.is_empty(),
+        yaml_serde::Value::Sequence(values) => !values.is_empty(),
+        yaml_serde::Value::Mapping(values) => !values.is_empty(),
+        yaml_serde::Value::Tagged(tagged) => context_value_present(&tagged.value),
         _ => true,
     }
 }
 
-fn condition_requires_github(value: &serde_yaml::Value) -> bool {
+fn condition_requires_github(value: &yaml_serde::Value) -> bool {
     match value {
-        serde_yaml::Value::Bool(true) => false,
-        serde_yaml::Value::String(condition) => !matches!(condition.trim(), "true" | "${{ true }}"),
-        serde_yaml::Value::Tagged(tagged) => condition_requires_github(&tagged.value),
+        yaml_serde::Value::Bool(true) => false,
+        yaml_serde::Value::String(condition) => !matches!(condition.trim(), "true" | "${{ true }}"),
+        yaml_serde::Value::Tagged(tagged) => condition_requires_github(&tagged.value),
         _ => true,
     }
 }
 
-fn contains_expression(value: &serde_yaml::Value) -> bool {
+fn contains_expression(value: &yaml_serde::Value) -> bool {
     match value {
-        serde_yaml::Value::String(text) => text.contains("${{"),
-        serde_yaml::Value::Sequence(values) => values.iter().any(contains_expression),
-        serde_yaml::Value::Mapping(values) => values
+        yaml_serde::Value::String(text) => text.contains("${{"),
+        yaml_serde::Value::Sequence(values) => values.iter().any(contains_expression),
+        yaml_serde::Value::Mapping(values) => values
             .iter()
             .any(|(key, value)| contains_expression(key) || contains_expression(value)),
-        serde_yaml::Value::Tagged(tagged) => contains_expression(&tagged.value),
+        yaml_serde::Value::Tagged(tagged) => contains_expression(&tagged.value),
         _ => false,
     }
 }
 
-fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
+fn github_only_job_reason(job: &yaml_serde::Value) -> Option<&'static str> {
     if mapping_value(job, "strategy").is_some() {
         return Some("job uses a GitHub matrix strategy");
     }
@@ -952,18 +952,18 @@ fn github_only_job_reason(job: &serde_yaml::Value) -> Option<&'static str> {
     None
 }
 
-fn runner_operating_system_value(value: &serde_yaml::Value) -> Option<&'static str> {
+fn runner_operating_system_value(value: &yaml_serde::Value) -> Option<&'static str> {
     match value {
-        serde_yaml::Value::String(label) => runner_operating_system(label),
-        serde_yaml::Value::Sequence(labels) => {
+        yaml_serde::Value::String(label) => runner_operating_system(label),
+        yaml_serde::Value::Sequence(labels) => {
             labels.iter().find_map(runner_operating_system_value)
         }
-        serde_yaml::Value::Mapping(values) => values.iter().find_map(|(key, value)| {
+        yaml_serde::Value::Mapping(values) => values.iter().find_map(|(key, value)| {
             (key.as_str() == Some("labels"))
                 .then(|| runner_operating_system_value(value))
                 .flatten()
         }),
-        serde_yaml::Value::Tagged(tagged) => runner_operating_system_value(&tagged.value),
+        yaml_serde::Value::Tagged(tagged) => runner_operating_system_value(&tagged.value),
         _ => None,
     }
 }
@@ -1085,19 +1085,19 @@ fn redirection_target_matches(remainder: &str, variable: &str) -> bool {
     })
 }
 
-fn has_pull_request_trigger(value: &serde_yaml::Value) -> bool {
+fn has_pull_request_trigger(value: &yaml_serde::Value) -> bool {
     let Some(trigger) = mapping_value(value, "on") else {
         return false;
     };
     match trigger {
-        serde_yaml::Value::String(name) => is_pull_request_event(name),
-        serde_yaml::Value::Sequence(names) => names
+        yaml_serde::Value::String(name) => is_pull_request_event(name),
+        yaml_serde::Value::Sequence(names) => names
             .iter()
-            .filter_map(serde_yaml::Value::as_str)
+            .filter_map(yaml_serde::Value::as_str)
             .any(is_pull_request_event),
-        serde_yaml::Value::Mapping(events) => events
+        yaml_serde::Value::Mapping(events) => events
             .keys()
-            .filter_map(serde_yaml::Value::as_str)
+            .filter_map(yaml_serde::Value::as_str)
             .any(is_pull_request_event),
         _ => false,
     }
@@ -1107,10 +1107,10 @@ fn is_pull_request_event(event: &str) -> bool {
     matches!(event, "pull_request" | "pull_request_target")
 }
 
-fn mapping_value<'a>(value: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
+fn mapping_value<'a>(value: &'a yaml_serde::Value, key: &str) -> Option<&'a yaml_serde::Value> {
     value
         .as_mapping()?
-        .get(serde_yaml::Value::String(key.to_owned()))
+        .get(yaml_serde::Value::String(key.to_owned()))
 }
 
 fn normalize_command(command: &str) -> String {
@@ -1120,6 +1120,43 @@ fn normalize_command(command: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yaml_workflows_preserve_on_aliases_tags_and_expressions() {
+        let workflow: yaml_serde::Value = yaml_serde::from_str(
+            r#"on: [pull_request, workflow_dispatch]
+env: &environment
+  FLAG: 'on'
+  VALUE: !context '${{ github.ref }}'
+jobs:
+  test:
+    env: *environment
+    runs-on: !runner [self-hosted, linux]
+    steps:
+      - run: |-
+          pnpm check
+          pnpm test
+"#,
+        )
+        .unwrap();
+        assert!(has_pull_request_trigger(&workflow));
+        let job = mapping_value(mapping_value(&workflow, "jobs").unwrap(), "test").unwrap();
+        let environment = mapping_value(job, "env").unwrap();
+        assert!(contains_expression(environment));
+        assert_eq!(
+            mapping_value(environment, "FLAG").unwrap().as_str(),
+            Some("on")
+        );
+        assert_eq!(
+            runner_operating_system_value(mapping_value(job, "runs-on").unwrap()),
+            Some("linux")
+        );
+        let steps = mapping_value(job, "steps").unwrap().as_sequence().unwrap();
+        assert_eq!(
+            mapping_value(&steps[0], "run").unwrap().as_str(),
+            Some("pnpm check\npnpm test")
+        );
+    }
 
     #[test]
     fn identifies_hosted_runner_setup_commands() {
@@ -1216,22 +1253,22 @@ mod tests {
         assert_eq!(runner_operating_system("windows-2022"), Some("windows"));
         assert_eq!(runner_operating_system("self-hosted"), None);
         let labels =
-            serde_yaml::from_str::<serde_yaml::Value>("[self-hosted, windows, x64]").unwrap();
+            yaml_serde::from_str::<yaml_serde::Value>("[self-hosted, windows, x64]").unwrap();
         assert_eq!(runner_operating_system_value(&labels), Some("windows"));
         let expression =
-            serde_yaml::from_str::<serde_yaml::Value>(r#"[self-hosted, "${{ vars.RUNNER_OS }}"]"#)
+            yaml_serde::from_str::<yaml_serde::Value>(r#"[self-hosted, "${{ vars.RUNNER_OS }}"]"#)
                 .unwrap();
         assert!(contains_expression(&expression));
-        let mapped = serde_yaml::from_str::<serde_yaml::Value>(
+        let mapped = yaml_serde::from_str::<yaml_serde::Value>(
             "{ group: hosted, labels: [self-hosted, windows-2022] }",
         )
         .unwrap();
         assert_eq!(runner_operating_system_value(&mapped), Some("windows"));
         assert_eq!(
-            runner_operating_system_value(&serde_yaml::Value::String("self-hosted".to_owned())),
+            runner_operating_system_value(&yaml_serde::Value::String("self-hosted".to_owned())),
             None
         );
-        let self_hosted_job = serde_yaml::from_str::<serde_yaml::Value>(
+        let self_hosted_job = yaml_serde::from_str::<yaml_serde::Value>(
             "runs-on: self-hosted\nsteps:\n  - run: pnpm test\n",
         )
         .unwrap();
@@ -1243,12 +1280,12 @@ mod tests {
 
     #[test]
     fn literal_true_conditions_do_not_require_github_context() {
-        assert!(!condition_requires_github(&serde_yaml::Value::Bool(true)));
-        assert!(!condition_requires_github(&serde_yaml::Value::String(
+        assert!(!condition_requires_github(&yaml_serde::Value::Bool(true)));
+        assert!(!condition_requires_github(&yaml_serde::Value::String(
             "${{ true }}".to_owned()
         )));
-        assert!(condition_requires_github(&serde_yaml::Value::Bool(false)));
-        assert!(condition_requires_github(&serde_yaml::Value::String(
+        assert!(condition_requires_github(&yaml_serde::Value::Bool(false)));
+        assert!(condition_requires_github(&yaml_serde::Value::String(
             "github.ref == 'refs/heads/main'".to_owned()
         )));
     }

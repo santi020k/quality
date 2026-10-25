@@ -88,5 +88,5 @@ export default definePresetConfig({
 		theme: { accent: '#2563eb', background: '#071329', panel: '#091a35' },
 	},
 	root,
-	routeManifest: { file: 'public/og/manifest.json', publicPath: '/og/pages' },
+	routeManifest: { cacheBust: true, file: 'public/og/manifest.json', publicPath: '/og/pages' },
 });

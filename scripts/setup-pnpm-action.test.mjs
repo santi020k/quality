@@ -51,3 +51,45 @@ test("the registry documentation keeps credentials in the consuming workflow", a
   assert.match(documentation, /task-cache-path: \.turbo\/cache/);
   assert.match(documentation, /task-cache-key: quality/);
 });
+
+test("manual release and deployment runs require the main branch", async () => {
+  const workflows = [
+    { path: ".github/workflows/release.yml", entryJobs: ["prepare"] },
+    { path: ".github/workflows/deploy-site.yml", entryJobs: ["build", "prepare-deploy-toolchain"] },
+  ];
+
+  for (const { path, entryJobs } of workflows) {
+    const contents = await readFile(path, "utf8");
+    assert.match(contents, /^  workflow_dispatch:/m);
+    const jobs = contents.slice(contents.indexOf("\njobs:\n")).split(/(?=^  [a-z][a-z-]*:\n)/m);
+    for (const name of entryJobs) {
+      const job = jobs.find((section) => section.startsWith(`  ${name}:\n`));
+      assert.ok(job, `${path} must declare the ${name} entry job`);
+      assert.match(job, /^    if: github\.ref == 'refs\/heads\/main'$/m);
+    }
+  }
+});
+
+test("Rust audits reject warnings without giving pull requests write credentials", async () => {
+  const workflow = await readFile(".github/workflows/rust-audit.yml", "utf8");
+  assert.match(workflow, /permissions:\n  contents: read\n/);
+  assert.doesNotMatch(workflow, /: write|secrets\.|rustsec\/audit-check|--ignore/);
+  assert.match(workflow, /cargo install cargo-audit --locked --version 0\.22\.2/);
+  assert.match(workflow, /test "\$\(cargo-audit --version\)" = "cargo-audit 0\.22\.2"/);
+  assert.doesNotMatch(workflow, /cargo audit --version/);
+  assert.match(workflow, /cargo audit --file Cargo\.lock --deny warnings/);
+});
+
+test("ordinary PRs use their actual base while release and manual CI stay full", async () => {
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  assert.match(workflow, /branches: \[main, "release\/v\*"\]/);
+  assert.match(workflow, /QUALITY_CI_BASE: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(workflow, /QUALITY_CI_FULL:.*github\.event_name == 'workflow_dispatch'.*startsWith\(github\.head_ref, 'release\/'\)/);
+  assert.match(workflow, /pnpm changeset status --since="\$QUALITY_CI_BASE"/);
+  assert.match(workflow, /if: github\.event_name == 'pull_request' && github\.head_ref/);
+});
+
+test("CodeQL refreshes the default branch baseline after merges", async () => {
+  const workflow = await readFile(".github/workflows/codeql.yml", "utf8");
+  assert.match(workflow, /on:\n  push:\n    branches: \[main\]\n  pull_request:/);
+});

@@ -1,5 +1,5 @@
 {
-  "generatorVersion": "1.1.1",
+  "generatorVersion": "1.2.0",
   "routes": {
     "/": {
       "alt": "One command. Every tool. — quality code-quality CLI",
@@ -10,7 +10,8 @@
           "height": 630,
           "output": "index.webp",
           "primary": true,
-          "url": "/og/pages/index.webp",
+          "url": "/og/pages/index.webp?v=a97d334b13f1",
+          "version": "a97d334b13f1",
           "width": 1200
         }
       ],
@@ -29,7 +30,8 @@
           "height": 630,
           "output": "adapters.webp",
           "primary": true,
-          "url": "/og/pages/adapters.webp",
+          "url": "/og/pages/adapters.webp?v=10fd1f13020d",
+          "version": "10fd1f13020d",
           "width": 1200
         }
       ],
@@ -48,7 +50,8 @@
           "height": 630,
           "output": "ai-agents.webp",
           "primary": true,
-          "url": "/og/pages/ai-agents.webp",
+          "url": "/og/pages/ai-agents.webp?v=9f3bb1090d82",
+          "version": "9f3bb1090d82",
           "width": 1200
         }
       ],
@@ -67,7 +70,8 @@
           "height": 630,
           "output": "changed-files-and-baselines.webp",
           "primary": true,
-          "url": "/og/pages/changed-files-and-baselines.webp",
+          "url": "/og/pages/changed-files-and-baselines.webp?v=99c7db6c5ba3",
+          "version": "99c7db6c5ba3",
           "width": 1200
         }
       ],
@@ -86,7 +90,8 @@
           "height": 630,
           "output": "commands.webp",
           "primary": true,
-          "url": "/og/pages/commands.webp",
+          "url": "/og/pages/commands.webp?v=25c879e8194f",
+          "version": "25c879e8194f",
           "width": 1200
         }
       ],
@@ -105,7 +110,8 @@
           "height": 630,
           "output": "compatibility.webp",
           "primary": true,
-          "url": "/og/pages/compatibility.webp",
+          "url": "/og/pages/compatibility.webp?v=0a97f3e35ca8",
+          "version": "0a97f3e35ca8",
           "width": 1200
         }
       ],
@@ -124,7 +130,8 @@
           "height": 630,
           "output": "configuration.webp",
           "primary": true,
-          "url": "/og/pages/configuration.webp",
+          "url": "/og/pages/configuration.webp?v=fc44d1df952c",
+          "version": "fc44d1df952c",
           "width": 1200
         }
       ],
@@ -143,7 +150,8 @@
           "height": 630,
           "output": "getting-started.webp",
           "primary": true,
-          "url": "/og/pages/getting-started.webp",
+          "url": "/og/pages/getting-started.webp?v=95214090ac33",
+          "version": "95214090ac33",
           "width": 1200
         }
       ],
@@ -162,7 +170,8 @@
           "height": 630,
           "output": "github-actions.webp",
           "primary": true,
-          "url": "/og/pages/github-actions.webp",
+          "url": "/og/pages/github-actions.webp?v=fb6f09ba7048",
+          "version": "fb6f09ba7048",
           "width": 1200
         }
       ],
@@ -181,7 +190,8 @@
           "height": 630,
           "output": "local-ci.webp",
           "primary": true,
-          "url": "/og/pages/local-ci.webp",
+          "url": "/og/pages/local-ci.webp?v=5370c9da5b28",
+          "version": "5370c9da5b28",
           "width": 1200
         }
       ],
@@ -200,7 +210,8 @@
           "height": 630,
           "output": "overview.webp",
           "primary": true,
-          "url": "/og/pages/overview.webp",
+          "url": "/og/pages/overview.webp?v=299a4e90abea",
+          "version": "299a4e90abea",
           "width": 1200
         }
       ],
@@ -219,7 +230,8 @@
           "height": 630,
           "output": "presets.webp",
           "primary": true,
-          "url": "/og/pages/presets.webp",
+          "url": "/og/pages/presets.webp?v=e27053be50a2",
+          "version": "e27053be50a2",
           "width": 1200
         }
       ],

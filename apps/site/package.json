@@ -1,7 +1,7 @@
 {
   "name": "@quality/site",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scripts": {
     "prebuild": "santi-og generate --config scripts/generate-og-images.mjs",
     "dev": "astro dev",
@@ -11,15 +11,20 @@
     "generate:og": "santi-og generate --config scripts/generate-og-images.mjs",
     "postbuild": "santi-og audit --config og.audit.config.mjs",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "node --test scripts/*.test.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
-    "@santi020k/lumen-astro": "^2.1.0",
-    "astro": "^7.3.4"
+    "@santi020k/lumen-astro": "4.1.0",
+    "astro": "^7.3.7"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@santi020k/og": "1.1.1",
+    "@astrojs/markdown-satteri": "0.4.3",
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "@santi020k/og": "1.2.0",
     "typescript": "^6.0.3"
   }
 }

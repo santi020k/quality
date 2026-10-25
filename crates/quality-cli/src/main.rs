@@ -111,6 +111,8 @@ fn run() -> Result<()> {
             }
         }
         Command::Check {
+            dry_run,
+            explain,
             adapters,
             execution,
             format,
@@ -124,6 +126,17 @@ fn run() -> Result<()> {
             let config = Config::load_or_default(&root)?;
             let adapters = prepare_selection(&config, adapters)?;
             let changes = discover_changes(&root, changed.as_deref())?;
+            if dry_run {
+                runner::print_check_plan(
+                    &project,
+                    &config,
+                    changes.as_ref(),
+                    &adapters,
+                    require_checks,
+                    explain,
+                )?;
+                return Ok(());
+            }
             let mut report = runner::execute(
                 &project,
                 &config,

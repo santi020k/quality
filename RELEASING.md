@@ -2,8 +2,8 @@
 
 ## Repository prerequisites
 
-Before relying on the automated release path, verify both of these external
-settings without exposing their values:
+Before relying on the automated release path, verify these external settings
+without exposing their values:
 
 - The Release PR workflow can create pull requests. Either enable **Allow
   GitHub Actions to create and approve pull requests** in the repository's
@@ -16,33 +16,118 @@ settings without exposing their values:
 
 ## Prepare a release
 
-1. Add a Changeset for every user-visible change. The CLI and Action are a
-   fixed version group and must remain on the same version.
-2. Run `pnpm changeset status` and confirm the proposed versions. For the first
-   stable release, both `@quality/cli` and `@quality/action` must resolve to
-   `1.0.0`.
-3. Run `pnpm validate`. This includes release-metadata agreement, the generated
-   Action bundle, security checks, tests, and production builds.
-4. Merge the preparation pull request. Do not run `version-packages` merely to
-   prepare the release and do not create a release tag manually.
+1. Fetch refs, inspect worktree ownership, and select the intended version before
+   branching from current `main`. Consolidate finished work into
+   `release/v<semver>`; retain existing user changes and audit squash-merged
+   branches for equivalent changes before retiring them.
+2. Add a Changeset for user-visible changes. The CLI and Action are a fixed
+   version group and must remain on the same version. For this candidate, the
+   target is `1.4.0`; the documentation package has its own version.
+3. Run `pnpm changeset status` and review the proposed versions. Run the documented
+   `pnpm version-packages` generator on the release branch to update Cargo,
+   installation examples, compatibility references, and changelogs together.
+   Inspect every generated change; do not hand-edit generated version references.
+4. Run `pnpm validate`, then `pnpm test:site` against the production build.
+   Install the test browser with `pnpm --filter @quality/site exec playwright
+   install chromium` when needed. In CI use `--with-deps`; local Chrome may be
+   selected with `PW_CHROMIUM_CHANNEL=chrome`.
+5. Obtain a fresh independent review of the complete diff against `main` before
+   the first push. Resolve findings and rerun affected checks. Pushing or opening
+   the release pull request requires explicit authorization.
+6. Open the release pull request from `release/v<semver>` into `main`. Include
+   release notes, migration requirements, validation evidence, and recovery steps.
+   Merge only after required checks and all actionable reviews are satisfied.
 
-## Publish through the release pull request
+The Release PR workflow can still generate version proposals from pending
+Changesets on `main`. For a planned release, keep version preparation in the
+selected release branch rather than creating a competing version proposal.
 
-1. The Release PR workflow maintains `chore(release): version packages`. Its
-   version script updates Cargo, installation examples, compatibility language,
-   and changelogs together.
-2. Review the generated versions, public documentation, and changelogs, then
-   merge that pull request.
-3. The Release workflow validates the repository, builds and exercises every
-   native archive, verifies the bundled Action against staged assets, publishes
+## Publish through GitHub
+
+1. The merged version change on `main` starts the Release workflow. Manual
+   dispatch is also limited to `main`; a release branch cannot publish artifacts
+   or deploy the site.
+2. The workflow validates the repository, builds and exercises every native
+   archive, verifies the bundled Action against staged assets, publishes
    checksums and provenance attestations, creates the GitHub release, and tests
-   the published Action.
-4. For stable releases, confirm the moving major Action tag (for example `v1`)
-   resolves to the exact release tag.
-5. Confirm the checksum-verifying installer, exact-version Action example, and
-   deployed documentation against the published tag.
+   the published Action. Standard GitHub-hosted macOS runners build Apple
+   binaries for this public repository.
+3. Confirm `vX.Y.Z`, each distributed artifact, and the moving major Action tag
+   (for example `v1`) resolve to the intended merged commit.
+4. Confirm the checksum-verifying installer, exact-version Action example, and
+   deployed documentation against the published tag. Check homepage, docs,
+   mobile navigation, theme changes, code tabs, and internal page transitions.
+5. Only after post-release verification, delete the release branch remotely and
+   locally, and return to an up-to-date local `main`. Remote changes require the
+   user's authorization.
 
-The workflow creates `vX.Y.Z` only after every native archive and the staged
-Action pass. Keep local validation, published GitHub assets, the promoted major
-tag, and the deployed documentation as separate release states when reporting
-progress.
+## Migration and recovery for 1.4.0
+
+CLI flags, configuration, reports, exit codes, and Action inputs remain compatible
+with 1.x. Documentation URLs and machine-readable Markdown endpoints are retained.
+The site consumes published Lumen 4 packages; no local package links are required.
+
+### Dependency security follow-up — 2026-10-25
+
+The affected-validation pilot initially exposed 16 existing audit findings
+(5 high, 9 moderate, 2 low). The workspace now pins patched transitive versions
+within each consumer's existing major version, and `pnpm check:security` reports
+no known vulnerabilities. These changes remain part of the prepared 1.4.0
+candidate; the generated release notes already include dependency remediation.
+
+| Dependency | Previous version | Patched version | Upstream security notes |
+| --- | --- | --- | --- |
+| launch-editor | 2.14.1 | 2.14.2 | [Windows argument escaping](https://github.com/advisories/GHSA-698v-4r3x-3vcv), [editor flag injection](https://github.com/advisories/GHSA-r825-w8mm-5pxw), [Windows file validation](https://github.com/advisories/GHSA-587h-7wmj-h5pm) |
+| Zod | 4.6.5 | 4.6.7 | [Collection bounds fix in 4.6.6](https://github.com/colinhacks/zod/releases/tag/v4.6.6) |
+| Undici | 6.29.0 / 7.29.1 / 8.11.2 | 6.29.1 / 7.30.1 / 8.12.3 | [6.x fixes](https://github.com/nodejs/undici/releases/tag/v6.29.1), [7.x fixes](https://github.com/nodejs/undici/releases/tag/v7.30.1), [8.x security fixes](https://github.com/nodejs/undici/releases/tag/v8.12.2) and [follow-up fixes](https://github.com/nodejs/undici/releases/tag/v8.12.3) |
+| fast-uri | 3.1.8 | 3.1.9 | [URI parsing security fixes](https://github.com/fastify/fast-uri/releases/tag/v3.1.9) |
+
+Versions and runtime requirements were checked against the official npm
+registry and upstream security notes. Miniflare pins its Undici dependency
+exactly, so a normal lockfile refresh cannot resolve that finding. The bounded
+overrides in `pnpm-workspace.yaml` prevent vulnerable versions from returning
+without crossing dependency majors. Remove an override when every upstream
+consumer permits a patched version, then regenerate the lockfile and require a
+clean audit and full validation. The Action distribution is rebuilt to include
+Undici 6.29.1; updating the lockfile alone does not patch the shipped bundle.
+
+### Rust audit and workflow follow-up
+
+The CLI now uses the YAML organization's maintained `yaml_serde` 0.10.7 with
+`libyaml-rs`, removing deprecated `serde_yaml` and unmaintained `unsafe-libyaml`.
+The [upstream migration guide](https://github.com/yaml/yaml-serde#migrating-from-serde_yaml)
+documents the compatible API. Rust 1.85 compilation and regression tests cover
+configuration validation, aliases, quoted scalars, multiline commands, tags,
+workflow triggers, serialization, and existing CLI behavior.
+
+Rust CI runs pinned `cargo-audit` 0.22.2 directly with `--deny warnings`, retaining
+a read-only token and avoiding the old Action's deprecated Node runtime and
+failed Checks API writes. The live advisory database is not cached. CodeQL now
+also scans pushes to `main` so PR comparisons have a current default-branch
+baseline.
+
+The upstream `http-cache-semantics` Scorecard warning remains visible. Version
+4.3.0 is the latest stable release and is required by Astro; even current Astro
+still depends on it. Its upstream OpenSSF score is 2.9 (2026-10-19), below the
+existing warning threshold of 3, because of upstream review, branch protection,
+security policy, fuzzing, and static analysis practices. Quality cannot change
+those upstream controls. No exclusion or lower threshold is added. Track this
+warning in PR #56 and reassess upstream releases and the score before rollout;
+removing Astro's caching dependency would require a separate compatibility review.
+
+### Runtime and recovery
+
+The private development workspace now declares Node `>=22.19.0`, matching
+Astro's existing Undici 8 requirement. Contributors on Node 22.18 must update
+their development runtime. Native CLI compatibility and the Action's Node 24
+runtime are unchanged. Local validation uses Node 22.23.1; CI uses Node 24.
+
+There is no persisted-data migration. If validation or publication fails, fix the
+candidate and rerun GitHub Actions. If an issue is discovered after publication,
+prepare a new patch release through the same workflow; never move or replace a
+published version tag. Consumers can pin the preceding exact release while the
+patch is prepared. A site recovery should revert the affected site change in a
+reviewed follow-up commit and use the normal deployment workflow from `main`.
+
+Keep local validation, GitHub workflow results, published assets, the promoted
+major tag, and deployed documentation as separate evidence when reporting status.

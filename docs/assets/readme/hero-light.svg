@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="readme-title readme-description">
+  <!-- cspell:words Segoe linejoin -->
+  <title id="readme-title">quality — One command. A clearer quality workflow.</title>
+  <desc id="readme-description">Detect · Run · Explain. Decorative checks illustration in the project's existing palette.</desc>
+  <!-- README artwork. Palette and naming follow this repository's existing brand sources. -->
+  <rect x="1" y="1" width="1198" height="358" rx="22" fill="#f9fafb" stroke="#036b9f" stroke-opacity=".24"/>
+  <path d="M778 25V335" stroke="#036b9f" stroke-opacity=".16"/>
+  <g fill="none" stroke="#036b9f" stroke-opacity=".07"><circle cx="1025" cy="180" r="205"/><circle cx="1025" cy="180" r="238"/></g>
+  <svg x="48" y="30" width="38" height="38" viewBox="0 0 64 64" aria-hidden="true">
+	<title id="logo-title">quality</title>
+	<defs>
+		<linearGradient id="quality-gradient" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+			<stop stop-color="#2563eb" />
+			<stop offset="1" stop-color="#0ea5e9" />
+		</linearGradient>
+	</defs>
+	<rect x="2" y="2" width="60" height="60" rx="17" fill="url(#quality-gradient)" />
+	<circle cx="29" cy="29" r="14" fill="none" stroke="#fff" stroke-width="6" />
+	<path d="m38.5 38.5 9 9" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="6" />
+</svg>
+  <g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif"><text x="100" y="56" font-size="13" font-weight="600" letter-spacing="2" fill="#036b9f">DETECT · RUN · EXPLAIN</text><text x="48" y="148" font-size="62.0" font-weight="700" letter-spacing="-1.8" fill="#10131a">quality</text><text x="50" y="203" font-size="27" fill="#10131a">One command.</text><text x="50" y="241" font-size="27" fill="#10131a">A clearer quality workflow.</text><path d="M50 287H642" stroke="#036b9f" stroke-opacity=".3"/><text x="50" y="320" font-family="ui-monospace,monospace" font-size="13" letter-spacing="1" fill="#036b9f">santi020k / quality</text></g>
+  <g transform="translate(825 32)" stroke-linecap="round" stroke-linejoin="round"><path d="M70 55H230L150 145 230 235H70L150 145Z" fill="none" stroke="#036b9f" stroke-width="2"/>
+<path d="M40 212L107 145 160 190 260 54" fill="none" stroke="#036b9f" stroke-width="12"/>
+<circle cx="70" cy="55" r="9" fill="#f9fafb" stroke="#036b9f" stroke-width="3"/>
+<circle cx="230" cy="55" r="9" fill="#f9fafb" stroke="#4da8c7" stroke-width="3"/>
+<circle cx="150" cy="145" r="13" fill="#036b9f" stroke="#036b9f" stroke-width="3"/>
+<circle cx="70" cy="235" r="9" fill="#f9fafb" stroke="#4da8c7" stroke-width="3"/>
+<circle cx="230" cy="235" r="9" fill="#f9fafb" stroke="#036b9f" stroke-width="3"/></g>
+</svg>

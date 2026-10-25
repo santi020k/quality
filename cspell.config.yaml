@@ -14,6 +14,7 @@ words:
   - apos
   - applypatch
   - astrojs
+  - Avenir
   - baselined
   - clippy
   - codegen
@@ -32,25 +33,34 @@ words:
   - labelledby
   - lede
   - linecap
+  - libyaml
   - llms
   - lucide
   - lockfiles
   - msvc
+  - Miniflare
+  - noopener
+  - noreferrer
   - pbxproj
   - prepush
   - pyproject
   - rhysd
+  - rustsec
   - retrieve
   - retrive
   - SARIF
+  - Satteri
   - sendemail
   - serde
+  - shiki
   - swfitlint
   - swiftlints
   - temurin
   - tlsv
   - unconfigured
+  - Undici
   - unrs
+  - unstub
   - venv
   - walkdir
   - wordmark

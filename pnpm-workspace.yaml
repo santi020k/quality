@@ -8,38 +8,27 @@ allowBuilds:
   sharp: true
   workerd: true
 
+# Keep security fixes within each consumer's existing dependency major.
+# See RELEASING.md for the reviewed advisories and removal criteria.
 overrides:
-  fflate: 0.7.5
-  js-yaml: 4.3.2
-  sharp: 0.35.4
+  'fflate@<0.7.5': 0.7.5
+  'sharp@<0.35.5': 0.35.5
+  'launch-editor@<2.14.2': 2.14.2
+  'zod@>=4.0.0 <4.6.6': 4.6.7
+  'undici@>=6.0.0 <6.29.1': 6.29.1
+  'undici@>=7.0.0 <7.30.1': 7.30.1
+  'undici@>=8.0.0 <8.12.2': 8.12.3
+  'fast-uri@>=3.0.0 <3.1.9': 3.1.9
 
 minimumReleaseAgeExclude:
-  - '@santi020k/og'
-  - '@santi020k/lumen-astro@2.1.0'
-  - '@santi020k/lumen-core@2.1.0'
-  - '@santi020k/lumen@2.1.0'
-  - '@cspell/cspell-bundled-dicts@10.1.0'
-  - '@cspell/cspell-json-reporter@10.1.0'
-  - '@cspell/cspell-performance-monitor@10.1.0'
-  - '@cspell/cspell-pipe@10.1.0'
-  - '@cspell/cspell-resolver@10.1.0'
-  - '@cspell/cspell-service-bus@10.1.0'
-  - '@cspell/cspell-types@10.1.0'
-  - '@cspell/cspell-worker@10.1.0'
-  - '@cspell/dynamic-import@10.1.0'
-  - '@cspell/filetypes@10.1.0'
-  - '@cspell/rpc@10.1.0'
-  - '@cspell/strong-weak-map@10.1.0'
-  - '@cspell/url@10.1.0'
-  - cspell-config-lib@10.1.0
-  - cspell-dictionary@10.1.0
-  - cspell-gitignore@10.1.0
-  - cspell-glob@10.1.0
-  - cspell-grammar@10.1.0
-  - cspell-io@10.1.0
-  - cspell-lib@10.1.0
-  - cspell-trie-lib@10.1.0
-  - cspell@10.1.0
-  - satori@0.33.4
-  - '@lucide/icons@1.37.0'
-  - wrangler@4.137.0
+  # Reviewed stable releases required by the Lumen upgrade and browser checks.
+  - '@santi020k/lumen-astro@4.1.0'
+  - '@santi020k/lumen-core@4.1.0'
+  - '@santi020k/lumen@4.2.0'
+  - astro@7.3.7
+  - '@playwright/test@1.64.0'
+  - playwright@1.64.0
+  - playwright-core@1.64.0
+  # OG 1.2 pins this reviewed renderer.
+  - '@santi020k/og@1.2.0'
+  - satori@0.36.0

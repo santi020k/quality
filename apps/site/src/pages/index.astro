@@ -1,125 +1,247 @@
 ---
-import {
-	ButtonLink,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	Icon,
-	RevealGroup,
-	ScrollReveal,
-} from '@santi020k/lumen-astro';
+import { ButtonLink, Code, CodeTabs, Icon, RevealGroup, ScrollReveal } from '@santi020k/lumen-astro';
 import SiteLayout from '../layouts/SiteLayout.astro';
 
 const features = [
 	{
 		icon: 'git-branch',
-		title: 'Fast where it matters',
-		body: 'Scope file-capable analyzers to what changed. Keep project-wide checks correct. Run independent tools concurrently.',
+		title: 'A shorter feedback loop.',
+		body: 'Check the files that changed. Run independent tools together. Keep project-wide analyzers at the scope they need.',
+		href: '/changed-files-and-baselines/',
+		label: 'Changed files and baselines',
 	},
 	{
 		icon: 'shield-check',
-		title: 'Adopt without a flag day',
-		body: 'Baseline existing findings once, then prevent new regressions without hiding crashes, missing tools, or parse failures.',
+		title: 'Adopt at your own pace.',
+		body: 'Start with your existing checks, generate an explicit policy, and baseline old findings while new regressions still fail.',
+		href: '/presets/',
+		label: 'Language-aware presets',
 	},
 	{
 		icon: 'message-square-code',
-		title: 'Review in context',
-		body: 'Turn one deterministic run into clean terminal output, native GitHub annotations, JSON, or a SARIF report.',
+		title: 'A result you can use.',
+		body: 'Take the same run from your terminal to a pull request, a SARIF report, or a coding agent. The underlying checks stay deterministic.',
+		href: '/github-actions/',
+		label: 'GitHub Actions integration',
 	},
 ];
 
-const steps = [
-	['Detect', 'quality reads the repository and enables only the ecosystems that are actually present.'],
-	['Resolve', 'Repository-local binaries win, so every developer and CI runner uses the tools the project intended.'],
-	['Run', 'Independent analyzers execute concurrently and keep their native behavior as the source of truth.'],
-	['Normalize', 'Findings and failures become one predictable result for terminals, automation, and code review.'],
+const commands = [
+	{ value: 'first-run', label: 'First run', language: 'bash', code: 'quality init\nquality doctor\nquality check' },
+	{ value: 'changes', label: 'Your changes', language: 'bash', code: 'quality check --changed\nquality format --changed\nquality check --changed origin/main' },
+	{ value: 'reports', label: 'A useful report', language: 'bash', code: 'quality check --format agent\nquality check --format json\nquality check --report quality.sarif' },
 ];
+
+const steps = [
+	['Detect', 'Read repository intent and the ecosystems already in use.'],
+	['Resolve', 'Prefer the repository’s own tools and configuration.'],
+	['Run', 'Execute independent analyzers concurrently.'],
+	['Report', 'Bring findings and failures into one predictable result.'],
+];
+
+const guides = [
+	{ label: 'Make it yours', title: 'Configuration', body: 'Tools, tasks, overrides, and one explicit policy.', href: '/configuration/', icon: 'sliders-horizontal' },
+	{ label: 'Before you push', title: 'Local CI', body: 'Run the local gate. Understand what stays in GitHub.', href: '/local-ci/', icon: 'git-pull-request' },
+	{ label: 'Beyond the built-ins', title: 'Adapters', body: 'Keep native analyzers and connect your own tools.', href: '/adapters/', icon: 'blocks' },
+];
+
+const exampleOutput = '$ quality check --changed origin/main\n\n  ✓ SwiftLint\n  ✓ SwiftFormat\n  ✓ Android Lint\n  ✓ detekt\n  ✓ ESLint\n\nQuality checks passed (5 tools).';
 ---
 
 <SiteLayout>
-	<section class="home-hero">
+	<section class="home-hero" aria-labelledby="home-title">
 		<div class="hero-copy">
-			<div class="hero-kicker"><span class="hero-kicker-dot"></span> Code quality, orchestrated</div>
-			<h1 class="hero-title">One command. <span>Every tool.</span></h1>
-			<p class="hero-lede">Keep the native analyzers your teams trust. Replace the fragmented scripts, output, and CI wiring around them.</p>
+			<p class="hero-kicker"><span aria-hidden="true"></span> Code quality, orchestrated</p>
+			<h1 class="hero-title" id="home-title">One command.<br /><span>Every tool.</span></h1>
+			<p class="hero-lede">Your tools already know good code.<br class="hero-linebreak" /> Give them one shared workflow.</p>
+			<p class="hero-description">Run trusted analyzers across languages, repositories, and CI. Keep the checks explicit and the feedback useful.</p>
 			<div class="hero-actions">
-				<ButtonLink href="/getting-started/" showArrow>Get started</ButtonLink>
-				<ButtonLink href="https://github.com/santi020k/quality" newTab variant="secondary">View source</ButtonLink>
+				<ButtonLink class="home-primary" href="/getting-started/" variant="unstyled">Get started<span class="action-arrow"><Icon name="arrow-up-right" decorative /></span></ButtonLink>
+				<ButtonLink class="home-secondary" href="https://github.com/santi020k/quality" newTab variant="unstyled">View source<Icon name="arrow-up-right" decorative /></ButtonLink>
 			</div>
-			<div class="hero-note"><Icon name="terminal" decorative /> Deterministic by design. No AI service required.</div>
+			<p class="hero-note"><Icon name="terminal" decorative /> Deterministic. Local. Yours.</p>
 		</div>
 
-		<ScrollReveal animation="scale" duration="slow">
-			<div class="terminal" aria-label="Example quality check output">
-				<div class="terminal-bar">
-					<span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
-					<span class="terminal-label">quality check</span>
-				</div>
-				<pre class="terminal-body"><span class="terminal-command"><span class="terminal-prompt">$</span> quality check --changed origin/main</span>
-
-<span class="terminal-pass">✓</span> SwiftLint                 <span class="terminal-dim">0.42s</span>
-<span class="terminal-pass">✓</span> SwiftFormat               <span class="terminal-dim">0.18s</span>
-<span class="terminal-pass">✓</span> Android Lint              <span class="terminal-dim">5.31s</span>
-<span class="terminal-pass">✓</span> detekt                    <span class="terminal-dim">1.24s</span>
-<span class="terminal-pass">✓</span> ESLint                    <span class="terminal-dim">0.37s</span>
-
-<span class="terminal-pass">Quality checks passed.</span>
-<span class="terminal-dim">5 tools ran concurrently.</span></pre>
-			</div>
+		<ScrollReveal class="hero-preview" animation="fade" duration="standard" threshold={0}>
+			<div class="preview-caption"><span>A familiar place to start</span><span aria-hidden="true">01 / Terminal</span></div>
+			<Code class="hero-terminal" code={exampleOutput} language="console" label="Example · mixed repository" variant="block" wrap={false} />
+			<div class="preview-note"><Icon name="check-check" decorative /><p>Native tools.<br /><span>One clear answer.</span></p><a href="/overview/" aria-label="See how quality works"><Icon name="arrow-up-right" decorative /></a></div>
 		</ScrollReveal>
+
+		<div class="hero-footnote"><span>Built for the whole repository</span><span>Open source / MIT</span></div>
 	</section>
 
-	<div class="ecosystem-band">
-		<div class="ecosystem-inner">
-			<span class="ecosystem-label">One workflow across</span>
-			<div class="ecosystem-list"><span>Swift</span><span>Android</span><span>Kotlin</span><span>JavaScript</span><span>TypeScript</span></div>
-		</div>
+	<div class="ecosystem-band" aria-label="Supported ecosystems">
+		<div class="ecosystem-inner"><span class="ecosystem-label">One workflow across</span><p>Rust<span>Swift</span><span>Android & Kotlin</span><span>Python</span><span>JavaScript & TypeScript</span><span>Astro</span></p></div>
 	</div>
 
-	<section class="section" aria-labelledby="features-title">
+	<section class="section features-section" aria-labelledby="features-title">
 		<div class="section-head">
-			<p class="section-eyebrow">Less glue. Better signal.</p>
-			<h2 class="section-title" id="features-title">A coherent quality loop for mixed repositories.</h2>
-			<p class="section-lede">quality does not replace excellent ecosystem tools. It gives them a shared operating model that stays fast locally and dependable in CI.</p>
+			<p class="section-eyebrow"><span>01</span> The everyday loop</p>
+			<h2 class="section-title" id="features-title">Less glue.<br /><span>Better signal.</span></h2>
+			<p class="section-lede">Keep the ecosystem tools you trust. Spend less time connecting them.</p>
 		</div>
-		<RevealGroup class="feature-grid" stagger={100}>
-			{features.map((feature) => (
-				<Card as="article" class="feature-card" variant="muted">
-					<CardHeader>
-						<div class="feature-icon"><Icon name={feature.icon} decorative /></div>
-						<CardTitle as="h3">{feature.title}</CardTitle>
-					</CardHeader>
-					<CardContent><p>{feature.body}</p></CardContent>
-				</Card>
+		<RevealGroup class="feature-list" animation="fade" stagger={35} duration="standard" threshold={0}>
+			{features.map((feature, index) => (
+				<a class="feature-row" href={feature.href} aria-label={`${feature.title} ${feature.label}`}>
+					<span class="row-number">0{index + 1}</span>
+					<div><h3>{feature.title}</h3><p>{feature.body}</p></div>
+					<span class="row-icon"><Icon name={feature.icon} decorative /></span>
+				</a>
 			))}
 		</RevealGroup>
 	</section>
 
-	<section class="workflow-section" aria-labelledby="workflow-title">
-		<div class="workflow-inner">
-			<div class="workflow-grid">
-				<div class="section-head">
-					<p class="section-eyebrow">How it works</p>
-					<h2 class="section-title" id="workflow-title">Native tools in. One answer out.</h2>
-					<p class="section-lede">A thin, explicit orchestration layer makes every repository feel familiar.</p>
-				</div>
-				<div class="workflow-steps">
-					{steps.map(([title, body], index) => (
-						<div class="workflow-step">
-							<span class="step-number">0{index + 1}</span>
-							<div><h3>{title}</h3><p>{body}</p></div>
-						</div>
-					))}
-				</div>
+	<section class="quickstart-section" aria-labelledby="quickstart-title">
+		<div class="quickstart-inner">
+			<div class="quickstart-copy">
+				<p class="section-eyebrow"><span>02</span> Start with your repository</p>
+				<h2 class="section-title" id="quickstart-title">Three commands.<br /><span>A clearer routine.</span></h2>
+				<p class="section-lede">Initialize a policy, check your toolchain, then run it. Existing repository gates stay part of the workflow.</p>
+				<ButtonLink class="home-secondary" href="/getting-started/" variant="unstyled">Install quality<Icon name="arrow-up-right" decorative /></ButtonLink>
+			</div>
+			<div class="quickstart-code">
+				<CodeTabs items={commands} ariaLabel="Quality workflow examples" codeLabel="Quality command example" wrap={false} />
+				<p>Run from the repository you want to check.<br /><a href="/commands/">Explore the command reference <Icon name="arrow-up-right" decorative /></a></p>
 			</div>
 		</div>
 	</section>
 
-	<section class="section">
-		<div class="principle">
-			<blockquote>Keep the tools your teams already trust. Make them feel like <span>one coherent product.</span></blockquote>
-			<ButtonLink href="/adapters/" showArrow variant="secondary">Explore adapters</ButtonLink>
+	<section class="section workflow-section" aria-labelledby="workflow-title">
+		<div class="section-head">
+			<p class="section-eyebrow"><span>03</span> Under the hood</p>
+			<h2 class="section-title" id="workflow-title">Native tools in.<br /><span>One answer out.</span></h2>
+			<p class="section-lede">A thin orchestration layer, with each analyzer’s behavior as the source of truth. No AI service in the checking path.</p>
+		</div>
+		<ol class="workflow-steps">
+			{steps.map(([title, body], index) => (
+				<li class="workflow-step"><span class="row-number">0{index + 1}</span><div><h3>{title}</h3><p>{body}</p></div></li>
+			))}
+		</ol>
+	</section>
+
+	<section class="section guides-section" aria-labelledby="guides-title">
+		<div class="guides-heading"><div><p class="section-eyebrow"><span>04</span> Keep going</p><h2 class="section-title" id="guides-title">Make it your workflow.</h2></div><ButtonLink class="home-secondary" href="/overview/" variant="unstyled">Read the docs<Icon name="arrow-up-right" decorative /></ButtonLink></div>
+		<div class="home-docs-links">
+			{guides.map((guide) => (
+				<a class="guide-link" href={guide.href}>
+					<div class="guide-top"><span>{guide.label}</span><Icon name={guide.icon} decorative /></div>
+					<h3>{guide.title}</h3><p>{guide.body}</p><Icon class="guide-arrow" name="arrow-up-right" decorative />
+				</a>
+			))}
 		</div>
 	</section>
 </SiteLayout>
+
+<style>
+	.home-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); column-gap: clamp(2rem, 5vw, 5rem); row-gap: 3.5rem; align-items: center; width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; border: 1px solid hsl(var(--line) / .65); border-radius: 1.75rem; background: hsl(var(--surface)); padding: clamp(2rem, 5.5vw, 5rem) clamp(1.5rem, 4.2vw, 4rem) 1.5rem; }
+	.hero-copy { min-width: 0; }
+	.hero-kicker { display: flex; align-items: center; gap: .65rem; margin: 0 0 2rem; color: hsl(var(--ink-soft)); font-size: .625rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+	.hero-kicker span { display: block; width: .4rem; height: .4rem; border-radius: 50%; background: hsl(var(--brand)); }
+	.hero-title { margin: 0; overflow-wrap: anywhere; font-size: clamp(3.2rem, 6vw, 5.5rem); font-weight: 600; letter-spacing: -.07em; line-height: 1.02; }
+	.hero-title > span { color: hsl(var(--brand)); }
+	.hero-lede { margin: 1.8rem 0 0; color: hsl(var(--ink)); font-size: clamp(1rem, 1.4vw, 1.15rem); font-weight: 450; line-height: 1.65; }
+	.hero-description { max-width: 29rem; margin: .9rem 0 0; color: hsl(var(--ink-soft)); font-size: .875rem; line-height: 1.85; }
+	.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.4rem; margin-top: 1.8rem; }
+	:global(.home-primary) { display: inline-flex; align-items: center; justify-content: space-between; gap: 1.6rem; min-height: 3.25rem; border: 1px solid hsl(var(--ink)); border-radius: 1rem; background: hsl(var(--ink)); padding: .45rem .45rem .45rem 1.15rem; color: hsl(var(--canvas)); font-size: .8125rem; font-weight: 500; text-decoration: none; }
+	.action-arrow { display: grid; place-items: center; width: 2.3rem; height: 2.3rem; border-radius: .7rem; background: hsl(var(--canvas)); color: hsl(var(--ink)); }
+	.action-arrow :global(svg) { width: 1.1rem; height: 1.1rem; }
+	:global(.home-secondary) { display: inline-flex; align-items: center; justify-content: flex-start; gap: .7rem; min-height: 2.75rem; padding-block: .5rem; color: hsl(var(--ink)); font-size: .8125rem; font-weight: 500; text-decoration: none; }
+	:global(.home-secondary svg) { width: 1rem; height: 1rem; }
+	:global(.home-secondary:hover) { color: hsl(var(--brand)); }
+	.hero-note { display: flex; align-items: center; gap: .5rem; margin: 1.4rem 0 0; color: hsl(var(--ink-soft)); font-size: .6875rem; }
+	.hero-note :global(svg) { width: .95rem; height: .95rem; }
+	:global(.hero-preview) { min-width: 0; padding-top: 2.5rem; }
+	.preview-caption { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; color: hsl(var(--ink-soft)); font-size: .625rem; line-height: 1.5; }
+	.preview-caption > span:last-child { font-family: var(--ui-font-mono); }
+	:global(.hero-terminal[data-slot='code']) { margin: 0; border-color: hsl(var(--line)); border-radius: 1rem; box-shadow: 0 1.5rem 3rem hsl(var(--ink) / .05); }
+	:global(.hero-terminal pre) { min-height: 18.5rem; padding: 1.6rem; font-size: clamp(.65rem, 1vw, .78rem); line-height: 1.95; }
+	.preview-note { display: flex; align-items: center; gap: .85rem; padding: 1.3rem .25rem 0; }
+	.preview-note > :global(svg) { flex: 0 0 auto; width: 2rem; height: 2rem; color: hsl(var(--brand)); }
+	.preview-note p { margin: 0; color: hsl(var(--ink)); font-size: .75rem; line-height: 1.6; }
+	.preview-note p > span { color: hsl(var(--ink-soft)); }
+	.preview-note a { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; margin-left: auto; border: 1px solid hsl(var(--line)); border-radius: 50%; color: hsl(var(--ink)); }
+	.preview-note a :global(svg) { width: 1rem; height: 1rem; }
+	.preview-note a:hover { border-color: hsl(var(--brand)); color: hsl(var(--brand)); }
+	.hero-footnote { display: flex; grid-column: 1 / -1; justify-content: space-between; gap: 1rem; border-top: 1px solid hsl(var(--line) / .65); padding-top: 1.3rem; color: hsl(var(--ink-soft)); font-size: .625rem; line-height: 1.5; }
+	.ecosystem-inner { display: flex; align-items: baseline; gap: 2.5rem; width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; padding-block: 2rem; }
+	.ecosystem-label { flex-shrink: 0; color: hsl(var(--ink-soft)); font-size: .625rem; }
+	.ecosystem-inner p { display: flex; flex-wrap: wrap; gap: .75rem 1.35rem; margin: 0; color: hsl(var(--ink)); font: 500 .6875rem/1.7 var(--ui-font-mono); }
+	.section { width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; padding-block: 6.5rem; }
+	.section-head { min-width: 0; }
+	.section-eyebrow { display: flex; align-items: center; gap: 1rem; margin: 0 0 1.8rem; color: hsl(var(--ink-soft)); font-size: .625rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+	.section-eyebrow > span { color: hsl(var(--brand)); font: 500 .6875rem var(--ui-font-mono); letter-spacing: 0; }
+	.section-title { margin: 0; color: hsl(var(--ink)); font-size: clamp(2.25rem, 4vw, 3.65rem); font-weight: 500; letter-spacing: -.065em; line-height: 1.08; }
+	.section-title > span { color: hsl(var(--ink-soft)); }
+	.section-lede { max-width: 26rem; margin: 1.4rem 0 0; color: hsl(var(--ink-soft)); font-size: .875rem; line-height: 1.85; }
+	.features-section { display: grid; grid-template-columns: .85fr 1.15fr; gap: clamp(3rem, 6vw, 6rem); }
+	:global(.feature-list) { display: grid; min-width: 0; }
+	.feature-row { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) 1.8rem; gap: 1rem; border-top: 1px solid hsl(var(--line) / .7); padding-block: 1.8rem; text-decoration: none; }
+	.feature-row:last-child { border-bottom: 1px solid hsl(var(--line) / .7); }
+	.row-number { color: hsl(var(--brand)); font: 500 .6875rem/1.8 var(--ui-font-mono); }
+	.feature-row h3 { margin: 0; color: hsl(var(--ink)); font-size: 1.125rem; font-weight: 500; letter-spacing: -.035em; }
+	.feature-row p { margin: .7rem 0 0; color: hsl(var(--ink-soft)); font-size: .8125rem; line-height: 1.85; }
+	.row-icon { padding-top: .15rem; color: hsl(var(--ink-soft)); }
+	.row-icon :global(svg) { width: 1.2rem; height: 1.2rem; }
+	.feature-row:hover h3, .feature-row:hover .row-icon { color: hsl(var(--brand)); }
+	.quickstart-section { background: hsl(var(--surface-muted)); }
+	.quickstart-inner { display: grid; grid-template-columns: .9fr 1.1fr; align-items: center; gap: clamp(3rem, 6vw, 6rem); width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; padding-block: 6rem; }
+	.quickstart-copy :global(.home-secondary) { margin-top: 1.2rem; }
+	.quickstart-code { min-width: 0; }
+	.quickstart-code :global([data-slot='code-tabs']) { overflow: hidden; border-radius: 1rem; background: hsl(var(--surface)); }
+	.quickstart-code :global([role='tablist']) { overflow-x: auto; }
+	.quickstart-code :global([role='tab']) { min-height: 3rem; font-size: .75rem; }
+	.quickstart-code :global([data-slot='code']) { margin: 0; border: 0; border-radius: 0; }
+	.quickstart-code :global([data-ui-code-copy]) { min-width: 2.75rem; min-height: 2.75rem; }
+	.quickstart-code :global(pre) { min-height: 8.5rem; font-size: .8125rem; line-height: 2; }
+	.quickstart-code > p { margin: 1rem 0 0; color: hsl(var(--ink-soft)); font-size: .6875rem; line-height: 1.8; }
+	.quickstart-code > p a { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.75rem; color: hsl(var(--ink)); text-underline-offset: .25em; }
+	.quickstart-code > p a :global(svg) { width: .9rem; height: .9rem; }
+	.workflow-section { display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(3rem, 6vw, 6rem); }
+	.workflow-steps { margin: 0; padding: 0; list-style: none; }
+	.workflow-step { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 1rem; border-top: 1px solid hsl(var(--line) / .7); padding-block: 1.5rem; }
+	.workflow-step:last-child { border-bottom: 1px solid hsl(var(--line) / .7); }
+	.workflow-step h3 { margin: 0; color: hsl(var(--ink)); font-size: 1rem; font-weight: 500; }
+	.workflow-step p { margin: .45rem 0 0; color: hsl(var(--ink-soft)); font-size: .8125rem; line-height: 1.85; }
+	.guides-section { border-top: 1px solid hsl(var(--line) / .7); }
+	.guides-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 2.75rem; }
+	.guides-heading .section-title { font-size: clamp(2.2rem, 3.5vw, 3.2rem); }
+	.home-docs-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2.25rem; }
+	.guide-link { position: relative; display: block; border-top: 1px solid hsl(var(--line) / .7); padding-block: 1.5rem 2rem; text-decoration: none; }
+	.guide-top { display: flex; justify-content: space-between; gap: 1rem; color: hsl(var(--ink-soft)); font-size: .625rem; }
+	.guide-top :global(svg) { width: 1rem; height: 1rem; color: hsl(var(--brand)); }
+	.guide-link h3 { margin: 2.2rem 0 .7rem; color: hsl(var(--ink)); font-size: 1.55rem; font-weight: 500; letter-spacing: -.055em; }
+	.guide-link p { max-width: 23ch; margin: 0; color: hsl(var(--ink-soft)); font-size: .8125rem; line-height: 1.85; }
+	.guide-link :global(.guide-arrow) { position: absolute; right: 0; bottom: 2.4rem; width: 1rem; height: 1rem; color: hsl(var(--ink)); }
+	.guide-link:hover h3, .guide-link:hover :global(.guide-arrow) { color: hsl(var(--brand)); }
+	@media (max-width: 62rem) {
+		.home-hero { grid-template-columns: 1fr; row-gap: 2.5rem; padding-top: 3rem; }
+		.hero-title { font-size: clamp(3rem, 8vw, 5.5rem); }
+		:global(.hero-preview) { width: 100%; max-width: 34rem; padding-top: 0; }
+		:global(.hero-terminal pre) { min-height: auto; font-size: .78rem; }
+		.hero-description { max-width: 34rem; }
+		.features-section, .quickstart-inner, .workflow-section { grid-template-columns: 1fr; gap: 3rem; }
+		.section-lede { max-width: 35rem; }
+		.ecosystem-inner { flex-direction: column; gap: .8rem; }
+		.home-docs-links { gap: 1.5rem; }
+	}
+	@media (max-width: 40rem) {
+		.home-hero { padding: 2.25rem 1.25rem 1.25rem; border-radius: 1.25rem; }
+		.hero-title { font-size: clamp(2.55rem, 10.8vw, 4.2rem); }
+		.hero-kicker { font-size: .575rem; letter-spacing: .1em; margin-bottom: 1.5rem; }
+		.hero-linebreak { display: none; }
+		.hero-actions { gap: .5rem 1rem; }
+		:global(.home-primary) { gap: 1rem; }
+		.preview-caption > span:last-child { display: none; }
+		:global(.hero-terminal pre) { padding: 1rem; font-size: .65rem; }
+		.hero-footnote { flex-wrap: wrap; gap: .5rem; }
+		.section, .quickstart-inner { padding-block: 4.5rem; }
+		.section-title { font-size: clamp(2rem, 8vw, 3rem); }
+		.feature-row { grid-template-columns: 1.3rem minmax(0, 1fr); gap: .7rem; }
+		.row-icon { display: none; }
+		.guides-heading { align-items: start; flex-direction: column; gap: 1rem; }
+		.home-docs-links { grid-template-columns: 1fr; gap: .5rem; }
+		.guide-link h3 { margin-top: 1.5rem; }
+		.guide-link p { max-width: 30ch; }
+	}
+</style>

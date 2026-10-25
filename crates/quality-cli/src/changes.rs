@@ -32,11 +32,13 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         root,
         &[
             "diff",
+            "--relative",
             "--name-only",
             "-z",
             "--diff-filter=ACMR",
             &comparison,
             "--",
+            ".",
         ],
         &mut files,
     )
@@ -46,11 +48,13 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         root,
         &[
             "diff",
+            "--relative",
             "--name-only",
             "-z",
             "--diff-filter=D",
             &comparison,
             "--",
+            ".",
         ],
         &mut deleted,
     )
@@ -61,18 +65,29 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
             root,
             &[
                 "diff",
+                "--relative",
                 "--name-only",
                 "-z",
                 "--diff-filter=ACMR",
                 "HEAD",
                 "--",
+                ".",
             ],
             &mut files,
         )
         .context("could not inspect uncommitted changes")?;
         collect_paths(
             root,
-            &["diff", "--name-only", "-z", "--diff-filter=D", "HEAD", "--"],
+            &[
+                "diff",
+                "--relative",
+                "--name-only",
+                "-z",
+                "--diff-filter=D",
+                "HEAD",
+                "--",
+                ".",
+            ],
             &mut deleted,
         )
         .context("could not inspect uncommitted deletions")?;
@@ -209,5 +224,109 @@ mod tests {
 
         assert_eq!(changes.files, vec![PathBuf::from("eslint.config.js")]);
         assert!(changes.is_deleted(Path::new("eslint.config.js")));
+    }
+
+    // `--root` can point at a subdirectory of a larger Git repository (for
+    // example a monorepo package). `git diff --name-only` reports paths
+    // relative to the repository top-level in that case, while
+    // `git ls-files` reports paths relative to the `-C` directory. Mixing
+    // the two coordinate systems produced paths like `app/index.js` next to
+    // `new.js`, which `root.join(path)` then resolved incorrectly (and let
+    // sibling-directory changes leak into the report).
+    fn init_nested_repo(temp: &Path) -> (PathBuf, PathBuf) {
+        let app = temp.join("app");
+        let sibling = temp.join("sibling");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        run_git(temp, &["init", "--quiet"]);
+        run_git(temp, &["config", "user.email", "quality@example.test"]);
+        run_git(temp, &["config", "user.name", "Quality Tests"]);
+        std::fs::write(app.join("index.js"), "export default 1;\n").unwrap();
+        std::fs::write(sibling.join("other.js"), "export default 2;\n").unwrap();
+        run_git(temp, &["add", "app/index.js", "sibling/other.js"]);
+        run_git(temp, &["commit", "--quiet", "-m", "initial"]);
+        (app, sibling)
+    }
+
+    #[test]
+    fn nested_root_reports_tracked_modifications_relative_to_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _sibling) = init_nested_repo(temp.path());
+
+        std::fs::write(app.join("index.js"), "export default 3;\n").unwrap();
+
+        let changes = discover(&app, "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("index.js")]);
+    }
+
+    #[test]
+    fn nested_root_reports_deletions_relative_to_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _sibling) = init_nested_repo(temp.path());
+
+        std::fs::remove_file(app.join("index.js")).unwrap();
+
+        let changes = discover(&app, "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("index.js")]);
+        assert!(changes.is_deleted(Path::new("index.js")));
+    }
+
+    #[test]
+    fn nested_root_reports_untracked_paths_relative_to_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _sibling) = init_nested_repo(temp.path());
+
+        std::fs::write(app.join("new.js"), "export default 4;\n").unwrap();
+
+        let changes = discover(&app, "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("new.js")]);
+    }
+
+    #[test]
+    fn nested_root_excludes_sibling_directory_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, sibling) = init_nested_repo(temp.path());
+
+        std::fs::write(app.join("index.js"), "export default 3;\n").unwrap();
+        std::fs::write(sibling.join("other.js"), "export default 5;\n").unwrap();
+        std::fs::write(sibling.join("untracked.js"), "export default 6;\n").unwrap();
+
+        let changes = discover(&app, "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("index.js")]);
+    }
+
+    #[test]
+    fn nested_root_reports_non_head_base_relative_to_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, sibling) = init_nested_repo(temp.path());
+        run_git(temp.path(), &["branch", "base"]);
+
+        std::fs::write(app.join("index.js"), "export default 3;\n").unwrap();
+        std::fs::write(sibling.join("other.js"), "export default 5;\n").unwrap();
+        run_git(temp.path(), &["add", "app/index.js", "sibling/other.js"]);
+        run_git(temp.path(), &["commit", "--quiet", "-m", "second"]);
+
+        let changes = discover(&app, "base").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("index.js")]);
+    }
+    #[test]
+    fn nested_root_respects_relative_diff_configuration_without_double_stripping() {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _) = init_nested_repo(temp.path());
+        run_git(temp.path(), &["config", "diff.relative", "true"]);
+        std::fs::create_dir(app.join("app")).unwrap();
+        std::fs::write(app.join("app/nested.js"), "original\n").unwrap();
+        run_git(temp.path(), &["add", "app/app/nested.js"]);
+        run_git(temp.path(), &["commit", "--quiet", "-m", "nested"]);
+        std::fs::write(app.join("app/nested.js"), "modified\n").unwrap();
+
+        let changes = discover(&app, "HEAD").unwrap();
+
+        assert_eq!(changes.files, vec![PathBuf::from("app/nested.js")]);
     }
 }

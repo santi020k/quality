@@ -1,4 +1,22 @@
-# quality playground
+<p align="center">
+  <a href="../README.md">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/readme/workspace-dark.svg">
+      <img src="../docs/assets/readme/workspace-light.svg" alt="quality — One command. A clearer quality workflow." width="1200" height="220">
+    </picture>
+  </a>
+</p>
+
+<h1 align="center">CLI playground</h1>
+
+<p align="center">A disposable workspace for exploring Quality's feedback loop.</p>
+
+<p align="center">
+  <a href="../LICENSE"><img src="https://img.shields.io/badge/license-MIT-13967e?style=flat-square" alt="License: MIT"></a>
+  <a href="../README.md"><img src="https://img.shields.io/badge/source-Package-036b9f?style=flat-square" alt="Source: Package"></a>
+</p>
+
+**On this page:** [Start fresh](#start-fresh) · [Walkthrough](#walk-through-the-main-features) · [Verification](#verify-the-playground-itself)
 
 This playground is a disposable project for manually trying `quality`. Its mock
 analyzers behave like real external tools but require only Git, a POSIX shell,

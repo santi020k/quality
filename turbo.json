@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalDependencies": ["Cargo.toml", "Cargo.lock", "templates/**", "install.sh", "apps/site/public/quality*.schema.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -12,6 +13,9 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "@quality/cli#build": {
+      "cache": false
     },
     "dev": {
       "cache": false,

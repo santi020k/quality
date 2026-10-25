@@ -1,48 +1,173 @@
 ---
+import type { CollectionEntry } from 'astro:content';
 import { getCollection, render } from 'astro:content';
+import { Anchor, Breadcrumb, Collapsible, Icon, Pagination, ScrollProgress } from '@santi020k/lumen-astro';
 import SiteLayout from '../layouts/SiteLayout.astro';
-
-const groups = [
-	{ label: 'Start', items: [['Overview', 'overview'], ['Getting started', 'getting-started']] },
-	{ label: 'Use quality', items: [['Commands', 'commands'], ['Configuration', 'configuration'], ['Changed files & baselines', 'changed-files-and-baselines']] },
-	{ label: 'Integrate', items: [['GitHub Actions', 'github-actions'], ['Local CI & PR gates', 'local-ci'], ['AI coding agents', 'ai-agents'], ['Built-in & custom adapters', 'adapters'], ['Compatibility & support', 'compatibility']] },
-];
+import { docsGroups, docsItems } from '../lib/docs-navigation';
 
 export async function getStaticPaths() {
 	const entries = await getCollection('docs');
 	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
 }
 
+interface Props {
+	entry: CollectionEntry<'docs'>;
+}
+
 const { entry } = Astro.props;
-const { Content } = await render(entry);
+const { Content, headings } = await render(entry);
 const title = `${entry.data.title} — quality`;
+const currentIndex = docsItems.findIndex((item) => item.slug === entry.id);
+const currentGroup = docsGroups.find((group) => group.items.some((item) => item.slug === entry.id));
+const previous = currentIndex > 0 ? docsItems[currentIndex - 1] : undefined;
+const next = currentIndex >= 0 ? docsItems[currentIndex + 1] : undefined;
+const pageHeadings = headings
+	.filter((heading) => heading.depth === 2)
+	.map((heading) => ({ href: `#${heading.slug}`, label: heading.text }));
 ---
 
 <SiteLayout title={title} description={entry.data.description} pageType="article" sectionName={entry.data.title}>
+	<ScrollProgress aria-label="Documentation reading progress" />
 	<div class="docs-layout">
 		<aside class="docs-sidebar" aria-label="Documentation navigation">
-			{groups.map((group) => (
+			<a class="docs-home" href="/getting-started/"><Icon name="book-open" decorative /> Documentation</a>
+			{docsGroups.map((group) => (
 				<div class="docs-group">
 					<p class="docs-group-title">{group.label}</p>
 					<nav class="docs-nav" aria-label={`${group.label} documentation`}>
-						{group.items.map(([label, slug]) => (
-							<a href={`/${slug}/`} aria-current={entry.id === slug ? 'page' : undefined}>{label}</a>
+						{group.items.map((item) => (
+							<a href={`/${item.slug}/`} aria-current={entry.id === item.slug ? 'page' : undefined}>{item.label}</a>
 						))}
 					</nav>
 				</div>
 			))}
+			<a class="docs-sidebar-note" href="/ai-agents/">Working with an agent?<Icon name="arrow-up-right" decorative /></a>
 		</aside>
-		<article class="docs-article">
-			<nav class="breadcrumbs" aria-label="Breadcrumb">
-				<a href="/">Home</a>
-				<span aria-hidden="true">/</span>
-				<span aria-current="page">{entry.data.title}</span>
-			</nav>
+
+		<Collapsible class="docs-mobile-nav">
+			<summary>Browse documentation</summary>
+			<div class="docs-mobile-groups">
+				{docsGroups.map((group) => (
+					<div class="docs-group">
+						<p class="docs-group-title">{group.label}</p>
+						<nav class="docs-nav" aria-label={`${group.label} mobile documentation`}>
+							{group.items.map((item) => (
+								<a href={`/${item.slug}/`} aria-current={entry.id === item.slug ? 'page' : undefined}>{item.label}</a>
+							))}
+						</nav>
+					</div>
+				))}
+			</div>
+		</Collapsible>
+
+		<article class="docs-article" aria-labelledby="docs-page-title">
+			<Breadcrumb class="docs-breadcrumb">
+				<ol>
+					<li><a href="/">quality</a></li>
+					<li aria-current="page"><span>{entry.data.title}</span></li>
+				</ol>
+			</Breadcrumb>
 			<header class="docs-article-header">
-				<h1>{entry.data.title}</h1>
-				<p>{entry.data.description}</p>
+				<p class="docs-eyebrow">{currentGroup?.label ?? 'Documentation'}<span aria-hidden="true">/</span>Guide {String(currentIndex + 1).padStart(2, '0')}</p>
+				<h1 id="docs-page-title">{entry.data.title}</h1>
+				<p class="docs-description">{entry.data.description}</p>
+				<div class="docs-tools">
+					<span>quality documentation</span>
+					<a href={`/${entry.id}.md`}><Icon name="file-code" decorative /> View Markdown</a>
+				</div>
 			</header>
+
+			{pageHeadings.length > 1 && (
+				<Collapsible class="docs-mobile-toc">
+					<summary>On this page</summary>
+					<Anchor items={pageHeadings} activationOffset={128} aria-label="On this page, compact navigation" />
+				</Collapsible>
+			)}
 			<div class="docs-prose"><Content /></div>
+
+			<Pagination class="docs-pagination" aria-label="Documentation pages">
+				{previous ? (
+					<a href={`/${previous.slug}/`}>
+						<span><Icon name="arrow-left" decorative /> Previous</span>
+						<strong>{previous.label}</strong>
+					</a>
+				) : <span />}
+				{next && (
+					<a class="docs-next" href={`/${next.slug}/`}>
+						<span>Next <Icon name="arrow-right" decorative /></span>
+						<strong>{next.label}</strong>
+					</a>
+				)}
+			</Pagination>
 		</article>
+
+		{pageHeadings.length > 1 && (
+			<aside class="docs-toc" aria-label="Page contents">
+				<p class="docs-group-title">On this page</p>
+				<Anchor items={pageHeadings} activationOffset={128} />
+			</aside>
+		)}
 	</div>
 </SiteLayout>
+
+<style>
+	.docs-layout { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr) 11rem; gap: clamp(2rem, 3.7vw, 3.5rem); width: min(calc(100% - var(--site-gutter) * 2), var(--site-max)); margin-inline: auto; padding-block: 3rem 6rem; }
+	.docs-sidebar, .docs-toc { position: sticky; top: 7.5rem; align-self: start; max-height: calc(100dvh - 9rem); overflow-y: auto; scrollbar-width: thin; }
+	.docs-home { display: flex; align-items: center; gap: .65rem; min-height: 2.75rem; margin-bottom: 1.6rem; color: hsl(var(--ink)); font-size: .8125rem; font-weight: 600; text-decoration: none; }
+	.docs-home :global(svg) { width: 1.1rem; height: 1.1rem; color: hsl(var(--brand)); }
+	.docs-group + .docs-group { margin-top: 1.7rem; }
+	.docs-group-title { margin: 0 0 .7rem; color: hsl(var(--ink-soft)); font-size: .625rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+	.docs-nav { display: grid; gap: .15rem; }
+	.docs-nav a { display: flex; align-items: center; min-height: 2.75rem; border-left: 2px solid transparent; padding: .5rem .7rem; color: hsl(var(--ink-soft)); font-size: .8125rem; font-weight: 450; line-height: 1.5; text-decoration: none; transition: color 180ms, background-color 180ms; }
+	.docs-nav a:hover { color: hsl(var(--ink)); background: hsl(var(--surface-muted)); }
+	.docs-nav a[aria-current='page'] { border-left-color: hsl(var(--brand)); background: hsl(var(--brand-soft)); color: hsl(var(--brand)); font-weight: 600; }
+	.docs-sidebar-note { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 2.75rem; margin-top: 2rem; border-top: 1px solid hsl(var(--line) / .7); padding-top: .75rem; color: hsl(var(--ink-soft)); font-size: .6875rem; text-decoration: none; }
+	.docs-sidebar-note :global(svg) { width: .9rem; height: .9rem; }
+	.docs-article { min-width: 0; }
+	:global(.docs-breadcrumb) { margin-bottom: 2.2rem; font-size: .6875rem; }
+	:global(.docs-breadcrumb ol) { gap: 0; }
+	:global(.docs-breadcrumb li) { min-width: 0; min-height: 2.75rem; color: hsl(var(--ink-soft)); }
+	:global(.docs-breadcrumb li + li::before) { margin-inline: .65rem; }
+	:global(.docs-breadcrumb a) { display: inline-flex; align-items: center; min-height: 2.75rem; color: hsl(var(--ink-soft)); text-decoration: none; }
+	:global(.docs-breadcrumb [aria-current='page']) { color: hsl(var(--ink)); }
+	.docs-article-header { margin-bottom: 2.5rem; border-bottom: 1px solid hsl(var(--line) / .7); }
+	.docs-eyebrow { display: flex; flex-wrap: wrap; gap: .65rem; margin: 0 0 1.2rem; color: hsl(var(--brand)); font-size: .625rem; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+	.docs-eyebrow span { color: hsl(var(--ink-soft)); }
+	.docs-article-header h1 { margin: 0; font-size: clamp(2.35rem, 4.2vw, 3.65rem); font-weight: 500; letter-spacing: -.06em; line-height: 1.07; overflow-wrap: anywhere; }
+	.docs-description { margin: 1.35rem 0 1.5rem; color: hsl(var(--ink-soft)); font-size: 1rem; line-height: 1.85; }
+	.docs-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 1rem; padding-block: 1rem; color: hsl(var(--ink-soft)); font-size: .6875rem; }
+	.docs-tools a { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.75rem; font-weight: 500; text-decoration: none; }
+	.docs-tools a:hover { color: hsl(var(--brand)); }
+	.docs-tools :global(svg) { width: .95rem; height: .95rem; }
+	.docs-toc { margin-top: 4.9rem; padding-left: 1rem; border-left: 1px solid hsl(var(--line) / .7); }
+	.docs-toc :global([data-ui-anchor]), :global(.docs-mobile-toc [data-ui-anchor]) { border: 0; border-radius: 0; background: transparent; padding: 0; box-shadow: none; }
+	.docs-toc :global([data-ui-anchor] ol), :global(.docs-mobile-toc [data-ui-anchor] ol) { gap: .15rem; }
+	.docs-toc :global([data-ui-anchor] a), :global(.docs-mobile-toc [data-ui-anchor] a) { min-height: 2.75rem; border: 0; border-radius: .375rem; padding: .5rem 0; font-size: .6875rem; line-height: 1.55; }
+	.docs-toc :global([data-ui-anchor] a[data-active='true']), :global(.docs-mobile-toc [data-ui-anchor] a[data-active='true']) { background: transparent; color: hsl(var(--brand)); }
+	:global(.docs-pagination) { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 4rem; border-top: 1px solid hsl(var(--line) / .7); padding-top: 1.4rem; }
+	:global(.docs-pagination a) { display: grid; justify-content: start; gap: .7rem; min-height: 5rem; border: 0; border-radius: 0; background: transparent; padding: .5rem 0; text-decoration: none; }
+	:global(.docs-pagination a > span) { display: inline-flex; align-items: center; gap: .4rem; color: hsl(var(--ink-soft)); font-size: .6875rem; }
+	:global(.docs-pagination svg) { width: .9rem; height: .9rem; }
+	:global(.docs-pagination strong) { color: hsl(var(--ink)); font-size: .9375rem; font-weight: 500; line-height: 1.5; }
+	:global(.docs-pagination a:hover strong) { color: hsl(var(--brand)); }
+	:global(.docs-pagination .docs-next) { justify-content: end; justify-items: end; text-align: right; }
+	:global(.docs-mobile-nav), :global(.docs-mobile-toc) { display: none; }
+	@media (max-width: 72rem) {
+		.docs-layout { grid-template-columns: 12rem minmax(0, 1fr); max-width: 66rem; gap: 2.5rem; }
+		.docs-toc { display: none; }
+		:global(.docs-mobile-toc) { display: block; margin-bottom: 2rem; border: 1px solid hsl(var(--line) / .7); border-radius: .8rem; background: transparent; }
+		:global(.docs-mobile-toc summary) { font-size: .75rem; font-weight: 500; }
+		:global(.docs-mobile-toc [data-ui-anchor]) { padding-bottom: .8rem; }
+	}
+	@media (max-width: 52rem) {
+		.docs-layout { grid-template-columns: minmax(0, 1fr); max-width: 44rem; gap: 2rem; padding-block: 1.5rem 4rem; }
+		.docs-sidebar { display: none; }
+		:global(.docs-mobile-nav) { display: block; min-width: 0; border: 1px solid hsl(var(--line) / .7); border-radius: 1rem; background: hsl(var(--surface)); }
+		:global(.docs-mobile-nav summary) { font-size: .8125rem; font-weight: 500; }
+		.docs-mobile-groups { display: grid; gap: 1.5rem; padding-block: 1rem 1.5rem; }
+		.docs-mobile-groups .docs-group + .docs-group { margin-top: 0; }
+		:global(.docs-breadcrumb) { margin-bottom: 1.5rem; }
+		.docs-article-header h1 { font-size: clamp(2.2rem, 8vw, 3.5rem); }
+	}
+	@media (prefers-reduced-motion: reduce) { .docs-nav a { transition: none; } }
+</style>
