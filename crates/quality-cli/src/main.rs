@@ -7,6 +7,7 @@ mod hooks;
 mod local_ci;
 mod output;
 mod presets;
+mod process;
 mod project;
 mod repositories;
 mod runner;
@@ -27,6 +28,14 @@ use crate::config::Config;
 use crate::project::Project;
 
 fn main() {
+    #[cfg(unix)]
+    let _signals = match process::SignalForwarding::install() {
+        Ok(signals) => signals,
+        Err(error) => {
+            eprintln!("quality: could not install analyzer signal forwarding: {error}");
+            std::process::exit(2);
+        }
+    };
     if let Err(error) = run() {
         eprintln!("quality: {error:#}");
         std::process::exit(2);

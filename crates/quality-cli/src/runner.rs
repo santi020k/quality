@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use wait_timeout::ChildExt;
 
 use crate::changes::ChangeSet;
 use crate::cli::{AdapterSelection, Severity};
 use crate::config::{Config, DiagnosticParser};
+use crate::process::AnalyzerProcess;
 use crate::project::Project;
 use crate::tools::{self, Invocation};
 
@@ -622,32 +622,47 @@ fn run_one(
 ) -> ToolResult {
     let started = Instant::now();
     let command_display = format_command(&invocation);
-    let child = Command::new(&invocation.command)
+    let timeout = settings.timeout_seconds.or(invocation.timeout_seconds);
+    let mut command = Command::new(&invocation.command);
+    command
         .args(&invocation.args)
         .envs(&invocation.env)
         .current_dir(&invocation.working_directory)
         .env("NO_COLOR", "1")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    let child = AnalyzerProcess::spawn(command, timeout.is_some());
 
     match child {
         Ok(mut child) => {
             let stdout = child
-                .stdout
-                .take()
+                .take_stdout()
                 .map(|stdout| spawn_output_reader(stdout, settings.max_output_bytes));
             let stderr = child
-                .stderr
-                .take()
+                .take_stderr()
                 .map(|stderr| spawn_output_reader(stderr, settings.max_output_bytes));
-            let timeout = settings.timeout_seconds.or(invocation.timeout_seconds);
+            let mut cleanup_error = None;
             let (status, timed_out) = match timeout {
                 Some(seconds) => match child.wait_timeout(Duration::from_secs(seconds)) {
                     Ok(Some(status)) => (Ok(status), false),
                     Ok(None) => {
-                        let _ = child.kill();
-                        (child.wait(), true)
+                        cleanup_error = child.terminate().err();
+                        let status =
+                            child
+                                .wait_timeout(Duration::from_secs(1))
+                                .and_then(|status| {
+                                    status.ok_or_else(|| {
+                                        io::Error::new(
+                                            io::ErrorKind::TimedOut,
+                                            "analyzer did not exit after termination",
+                                        )
+                                    })
+                                });
+                        if let Err(error) = &status {
+                            cleanup_error
+                                .get_or_insert_with(|| io::Error::other(error.to_string()));
+                        }
+                        (status, true)
                     }
                     Err(error) => (Err(error), false),
                 },
@@ -677,7 +692,9 @@ fn run_one(
                     }],
                     output: combined,
                     output_truncated,
-                    guidance: None,
+                    guidance: cleanup_error.map(|error| {
+                        format!("could not terminate the complete analyzer process tree: {error}")
+                    }),
                     baseline_safe: false,
                     executed: true,
                 };
