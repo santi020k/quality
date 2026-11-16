@@ -73,7 +73,11 @@ changes until narrower selection is qualified.
 An unmerged or untagged deliberate `release/v*` branch suppresses automated
 version PR preparation. Consume every Changeset on that branch before merging.
 If publication succeeds but smoke fails, rerun the original release workflow at
-its original SHA. A code fix requires a new version; do not move the existing tag.
+its original SHA. Recovery checks preserve newer major aliases and the global
+latest release; a backport can advance its own major alias. Equal-precedence
+versions with different commits or build identities fail rather than choosing
+between them. Missing metadata or API failures block promotion. A code fix
+requires a new version; do not move the existing version tag.
 
 ## Migration and recovery for 2.0.0
 
