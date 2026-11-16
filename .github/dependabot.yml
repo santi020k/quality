@@ -32,7 +32,9 @@ updates:
           - "*"
 
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /actions/setup-pnpm
     schedule:
       interval: monthly
       day: monday

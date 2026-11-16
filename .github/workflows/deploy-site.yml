@@ -1,34 +1,67 @@
 name: Deploy Site
 
 on:
+  # Every main update must queue a candidate: a source-only commit can supersede
+  # a documentation build before its final SHA check. Qualify narrower selection
+  # before restoring path filters, or pending documentation can be dropped.
   push:
     branches: [main]
-    paths:
-      - "apps/site/**"
-      - ".github/workflows/deploy-site.yml"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "turbo.json"
-      - "wrangler.jsonc"
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-site-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-site-production
+  cancel-in-progress: false
 
 jobs:
+  eligibility:
+    name: Verify published release and source
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_branch == 'main' &&
+         github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      eligible: ${{ steps.release.outputs.eligible }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      # workflow_run uses the current default-branch SHA. Bind it once so docs
+      # merged during a release can deploy after that release is verified.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - name: Require a verified stable release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/deployment-eligibility.mjs
+
   build:
     name: Build site
-    if: github.ref == 'refs/heads/main'
+    needs: eligibility
+    if: github.ref == 'refs/heads/main' && needs.eligibility.outputs.eligible == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.eligibility.outputs.sha }}
           persist-credentials: false
       - uses: ./actions/setup-pnpm
         with:
@@ -43,12 +76,14 @@ jobs:
 
   prepare-deploy-toolchain:
     name: Prepare deploy toolchain
-    if: github.ref == 'refs/heads/main'
+    needs: eligibility
+    if: github.ref == 'refs/heads/main' && needs.eligibility.outputs.eligible == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.eligibility.outputs.sha }}
           persist-credentials: false
       - name: Restore lockfile-pinned deploy toolchain
         id: deploy-toolchain-cache
@@ -77,7 +112,7 @@ jobs:
 
   deploy:
     name: Deploy site
-    needs: [build, prepare-deploy-toolchain]
+    needs: [eligibility, build, prepare-deploy-toolchain]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -86,6 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.eligibility.outputs.sha }}
           persist-credentials: false
           sparse-checkout: |
             pnpm-lock.yaml
@@ -106,7 +142,22 @@ jobs:
           node-version: 24
       - name: Restore deploy toolchain
         run: tar -C .deploy -xzf .deploy/wrangler-toolchain.tgz
+      - name: Check deployment is still current
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.eligibility.outputs.sha }}
+        run: |
+          encoded_ref=$(jq -rn --arg ref 'refs/heads/main' '$ref | @uri')
+          current_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${encoded_ref}" --jq '.sha')
+          if [ "$current_sha" = "$SOURCE_SHA" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer main revision superseded this deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Load production deployment secrets from Infisical
+        if: steps.current.outputs.ready == 'true'
         uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
@@ -115,6 +166,7 @@ jobs:
           env-slug: prod
           secret-path: /github/deploy-site
       - name: Deploy to Cloudflare Workers
+        if: steps.current.outputs.ready == 'true'
         run: |
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$CLOUDFLARE_API_TOKEN"

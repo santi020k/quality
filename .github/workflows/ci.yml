@@ -77,6 +77,7 @@ jobs:
           HEAD_BRANCH: ${{ github.head_ref }}
         run: |
           if [[ "$HEAD_BRANCH" == release/v* ]]; then
+            node scripts/check-release-preparation.mjs consumed
             expected_version="${HEAD_BRANCH#release/v}"
             test "$(node -p "require('./crates/quality-cli/package.json').version")" = "$expected_version"
             test "$(node -p "require('./packages/action/package.json').version")" = "$expected_version"

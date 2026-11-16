@@ -65,7 +65,7 @@ test("manual release and deployment runs require the main branch", async () => {
     for (const name of entryJobs) {
       const job = jobs.find((section) => section.startsWith(`  ${name}:\n`));
       assert.ok(job, `${path} must declare the ${name} entry job`);
-      assert.match(job, /^    if: github\.ref == 'refs\/heads\/main'$/m);
+      assert.match(job, /^    if: github\.ref == 'refs\/heads\/main'(?: && needs\.eligibility\.outputs\.eligible == 'true')?$/m);
     }
   }
 });
