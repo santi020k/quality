@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-impact-results.schema.json",
+  "title": "Quality impact results",
+  "description": "Trusted execution records. Verification additionally requires exactly one record per selected node and matching plan and source identities.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "head", "results"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "plan_id": { "$ref": "quality-impact-plan.schema.json#/$defs/planId" },
+    "head": { "$ref": "quality-impact-plan.schema.json#/$defs/commitId" },
+    "results": { "type": "array", "items": { "$ref": "#/$defs/result" } }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "$ref": "quality-impact.schema.json#/$defs/nodeId" },
+        "status": { "enum": ["passed", "failed", "cancelled", "skipped"] },
+        "exit_code": { "type": ["integer", "null"], "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "if": { "properties": { "status": { "const": "passed" } }, "required": ["status"] },
+      "then": { "required": ["exit_code"], "properties": { "exit_code": { "const": 0 } } }
+    }
+  }
+}

@@ -27,6 +27,15 @@ and a map of `nodes`. Each node declares `inputs`, `depends_on`, `always`,
 `command`, `args`, and an optional `working_directory`. Inputs are exact paths
 or directory prefixes ending in `/`; they are not glob patterns.
 
+Published Draft 2020-12 schemas describe the
+[configuration](https://quality.santi020k.com/quality-impact.schema.json),
+[plan](https://quality.santi020k.com/quality-impact-plan.schema.json),
+[execution results](https://quality.santi020k.com/quality-impact-results.schema.json),
+and [verification report](https://quality.santi020k.com/quality-impact-verification.schema.json).
+Schema validation checks structure and value constraints; the CLI additionally
+rejects unknown dependencies and cycles, recomputes the plan, and requires one
+result for each selected node. Use the same Quality version to plan and verify.
+
 A changed input selects its owning node and downstream consumers. The plan also
 includes prerequisite nodes and deterministic execution batches. Shared inputs,
 unclassified files, or unavailable Git comparison data select the complete
@@ -60,6 +69,12 @@ Verification requires a clean checkout with the policy committed at the planned
 revision. Only the exact untracked plan and results files supplied to the verifier
 are exempt; ignored build artifacts are allowed. Planning can preview a local
 policy, but such a policy cannot satisfy verification until committed.
+
+Tracked paths marked `assume-unchanged` or `skip-worktree` are rejected because
+those index flags can hide source edits. Use a fresh full checkout or clear the
+flags and restore the complete source before verifying. Quality never changes
+the index. Modified or untracked submodule source also fails verification, even
+when the checkout's Git configuration normally hides submodule changes.
 
 Supply exactly one successful result per selected node. Missing, duplicate,
 unknown, skipped, failed, or cancelled results must not satisfy the gate. The

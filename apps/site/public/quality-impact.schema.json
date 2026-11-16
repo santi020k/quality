@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-impact.schema.json",
+  "title": "Quality impact configuration",
+  "description": "Committed validation graph. Quality also validates dependency references and rejects cycles.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "nodes"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "global_inputs": { "$ref": "#/$defs/inputs" },
+    "ignored_inputs": { "$ref": "#/$defs/inputs" },
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/nodeId" },
+      "additionalProperties": { "$ref": "#/$defs/node" }
+    }
+  },
+  "$defs": {
+    "nodeId": { "type": "string", "pattern": "^[a-z0-9_-]+$(?![\\s\\S])" },
+    "input": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative exact file or directory prefix ending in /. Globs, traversal, empty components, and control characters are rejected.",
+      "allOf": [
+        { "not": { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f\\\\*?:\\[\\]]" } },
+        { "not": { "pattern": "^/|//|(^|/)\\.{1,2}(/|$)" } }
+      ]
+    },
+    "filePath": {
+      "allOf": [
+        { "$ref": "#/$defs/input" },
+        { "type": "string", "not": { "pattern": "/$" } }
+      ]
+    },
+    "workingDirectory": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        { "not": { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f\\\\*?:\\[\\]]" } },
+        { "not": { "pattern": "^/|//[^/]|(^|/)\\.{1,2}(/|$)" } }
+      ]
+    },
+    "inputs": { "type": "array", "items": { "$ref": "#/$defs/input" } },
+    "dependencies": { "type": "array", "items": { "$ref": "#/$defs/nodeId" } },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        { "not": { "pattern": "[\\u0000-\\u001f\\u007f-\\u009f]" } },
+        { "pattern": "[^ \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]" }
+      ]
+    },
+    "args": {
+      "type": "array",
+      "items": { "type": "string", "not": { "pattern": "\\u0000" } }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "inputs": { "$ref": "#/$defs/inputs" },
+        "depends_on": { "$ref": "#/$defs/dependencies" },
+        "always": { "type": "boolean", "default": false },
+        "command": { "$ref": "#/$defs/command" },
+        "args": { "$ref": "#/$defs/args" },
+        "working_directory": { "anyOf": [{ "$ref": "#/$defs/workingDirectory" }, { "type": "null" }] }
+      }
+    }
+  }
+}

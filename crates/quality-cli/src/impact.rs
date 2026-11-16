@@ -850,6 +850,26 @@ fn verify(root: &Path, plan: &ImpactPlan, results: &ImpactResults) -> Result<Ver
 }
 
 fn ensure_clean_source(root: &Path, artifacts: &[&Path]) -> Result<()> {
+    // A normal diff trusts these index flags and can hide modified or missing
+    // tracked inputs. Reject them without changing the caller's index.
+    let tracked_paths = git(
+        root,
+        &["ls-files", "--recurse-submodules", "-v", "-z", "--", "."],
+    )?;
+    ensure!(
+        tracked_paths.status.success(),
+        "could not inspect tracked source index flags"
+    );
+    for entry in tracked_paths.stdout.split(|byte| *byte == 0) {
+        let Some(tag) = entry.first() else {
+            continue;
+        };
+        let path = String::from_utf8_lossy(entry.get(2..).unwrap_or_default());
+        ensure!(
+            !tag.is_ascii_lowercase() && *tag != b'S',
+            "impact verification rejects assume-unchanged or skip-worktree index flags on {path:?}; clear those flags or use a fresh full checkout, then rerun verification"
+        );
+    }
     let tracked = git(
         root,
         &[
@@ -857,6 +877,7 @@ fn ensure_clean_source(root: &Path, artifacts: &[&Path]) -> Result<()> {
             "--quiet",
             "--no-ext-diff",
             "--no-textconv",
+            "--ignore-submodules=none",
             "HEAD",
             "--",
             ".",
@@ -1393,6 +1414,75 @@ mod tests {
         assert!(ensure_clean_source(repo.path(), &[&plan_path, &results_path]).is_err());
         // Naming a tracked source as an artifact never exempts its modification.
         assert!(ensure_clean_source(repo.path(), &[&repo.path().join("web/view.ts")]).is_err());
+    }
+
+    #[test]
+    fn verification_rejects_hidden_tracked_edits_without_mutating_index_flags() {
+        for flag in ["--assume-unchanged", "--skip-worktree"] {
+            let repo = repository();
+            checked_git(repo.path(), &["update-index", flag, "web/view.ts"]);
+            let before = checked_git(repo.path(), &["ls-files", "-v", "web/view.ts"]);
+            write(repo.path(), "web/view.ts", "hidden modified source\n");
+            assert!(
+                git(repo.path(), &["diff", "--quiet", "HEAD"])
+                    .unwrap()
+                    .status
+                    .success()
+            );
+            let error = ensure_clean_source(repo.path(), &[]).unwrap_err();
+            assert!(error.to_string().contains("index flags"), "{error}");
+            assert_eq!(
+                checked_git(repo.path(), &["ls-files", "-v", "web/view.ts"]),
+                before
+            );
+        }
+    }
+
+    #[test]
+    fn verification_detects_dirty_submodules_even_when_git_config_ignores_them() {
+        let repo = repository();
+        let dependency = repository();
+        checked_git(
+            repo.path(),
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--quiet",
+                dependency.path().to_str().unwrap(),
+                "dependency",
+            ],
+        );
+        commit(repo.path());
+        checked_git(repo.path(), &["config", "diff.ignoreSubmodules", "all"]);
+        ensure_clean_source(repo.path(), &[]).unwrap();
+        write(
+            repo.path(),
+            "dependency/web/view.ts",
+            "modified dependency source\n",
+        );
+        assert!(ensure_clean_source(repo.path(), &[]).is_err());
+        checked_git(
+            &repo.path().join("dependency"),
+            &["update-index", "--assume-unchanged", "web/view.ts"],
+        );
+        let error = ensure_clean_source(repo.path(), &[]).unwrap_err();
+        assert!(error.to_string().contains("index flags"), "{error}");
+        checked_git(
+            &repo.path().join("dependency"),
+            &["update-index", "--no-assume-unchanged", "web/view.ts"],
+        );
+        checked_git(
+            &repo.path().join("dependency"),
+            &["checkout", "--", "web/view.ts"],
+        );
+        write(
+            repo.path(),
+            "dependency/new-source.ts",
+            "untracked dependency source\n",
+        );
+        assert!(ensure_clean_source(repo.path(), &[]).is_err());
     }
 
     #[test]
