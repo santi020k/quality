@@ -110,6 +110,88 @@ fn assert_configuration_rename_runs(preview: &str) {
 }
 
 #[test]
+fn explicit_root_ignores_inherited_git_paths_and_preserves_git_configuration() {
+    let inherited = Repository::new();
+    inherited.configuration_task("");
+    inherited.write("leaked.ts", "original\n");
+    inherited.commit();
+    inherited.write("leaked.ts", "changed in the other repository\n");
+    inherited.write("global-ignore", "ignored.ts\n");
+
+    let selected = Repository::new();
+    let root = selected.configuration_task("");
+    selected.commit();
+    selected.git(&["mv", "rules.txt", "archived.txt"]);
+    selected.write(
+        "ignored.ts",
+        "untracked source excluded by Git configuration\n",
+    );
+
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(&root)
+        .args(["check", "--changed", "HEAD", "--dry-run", "--explain"])
+        .env("GIT_DIR", inherited.root().join(".git"))
+        .env("GIT_WORK_TREE", inherited.root())
+        .env("GIT_INDEX_FILE", inherited.root().join(".git/index"))
+        .env("GIT_COMMON_DIR", inherited.root().join(".git"))
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.excludesFile")
+        .env("GIT_CONFIG_VALUE_0", inherited.root().join("global-ignore"))
+        .output()
+        .expect("run Quality with inherited hook repository paths");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let preview = String::from_utf8(output.stdout).unwrap();
+    assert_configuration_rename_runs(&preview);
+    assert!(!preview.contains("leaked.ts"), "{preview}");
+    assert!(!preview.contains("ignored.ts"), "{preview}");
+}
+
+#[test]
+fn missing_base_explains_how_to_fetch_ci_history_and_remains_an_error() {
+    let repository = Repository::new();
+    repository.configuration_task("");
+    repository.commit();
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(repository.root())
+        .args(["check", "--changed", "origin/unavailable"])
+        .output()
+        .expect("run Quality with an unavailable base");
+    assert_eq!(output.status.code(), Some(2));
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("origin/unavailable"), "{error}");
+    assert!(error.contains("git fetch"), "{error}");
+    assert!(error.contains("fetch-depth: 0"), "{error}");
+}
+
+#[test]
+fn missing_merge_base_explains_ci_history_recovery_without_passing() {
+    let repository = Repository::new();
+    repository.configuration_task("");
+    repository.commit();
+    let base = String::from_utf8(repository.git(&["rev-parse", "HEAD"]).stdout).unwrap();
+    repository.git(&["checkout", "--quiet", "--orphan", "disconnected"]);
+    repository.write("rules.txt", "independent history\n");
+    repository.commit();
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
+        .arg("--root")
+        .arg(repository.root())
+        .args(["check", "--changed", base.trim()])
+        .output()
+        .expect("run Quality without a merge base");
+    assert_eq!(output.status.code(), Some(2));
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("merge base"), "{error}");
+    assert!(error.contains("git fetch"), "{error}");
+    assert!(error.contains("fetch-depth: 0"), "{error}");
+}
+
+#[test]
 fn staged_configuration_rename_runs_the_configured_check() {
     let repository = Repository::new();
     let root = repository.configuration_task("");
