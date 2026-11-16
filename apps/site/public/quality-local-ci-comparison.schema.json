@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality.santi020k.com/quality-local-ci-comparison.schema.json",
+  "title": "quality local CI comparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "base",
+    "head",
+    "duration_delta_ms",
+    "duration_delta_percent",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "base": { "$ref": "#/$defs/run" },
+    "head": { "$ref": "#/$defs/run" },
+    "duration_delta_ms": { "type": "integer" },
+    "duration_delta_percent": { "type": ["number", "null"] },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "status": { "enum": ["passed", "failed", "skipped"] },
+    "nullableStatus": { "type": ["string", "null"], "enum": ["passed", "failed", "skipped", null] },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hook", "started_at_unix_ms", "duration_ms", "status", "steps"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^run-[0-9]+(?:-[0-9]{4})?$" },
+        "hook": { "type": "string" },
+        "started_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "status": { "$ref": "#/$defs/status" },
+        "steps": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "command",
+        "base_duration_ms",
+        "head_duration_ms",
+        "duration_delta_ms",
+        "base_status",
+        "head_status"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "command": { "type": "string" },
+        "base_duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "head_duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "duration_delta_ms": { "type": ["integer", "null"] },
+        "base_status": { "$ref": "#/$defs/nullableStatus" },
+        "head_status": { "$ref": "#/$defs/nullableStatus" }
+      }
+    }
+  }
+}

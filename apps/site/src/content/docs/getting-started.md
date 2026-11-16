@@ -22,6 +22,17 @@ cargo install --path crates/quality-cli
 The release includes checksum-protected archives for x86-64 and ARM64 Linux,
 Apple Silicon and Intel macOS, and x86-64 Windows.
 
+Pin the required CLI for every developer and Git hook by adding a
+`.quality-version` file containing a released version without a leading `v`:
+
+```text
+1.2.0
+```
+
+When the active CLI differs, Quality stops before executing project commands.
+It prints the checksum-verified installation command on macOS and Linux and the
+matching archive and checksum location on Windows.
+
 ## Initialize a repository
 
 Run these commands from the repository you want to check:

@@ -9,7 +9,7 @@ description: Understand quality's stable contracts, exit codes, supported platfo
 versions it cannot interpret instead of silently changing their meaning.
 
 The native JSON produced by `check`, `format`, `fix`, `doctor`, `repositories`,
-`ci plan`, and `ci local` includes `schema_version: 1`. Consumers should require
+`ci plan`, `ci local`, `ci history`, and `ci compare` include `schema_version: 1`. Consumers should require
 a schema version they understand and ignore unknown object fields so additive
 fields remain compatible.
 
@@ -20,6 +20,8 @@ Published schemas describe the current contract:
 - [`repositories` reports](/quality-repositories.schema.json)
 - [`local CI plans`](/quality-ci-plan.schema.json)
 - [`local CI run reports`](/quality-local-ci.schema.json)
+- [`local CI history`](/quality-local-ci-history.schema.json)
+- [`local CI comparisons`](/quality-local-ci-comparison.schema.json)
 - [`quality.yml`](/quality.schema.json)
 
 Within a stable CLI major release, existing command names, flags, built-in
