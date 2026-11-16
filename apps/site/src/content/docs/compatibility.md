@@ -9,9 +9,9 @@ description: Understand quality's stable contracts, exit codes, supported platfo
 versions it cannot interpret instead of silently changing their meaning.
 
 The native JSON produced by `check`, `format`, `fix`, `doctor`, `repositories`,
-`ci plan`, and `ci local` includes `schema_version: 1`. Consumers should require
-a schema version they understand and ignore unknown object fields so additive
-fields remain compatible.
+`ci plan`, `ci local`, `impact plan`, and `impact verify` includes
+`schema_version: 1`. Consumers should require a schema version they understand
+and ignore unknown object fields so additive fields remain compatible.
 
 Published schemas describe the current contract:
 
@@ -20,7 +20,18 @@ Published schemas describe the current contract:
 - [`repositories` reports](/quality-repositories.schema.json)
 - [`local CI plans`](/quality-ci-plan.schema.json)
 - [`local CI run reports`](/quality-local-ci.schema.json)
+- [`impact configuration`](/quality-impact.schema.json)
+- [`impact plans`](/quality-impact-plan.schema.json)
+- [`impact execution results`](/quality-impact-results.schema.json)
+- [`impact verification reports`](/quality-impact-verification.schema.json)
 - [`quality.yml`](/quality.schema.json)
+
+Impact configuration and execution results also use `schema_version: 1`. Their
+schemas validate the JSON structure and value constraints. `impact verify`
+additionally checks the committed source, complete dependency graph, plan
+identity, and one result per selected node. A schema-valid result file alone
+does not prove that its checks ran. Plans must be verified by the same Quality
+version that generated them; regenerate plans after upgrading.
 
 Within a stable CLI major release, existing command names, flags, built-in
 adapter IDs, GitHub Action input and output names, and fields required by the
