@@ -3,8 +3,6 @@ title: Commands
 description: Command reference for the quality CLI.
 ---
 
-<!-- Exercise site selection and required browser checks in the hosted pilot. -->
-
 ## `quality init`
 
 Detect intentionally configured analyzers and write a starter `quality.yml`.

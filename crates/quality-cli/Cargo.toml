@@ -30,4 +30,5 @@ walkdir = "2.5"
 which = "8.0"
 
 [target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
 signal-hook = "0.4.6"

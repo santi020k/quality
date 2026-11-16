@@ -31,6 +31,10 @@ configuration triggers a full run, and deleting a source file still triggers
 matching project-wide tasks and analyzers. File-scoped tools receive only paths
 that still exist, so a deleted file is never passed to an executable.
 
+Renames include both the removed path and the new path, so moving a configuration
+file still triggers its full analyzer. Replacing a regular file with a symlink,
+or a symlink with a regular file, also counts as a changed input.
+
 Paths beginning with a dash receive an explicit relative-path prefix before
 being passed as file arguments. The stable detekt CLI receives comma-separated
 inputs; filenames containing a comma trigger a complete project check because

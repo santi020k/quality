@@ -125,6 +125,10 @@ quality ci compare run-1790000000000 latest --format json
 per-step duration changes. Selectors accept `latest`, `previous`, a millisecond
 timestamp, or a `run-<timestamp>` ID.
 
+Concurrent runs receive distinct IDs even when they start in the same millisecond.
+Use the full ID from `history` to select a particular run. When you select an older
+head without an explicit base, comparison uses the preceding run of the same hook.
+
 Write a complete versioned report explicitly when another local tool needs the
 captured output:
 
@@ -142,10 +146,9 @@ The contracts are published as the [plan schema](/quality-ci-plan.schema.json),
 
 ## Pin the project CLI
 
-Write the required released version without a leading `v`:
+Write the required released version without a leading `v` to `.quality-version`:
 
 ```text
-# .quality-version
 1.2.0
 ```
 

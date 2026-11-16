@@ -49,7 +49,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - name: Test portable CLI behavior
-        run: cargo test --locked --package quality-cli --test cross_platform
+        run: cargo test --locked --package quality-cli --test cross_platform --test runner_processes
       - name: Test GitHub Action logic
         run: pnpm --filter @quality/action test
       - name: Type-check GitHub Action

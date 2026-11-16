@@ -692,9 +692,8 @@ fn run_one(
                     }],
                     output: combined,
                     output_truncated,
-                    guidance: cleanup_error.map(|error| {
-                        format!("could not terminate the complete analyzer process tree: {error}")
-                    }),
+                    guidance: cleanup_error
+                        .map(|error| format!("could not terminate analyzer processes: {error}")),
                     baseline_safe: false,
                     executed: true,
                 };

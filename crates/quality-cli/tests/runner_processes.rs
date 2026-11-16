@@ -89,6 +89,163 @@ fn write_config(root: &std::path::Path, config: &str) {
     fs::write(root.join("quality.yml"), config).unwrap();
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn run_in_terminal(root: &std::path::Path, input: Option<&[u8]>) -> serde_json::Value {
+    use std::io::Write;
+
+    // Both supported Unix CI images provide script; its child has a real
+    // controlling terminal, unlike simply inheriting a PTY file descriptor.
+    let mut command = Command::new("/usr/bin/script");
+    #[cfg(target_os = "macos")]
+    command
+        .args(["-q", "/dev/null", env!("CARGO_BIN_EXE_quality"), "--root"])
+        .arg(root)
+        .args(["check", "--format", "json"]);
+    #[cfg(target_os = "linux")]
+    command
+        .args([
+            "--quiet",
+            "--return",
+            "--command",
+            "exec \"$QUALITY_TEST_BINARY\" --root \"$QUALITY_TEST_ROOT\" check --format json",
+            "/dev/null",
+        ])
+        .env("QUALITY_TEST_BINARY", env!("CARGO_BIN_EXE_quality"))
+        .env("QUALITY_TEST_ROOT", root);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let ready = root.join("terminal-ready");
+    if ready.exists() {
+        fs::remove_file(&ready).unwrap();
+    }
+    let started = std::time::Instant::now();
+    let mut child = command.spawn().expect("system script should spawn");
+    // wait_timeout closes Child.stdin. Keep it separately so script does not
+    // inject terminal EOF before the analyzer reads its input.
+    let mut terminal_input = child.stdin.take().unwrap();
+    if let Some(input) = input {
+        while !ready.exists() {
+            if child.try_wait().unwrap().is_some() || started.elapsed() > Duration::from_secs(4) {
+                let _ = child.kill();
+                let output = child.wait_with_output().unwrap();
+                panic!("terminal fixture did not become ready: {output:?}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        terminal_input.write_all(input).unwrap();
+    }
+    let (_, output) = finish_with_watchdog(child, started);
+    drop(terminal_input);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let start = stdout
+        .find('{')
+        .unwrap_or_else(|| panic!("expected JSON report from terminal: {output:?}"));
+    serde_json::Deserializer::from_str(&stdout[start..])
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap_or_else(|error| panic!("invalid terminal report: {error}\n{output:?}"))
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn timed_analyzers_can_read_inherited_terminal_input() {
+    let _serial = SERIAL.lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    for timed in [false, true] {
+        let mut config = serde_json::json!({
+            "version": 1,
+            "tasks": {
+                "terminal-input": {
+                    "command": "sh",
+                    "args": ["-c", "printf ready > terminal-ready; read -r answer; printf 'answer=<%s>\\n' \"$answer\"; test \"$answer\" = hello"]
+                }
+            }
+        });
+        if timed {
+            config["tasks"]["terminal-input"]["timeout_seconds"] = 2.into();
+        }
+        write_config(temp.path(), &config.to_string());
+        let report = run_in_terminal(temp.path(), Some(b"hello\n"));
+        assert_eq!(report["results"][0]["status"], "passed", "{report}");
+    }
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn terminal_timeout_terminates_only_the_owned_child_without_a_group_error() {
+    let _serial = SERIAL.lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    write_config(
+        temp.path(),
+        "version: 1\ntasks:\n  slow:\n    command: sleep\n    args: [5]\n    timeout_seconds: 1\n",
+    );
+    let report = run_in_terminal(temp.path(), None);
+    let result = &report["results"][0];
+    assert_eq!(result["status"], "failed", "{report}");
+    assert_eq!(result["diagnostics"][0]["rule"], "tool-timeout");
+    assert!(result.get("guidance").is_none(), "{report}");
+}
+
+#[test]
+#[cfg(unix)]
+fn inherited_ignored_signals_remain_ignored_for_timed_and_untimed_tasks() {
+    let _serial = SERIAL.lock().unwrap();
+    for timed in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut config = serde_json::json!({
+            "version": 1,
+            "tasks": {
+                "ignored-signals": {
+                    "command": "sh",
+                    "args": ["-c", "printf ready > ready; sleep 1"]
+                }
+            }
+        });
+        if timed {
+            config["tasks"]["ignored-signals"]["timeout_seconds"] = 3.into();
+        }
+        write_config(temp.path(), &config.to_string());
+        let mut command = Command::new("sh");
+        command
+            .args([
+                "-c",
+                "ulimit -c 0; trap '' HUP INT QUIT; exec \"$1\" --root \"$2\" check --format json",
+                "quality-ignore-test",
+                env!("CARGO_BIN_EXE_quality"),
+            ])
+            .arg(temp.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let started = std::time::Instant::now();
+        let mut child = command.spawn().unwrap();
+        while !temp.path().join("ready").exists() {
+            if child.try_wait().unwrap().is_some() || started.elapsed() > Duration::from_secs(4) {
+                let _ = child.kill();
+                let output = child.wait_with_output().unwrap();
+                panic!("ignored-signal fixture did not start: {output:?}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        for signal in ["-HUP", "-INT", "-QUIT"] {
+            assert!(
+                Command::new("/bin/kill")
+                    .args([signal, "--", &child.id().to_string()])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let (_, output) = finish_with_watchdog(child, started);
+        assert!(output.status.success(), "{output:?}");
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["results"][0]["status"], "passed", "{report}");
+    }
+}
+
 #[test]
 #[cfg(unix)]
 fn check_honors_the_configured_timeout_even_when_a_descendant_inherits_the_pipe() {

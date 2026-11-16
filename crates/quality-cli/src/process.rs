@@ -9,6 +9,8 @@ use wait_timeout::ChildExt;
 #[cfg(unix)]
 use std::collections::BTreeSet;
 #[cfg(unix)]
+use std::io::IsTerminal;
+#[cfg(unix)]
 use std::sync::Mutex;
 #[cfg(unix)]
 use std::thread;
@@ -32,9 +34,13 @@ impl SignalForwarding {
     pub fn install() -> io::Result<Self> {
         use signal_hook::consts::signal::{SIGCONT, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGTSTP};
 
-        let mut signals = signal_hook::iterator::Signals::new([
-            SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGTSTP, SIGCONT,
-        ])?;
+        let mut forwarded = Vec::new();
+        for signal in [SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGTSTP, SIGCONT] {
+            if !signal_is_ignored(signal)? {
+                forwarded.push(signal);
+            }
+        }
+        let mut signals = signal_hook::iterator::Signals::new(forwarded)?;
         let handle = signals.handle();
         let thread = thread::Builder::new()
             .name("quality-signals".to_owned())
@@ -69,6 +75,20 @@ impl SignalForwarding {
 }
 
 #[cfg(unix)]
+fn signal_is_ignored(signal: libc::c_int) -> io::Result<bool> {
+    let mut previous = std::mem::MaybeUninit::<libc::sigaction>::uninit();
+    // SAFETY: a null action only queries the disposition. `previous` points to
+    // valid writable storage, initialized by sigaction on success. This runs
+    // once during startup, before Quality installs handlers or spawns threads.
+    if unsafe { libc::sigaction(signal, std::ptr::null(), previous.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: successful sigaction initialized the complete result above.
+    let previous = unsafe { previous.assume_init() };
+    Ok(previous.sa_sigaction == libc::SIG_IGN)
+}
+
+#[cfg(unix)]
 impl Drop for SignalForwarding {
     fn drop(&mut self) {
         self.handle.close();
@@ -87,9 +107,13 @@ pub struct AnalyzerProcess {
 impl AnalyzerProcess {
     pub fn spawn(mut command: Command, timed: bool) -> io::Result<Self> {
         #[cfg(unix)]
-        if timed {
+        if timed && !io::stdin().is_terminal() {
             use std::os::unix::process::CommandExt;
 
+            // A separate process group would be a background group relative
+            // to inherited terminal input, causing reads to stop with SIGTTIN.
+            // Interactive analyzers retain the caller's group and the previous
+            // direct-child timeout behavior.
             let mut groups = ACTIVE_GROUPS
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -148,13 +172,17 @@ impl AnalyzerProcess {
         self.child.wait_timeout(timeout)
     }
 
-    /// Kill descendants before reaping their parent. Children that deliberately
-    /// detach from the process group/tree are outside this cleanup boundary.
+    /// Kill a managed process group/tree before reaping its parent. Unix tasks
+    /// with inherited terminal input have no managed group, so only their direct
+    /// child is killed. Deliberately detached children are outside this boundary.
     pub fn terminate(&mut self) -> io::Result<()> {
         #[cfg(unix)]
         let tree_result = {
+            let Some(pid) = self.group else {
+                return self.child.kill();
+            };
             let mut command = Command::new("/bin/kill");
-            command.args(["-KILL", "--", &format!("-{}", self.child.id())]);
+            command.args(["-KILL", "--", &format!("-{pid}")]);
             run_cleanup_command(command)
         };
         #[cfg(windows)]

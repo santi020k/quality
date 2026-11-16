@@ -76,7 +76,14 @@ Tasks run concurrently with built-in and custom adapters. Set
 `working_directory` for a workspace-specific command. When `extensions` or
 `config_files` are present, changed-file mode skips the task unless one of
 those inputs changed. With neither field, the task always runs.
-Tasks and custom adapters also accept `timeout_seconds`.
+Tasks and custom adapters also accept `timeout_seconds`. In noninteractive Unix
+runs, a timeout stops the analyzer and descendants in its isolated process group.
+On Windows, timeout cleanup stops the process tree. Deliberately detached
+processes are outside these boundaries. Unix analyzers that inherit terminal
+input keep the caller's group so prompts remain usable; their timeout stops the
+direct child only. Output collection is bounded even when another process keeps
+an inherited pipe open. If tree cleanup fails, the report includes recovery
+guidance and the check remains failed.
 
 During initialization, a canonical root package script is added as
 `repository-check` when available. Detected analyzers receive `check: false`

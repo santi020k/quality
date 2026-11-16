@@ -527,9 +527,23 @@ struct StoredRun {
 }
 
 fn history_directory(root: &Path) -> Result<Option<PathBuf>> {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .args(["rev-parse", "--git-path", "quality/local-ci"])
-        .current_dir(root)
+        .current_dir(root);
+    // Hooks can export another repository's paths. Resolve history from the
+    // requested root while preserving the user's intentional Git configuration.
+    for variable in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ] {
+        command.env_remove(variable);
+    }
+    let output = command
         .output()
         .context("could not inspect the Git directory for local CI history")?;
     if !output.status.success() {
