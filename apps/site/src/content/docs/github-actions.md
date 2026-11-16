@@ -47,12 +47,24 @@ jobs:
           sarif_file: ${{ steps.quality.outputs.sarif }}
 ```
 
-Pin `version` to a release for reproducible checks. Warnings fail by default; set `fail-level: error` only for an intentional, documented migration period.
+With Quality 2, omitting `version` installs the same CLI version as the pinned
+Action. An explicit version must be an exact release such as `2.0.0` or `v2.0.0`;
+prerelease and build identifiers are supported. Use `version: latest` explicitly
+to follow the latest release. Downloaded and cached exact-version binaries are
+checked with `quality --version` before checks run.
 
-The Action exposes `sarif`, `findings`, `tools`, and `duration-ms` outputs. On pull requests it compares against `origin/$GITHUB_BASE_REF`; on pushes without a base it safely checks the complete project.
+Warnings fail by default; set `fail-level: error` only for an intentional,
+documented migration period.
 
-It distinguishes policy findings from configuration or runtime failures so an
-operational problem is not mislabeled as a diagnostic failure. `require-checks`
+The Action exposes `sarif`, `findings`, `tools`, and `duration-ms` outputs. Set
+`sarif: ""` to disable the public report; counts still come from a private report
+in the runner's temporary directory, removed after use. `tools` counts adapters
+that actually ran, and duration is reported even if installation or execution
+fails. On pull requests the Action compares against `origin/$GITHUB_BASE_REF`;
+on pushes without a base it checks the complete project.
+
+An unsuccessful check may reflect policy findings or analyzer failures. When
+the CLI cannot complete, the Action retains its exit code and error context. `require-checks`
 defaults to true; `jobs`, `timeout-seconds`, and `max-output-bytes` expose the
 CLI's execution limits.
 

@@ -7,8 +7,39 @@ import {
   releaseRepository,
   releaseBaseUrl,
   releaseTarget,
+  releaseVersion,
   summarizeSarifReport,
+  verifyBinaryVersion,
 } from "./lib.js";
+
+describe("releaseVersion", () => {
+  it.each(["2.0.0", "v2.0.0", "2.0.0-rc.1+build.123"])("accepts an exact version %s", (version) => {
+    expect(releaseVersion(version, "3.0.0")).toBe(version.startsWith("v") ? version : `v${version}`);
+  });
+
+  it("uses the Action package version by default and requires explicit latest", () => {
+    expect(releaseVersion("", "2.0.0")).toBe("v2.0.0");
+    expect(releaseVersion("latest", "2.0.0")).toBe("latest");
+  });
+
+  it.each(["v2", "main", "v2.0", "^2.0.0", "../v2.0.0", "--version", "1.02.3", "1.2.3-01", "1.2.3\n", "1.2.3/other"])(
+    "rejects unsupported version %j",
+    (version) => expect(() => releaseVersion(version, "2.0.0")).toThrow("exact semantic version"),
+  );
+});
+
+describe("verifyBinaryVersion", () => {
+  it("checks exact binaries and accepts a valid version for an explicit latest request", () => {
+    expect(verifyBinaryVersion("quality 2.0.0\n", "v2.0.0")).toBe("2.0.0");
+    expect(verifyBinaryVersion("quality 3.0.1-rc.1+build.123\r\n", "latest")).toBe("3.0.1-rc.1+build.123");
+  });
+
+  it("rejects mismatched and malformed binary versions", () => {
+    expect(() => verifyBinaryVersion("quality 1.9.0", "v2.0.0")).toThrow("does not match requested");
+    expect(() => verifyBinaryVersion("another 2.0.0", "v2.0.0")).toThrow("did not report a valid version");
+    expect(() => verifyBinaryVersion("quality 2.0.0\nextra", "latest")).toThrow("did not report a valid version");
+  });
+});
 
 it("uses GitHub releases by default and normalizes a release base override", () => {
   expect(releaseBaseUrl("acme/quality", undefined)).toBe("https://github.com/acme/quality");
@@ -76,16 +107,34 @@ it("builds a changed-file check without shell interpolation", () => {
     "4096",
     "--report",
     "/tmp/quality.sarif",
-    "--changed",
-    "origin/main",
+    "--changed=origin/main",
   ]);
 });
 
-it("distinguishes diagnostics from operational CLI failures", () => {
-  expect(actionFailureMessage(1, "")).toContain("found diagnostics");
+it("distinguishes unsuccessful checks from operational CLI failures", () => {
+  expect(actionFailureMessage(1, "")).toContain("checks failed");
   expect(actionFailureMessage(2, "quality: invalid configuration\n")).toBe(
     "quality could not complete (exit 2): quality: invalid configuration",
   );
+});
+
+it("rejects option-like base inputs without restricting Git revision expressions", () => {
+  const inputs = {
+    base: "--dry-run",
+    changedOnly: true,
+    reportLevel: "warning",
+    failLevel: "error",
+    sarif: "",
+    requireChecks: false,
+    jobs: "",
+    timeoutSeconds: "",
+    maxOutputBytes: "",
+  };
+  expect(() => checkArguments(inputs)).toThrow("base must be a Git revision");
+  expect(() => checkArguments({ ...inputs, base: "HEAD\n--dry-run" })).toThrow("base must be a Git revision");
+  for (const base of ["HEAD~1", "origin/main^{commit}", "HEAD@{1}"]) {
+    expect(checkArguments({ ...inputs, base })).toContain(`--changed=${base}`);
+  }
 });
 
 describe("cacheToolName", () => {

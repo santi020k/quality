@@ -9,6 +9,36 @@ export type Platform =
   | "x86_64-pc-windows-msvc"
   | "x86_64-unknown-linux-gnu";
 
+const numericIdentifier = "(?:0|[1-9][0-9]*)";
+const prereleaseIdentifier = `(?:${numericIdentifier}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`;
+const semanticVersion = new RegExp(
+  `^${numericIdentifier}\\.${numericIdentifier}\\.${numericIdentifier}` +
+    `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?` +
+    "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$(?![\\s\\S])",
+  "u",
+);
+
+export function releaseVersion(input: string, actionVersion: string): string {
+  const requested = input || actionVersion;
+  if (requested === "latest") return requested;
+  const version = requested.startsWith("v") ? requested.slice(1) : requested;
+  if (!semanticVersion.test(version)) {
+    throw new Error("version must be an exact semantic version (with an optional v prefix), or latest");
+  }
+  return `v${version}`;
+}
+
+export function verifyBinaryVersion(stdout: string, requested: string): string {
+  const version = stdout.trim().match(/^quality ([^\s]+)$/u)?.[1];
+  if (!version || !semanticVersion.test(version)) {
+    throw new Error("installed quality binary did not report a valid version");
+  }
+  if (requested !== "latest" && requested !== `v${version}`) {
+    throw new Error(`installed quality version ${version} does not match requested ${requested}`);
+  }
+  return version;
+}
+
 export function releaseRepository(
   actionRepository: string | undefined,
   fallbackRepository: string | undefined,
@@ -81,12 +111,17 @@ export function checkArguments(inputs: {
   if (inputs.timeoutSeconds) args.push("--timeout-seconds", inputs.timeoutSeconds);
   if (inputs.maxOutputBytes) args.push("--max-output-bytes", inputs.maxOutputBytes);
   if (inputs.sarif) args.push("--report", inputs.sarif);
-  if (inputs.changedOnly && inputs.base) args.push("--changed", inputs.base);
+  if (inputs.changedOnly && inputs.base) {
+    if (inputs.base.startsWith("-") || /[\u0000-\u001f\u007f]/u.test(inputs.base)) {
+      throw new Error("base must be a Git revision, not a command-line option or control character");
+    }
+    args.push(`--changed=${inputs.base}`);
+  }
   return args;
 }
 
 export function actionFailureMessage(exitCode: number, stderr: string): string {
-  if (exitCode === 1) return "quality found diagnostics at or above the configured failure level";
+  if (exitCode === 1) return "quality checks failed; inspect the reported diagnostics and tool failures";
   const detail = stderr
     .split(/\r?\n/u)
     .map((line) => line.trim())
