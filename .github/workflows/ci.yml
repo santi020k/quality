@@ -54,12 +54,21 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
       - name: Check affected projects
         run: pnpm run ci --report "$RUNNER_TEMP/quality-ci.json"
+      - name: Record committed impact plan alongside the canonical gate
+        run: |
+          if [[ "$QUALITY_CI_FULL" == true ]]; then
+            cargo run --locked --quiet --package quality-cli -- impact plan --full --format json > "$RUNNER_TEMP/quality-impact.json"
+          else
+            cargo run --locked --quiet --package quality-cli -- impact plan --base "$QUALITY_CI_BASE" --head HEAD --format json > "$RUNNER_TEMP/quality-impact.json"
+          fi
       - name: Save validation timing and selection
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-ci-plan
-          path: ${{ runner.temp }}/quality-ci.json
+          path: |
+            ${{ runner.temp }}/quality-ci.json
+            ${{ runner.temp }}/quality-impact.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Check user-visible release note

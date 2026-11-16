@@ -1,8 +1,13 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.0.5/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "santi020k/quality" }],
+  "changelog": "../scripts/changelog.mjs",
   "commit": false,
-  "fixed": [["@quality/cli", "@quality/action"]],
+  "fixed": [
+    [
+      "@quality/cli",
+      "@quality/action"
+    ]
+  ],
   "linked": [],
   "access": "restricted",
   "baseBranch": "main",

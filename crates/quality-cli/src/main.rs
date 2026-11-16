@@ -4,6 +4,7 @@ mod changes;
 mod cli;
 mod config;
 mod hooks;
+mod impact;
 mod local_ci;
 mod output;
 mod presets;
@@ -72,6 +73,9 @@ fn run() -> Result<()> {
     version_pin::enforce(&root)?;
     if let Command::Repositories { command } = cli.command {
         return repositories::run(&root, command);
+    }
+    if let Command::Impact { command } = cli.command {
+        return impact::run(&root, command);
     }
     let project = Project::discover(&root)?;
 
@@ -391,6 +395,7 @@ fn run() -> Result<()> {
         Command::Repositories { .. } => {
             unreachable!("repositories return before project discovery")
         }
+        Command::Impact { .. } => unreachable!("impact returns before project discovery"),
         Command::Hooks { command } => {
             let config = Config::load_or_default(&root)?;
             match command {

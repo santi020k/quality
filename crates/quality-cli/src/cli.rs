@@ -157,11 +157,53 @@ pub enum Command {
         #[command(subcommand)]
         command: RepositoriesCommand,
     },
+    /// Plan affected validation and verify complete, revision-bound results.
+    Impact {
+        #[command(subcommand)]
+        command: ImpactCommand,
+    },
     /// Install and run package-manager-independent Git hooks.
     Hooks {
         #[command(subcommand)]
         command: HooksCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ImpactCommand {
+    /// Plan committed changes without executing commands or reading local source edits.
+    Plan {
+        #[arg(long, default_value = "quality-impact.json", value_name = "PATH")]
+        config: PathBuf,
+        #[arg(long, required_unless_present = "full", value_name = "REF")]
+        base: Option<String>,
+        #[arg(long, default_value = "HEAD", value_name = "REF")]
+        head: String,
+        #[arg(long, value_enum, default_value_t = ImpactComparison::MergeBase)]
+        comparison: ImpactComparison,
+        /// Select every configured node, regardless of changed paths.
+        #[arg(long)]
+        full: bool,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Reject missing, stale, malformed, failed, or skipped planned results.
+    Verify {
+        #[arg(long, value_name = "PATH")]
+        plan: PathBuf,
+        #[arg(long, value_name = "PATH")]
+        results: PathBuf,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImpactComparison {
+    #[default]
+    MergeBase,
+    Direct,
 }
 
 #[derive(Debug, Subcommand)]

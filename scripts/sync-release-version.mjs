@@ -78,6 +78,11 @@ await synchronize("apps/site/src/content/docs/compatibility.md", (contents) => {
   return contents.replace(previewPolicy, expectedPolicy).replace(stablePolicy, expectedPolicy);
 });
 
+// Keep generated Markdown blank lines free of indentation from renderer output.
+for (const path of ["packages/action/CHANGELOG.md", "crates/quality-cli/CHANGELOG.md", "CHANGELOG.md"]) {
+  await synchronize(path, (contents) => contents.replace(/^[ \t]+$/gm, ""));
+}
+
 if (majorVersion >= 1) {
   const changelogs = await Promise.all([
     readFile("packages/action/CHANGELOG.md", "utf8"),

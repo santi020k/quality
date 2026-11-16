@@ -32,7 +32,7 @@ Website and documentation: <https://quality.santi020k.com>
 [Issues](https://github.com/santi020k/quality/issues) ·
 [Contributing](CONTRIBUTING.md)
 
-> Status: `1.x` stable. Public CLI, configuration, report, and Action contracts follow the
+> Status: `2.x` stable. Public CLI, configuration, report, and Action contracts follow the
 > documented compatibility policy for this major release.
 
 **Explore:** [GitHub Action](#github-action) · [The developer experience](#the-developer-experience) · [Install for development](#install-for-development) · [Supported adapters](#supported-adapters) · [Language-aware presets](#language-aware-presets) · [Try features in the playground](#try-features-in-the-playground)
@@ -44,9 +44,9 @@ Website and documentation: <https://quality.santi020k.com>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v1.4.0
+- uses: santi020k/quality@v2.0.0
   with:
-    version: v1.4.0
+    version: v2.0.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -108,7 +108,7 @@ Unix users can install a checksum-verified native binary without Rust:
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v1.4.0
+  | sh -s -- santi020k/quality v2.0.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -204,6 +204,14 @@ Write SARIF while keeping readable terminal or GitHub output with `--report`:
 quality check --report quality.sarif
 quality check --format github --report artifacts/quality.sarif
 ```
+
+## Impact planning
+
+Quality 2 adds `quality impact plan` and `quality impact verify` for committed-source
+validation graphs. Plans explain affected tasks, prerequisites, and parallel batches;
+verification requires a successful result for every selected task. Turbo and native
+tools retain execution and caching. See [Impact pipelines](docs/impact-pipelines.md)
+for configuration, result contracts, adoption, and release boundaries.
 
 ## Supported adapters
 
@@ -459,7 +467,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.4.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
 ```
 
 Run the configured `pre-push` gate before spending a GitHub-hosted runner:
