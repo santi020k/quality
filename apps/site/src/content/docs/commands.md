@@ -245,13 +245,39 @@ The 20 most recent metadata-only runs are kept below `.git/quality/local-ci/` un
 reports from commands that may print sensitive information. JSON plans follow
 the [`local CI plan schema`](/quality-ci-plan.schema.json).
 
+## `quality impact plan` and `quality impact verify`
+
+Quality 2 plans committed-source validation graphs without executing commands:
+
+```bash
+quality impact plan --base origin/main --head HEAD --format json > plan.json
+quality impact plan --base LAST_DELIVERED_SHA --comparison direct --format json
+quality impact plan --full --format json
+quality impact verify --plan plan.json --results results.json --format json
+```
+
+Declare nodes and their inputs, dependencies, and commands in
+`quality-impact.json`. Match exact paths or directory prefixes ending in `/`.
+Unknown inputs and unavailable comparisons select the full configured graph;
+invalid configuration fails. Independent execution batches are included in the
+plan for a trusted workflow to schedule. Turbo and native tools retain their
+existing execution and cache responsibilities.
+
+Verification binds results to the source revision, committed configuration, and
+complete selected graph. Missing, duplicate, failed, cancelled, or skipped
+selected results cannot pass. Plan identities do not authenticate arbitrary
+result files. Keep full release gates while qualifying affected selection.
+
+See the [impact pipeline guide](https://github.com/santi020k/quality/blob/main/docs/impact-pipelines.md)
+for the configuration and result contracts, cache boundaries, and migration.
+
 ## `quality ci github`
 
 Generate a GitHub Actions workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.4.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
 ```
 
 The generator selects Linux or macOS from the detected platforms and adds

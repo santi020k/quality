@@ -1,5 +1,14 @@
 # @quality/site
 
+## 0.3.2
+
+### Patch Changes
+
+- Upgrade the documentation site to Astro 7.4.12, including the fixes for
+  GHSA-r3h5-4585-7x3w and GHSA-mh32-jxcr-mh9f. The development workspace and site
+  build now require Node 22.23.4 or later; native CLI compatibility and the Action's
+  Node 24 runtime are unchanged.
+
 ## 0.3.1
 
 ### Patch Changes

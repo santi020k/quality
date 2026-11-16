@@ -1,7 +1,7 @@
 {
   "name": "@quality/site",
   "type": "module",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "scripts": {
     "prebuild": "santi-og generate --config scripts/generate-og-images.mjs",
     "dev": "astro dev",
@@ -17,11 +17,11 @@
   },
   "dependencies": {
     "@santi020k/lumen-astro": "5.0.0",
-    "astro": "^7.3.7"
+    "astro": "^7.4.12"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@astrojs/markdown-satteri": "0.4.3",
+    "@astrojs/markdown-satteri": "0.4.10",
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.64.0",
     "@santi020k/og": "1.2.0",

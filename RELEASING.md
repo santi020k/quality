@@ -22,7 +22,7 @@ without exposing their values:
    branches for equivalent changes before retiring them.
 2. Add a Changeset for user-visible changes. The CLI and Action are a fixed
    version group and must remain on the same version. For this candidate, the
-   target is `1.4.0`; the documentation package has its own version.
+   target is `2.0.0`; the documentation package has its own version.
 3. Run `pnpm changeset status` and review the proposed versions. Run the documented
    `pnpm version-packages` generator on the release branch to update Cargo,
    installation examples, compatibility references, and changelogs together.
@@ -60,6 +60,35 @@ selected release branch rather than creating a competing version proposal.
 5. Only after post-release verification, delete the release branch remotely and
    locally, and return to an up-to-date local `main`. Remote changes require the
    user's authorization.
+
+## Migration and recovery for 2.0.0
+
+The CLI and Action move together to major version 2. The impact graph is an
+explicit separate `quality-impact.json` contract; existing analyzer configuration
+and `quality ci plan` retain their meanings. See [Impact pipelines](docs/impact-pipelines.md).
+No application-data migration is required. Keep full release validation while
+qualifying impact selection, and retain the existing pre-push and release gates.
+
+The development workspace now requires Node `>=22.23.4` for the documentation
+site's patched Astro 7.4.12 dependency and matching Markdown processor 0.4.10.
+This is a development and site-build
+requirement; the native CLI and the Action's Node 24 runtime are unchanged.
+Astro 7.4.12 includes the fixes for
+[the image endpoint path check](https://github.com/withastro/astro/security/advisories/GHSA-r3h5-4585-7x3w)
+and [dynamic tag attribute injection](https://github.com/withastro/astro/security/advisories/GHSA-mh32-jxcr-mh9f).
+Its [release notes](https://github.com/withastro/astro/releases/tag/astro%407.4.12)
+also document reduced content-collection memory use during builds. Keep the site
+manifest and lockfile together, and verify diagnostics, the production build,
+browser behavior, and the dependency audit after updates.
+
+Release notes now use the local deterministic Changesets renderer. Changesets
+still owns version propagation; the renderer never queries GitHub during version
+preparation. After publication, consumers must update reviewed exact-version or
+commit pins deliberately. Do not point workflows at an unpublished v2 binary.
+
+If planning or verification fails, run the full canonical gate and fix the
+configuration; do not accept missing results. Recovery after publication follows
+a new patch release through GitHub Actions. Never replace the v2.0.0 tag.
 
 ## Migration and recovery for 1.4.0
 

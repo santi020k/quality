@@ -1,5 +1,15 @@
 # @quality/action
 
+## 2.0.0
+
+### Major Changes
+
+- Add deterministic impact planning and strict result verification for dependency-aware validation pipelines. Plans explain selected checks, prerequisites, independent execution batches, and conservative full-validation fallbacks without executing repository commands.
+
+  Migration: configure the separate `quality-impact.json` contract to adopt impact planning. Existing `quality.yml`, `quality check`, and `quality ci plan` retain their meanings. The Action and CLI move together to version 2; update pinned release references when adopting the published release.
+
+  Render changelogs locally from reviewed Changesets without network-dependent enrichment. Keep full release gates during impact-plan qualification; deployment and publication remain protected workflow operations.
+
 ## 1.4.0
 
 ### Minor Changes
