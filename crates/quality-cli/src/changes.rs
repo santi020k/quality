@@ -22,6 +22,10 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
     let resolved_base = resolve_revision(root, base)
         .with_context(|| format!("Git base `{base}` does not resolve to a commit"))?;
 
+    // Treat renames as a deletion and an addition so removing a configuration
+    // path still triggers its analyzer, even when Git recognizes the new path.
+    // Include type changes: replacing a source file with a symlink (or the
+    // reverse) changes the analyzer's input just as a content edit does.
     let mut files = BTreeSet::new();
     let comparison = if base == "HEAD" {
         "HEAD".to_owned()
@@ -32,10 +36,11 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         root,
         &[
             "diff",
+            "--no-renames",
             "--relative",
             "--name-only",
             "-z",
-            "--diff-filter=ACMR",
+            "--diff-filter=ACMRT",
             &comparison,
             "--",
             ".",
@@ -48,6 +53,7 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         root,
         &[
             "diff",
+            "--no-renames",
             "--relative",
             "--name-only",
             "-z",
@@ -65,10 +71,11 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
             root,
             &[
                 "diff",
+                "--no-renames",
                 "--relative",
                 "--name-only",
                 "-z",
-                "--diff-filter=ACMR",
+                "--diff-filter=ACMRT",
                 "HEAD",
                 "--",
                 ".",
@@ -80,6 +87,7 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
             root,
             &[
                 "diff",
+                "--no-renames",
                 "--relative",
                 "--name-only",
                 "-z",

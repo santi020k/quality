@@ -1,6 +1,6 @@
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
@@ -423,8 +423,7 @@ pub fn retain_report(
             step.command = command_display(configured, &[]);
         }
     }
-    let run_path = unique_run_path(&directory, report.started_at_unix_ms)?;
-    write_report(&retained, &run_path)?;
+    let run_path = write_history_report(&directory, &retained)?;
     write_report(&retained, &directory.join("latest.json"))?;
     prune_history(&directory)?;
     Ok(Some(run_path))
@@ -501,9 +500,7 @@ pub fn print_comparison(
     let base = if let Some(selector) = base_selector {
         select_history_run(&runs, selector)?
     } else {
-        runs.iter()
-            .find(|run| run.id != head.id && run.report.hook == head.report.hook)
-            .with_context(|| "at least two retained local CI runs are required for comparison")?
+        previous_history_run(&runs, head)?
     };
     if base.id == head.id {
         anyhow::bail!("comparison requires two different retained runs");
@@ -555,11 +552,15 @@ fn read_history(root: &Path, hook: Option<&str>) -> Result<Vec<StoredRun>> {
     let Some(directory) = history_directory(root)? else {
         return Ok(Vec::new());
     };
+    read_history_in(&directory, hook)
+}
+
+fn read_history_in(directory: &Path, hook: Option<&str>) -> Result<Vec<StoredRun>> {
     if !directory.is_dir() {
         return Ok(Vec::new());
     }
     let mut runs = Vec::new();
-    for entry in fs::read_dir(&directory)
+    for entry in fs::read_dir(directory)
         .with_context(|| format!("could not read {}", directory.display()))?
     {
         let path = entry?.path();
@@ -569,8 +570,13 @@ fn read_history(root: &Path, hook: Option<&str>) -> Result<Vec<StoredRun>> {
         if !name.starts_with("run-") || !name.ends_with(".json") {
             continue;
         }
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("could not read {}", path.display()))?;
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error).with_context(|| format!("could not read {}", path.display()));
+            }
+        };
         let report: LocalCiReport = serde_json::from_str(&text)
             .with_context(|| format!("invalid local CI history in {}", path.display()))?;
         if report.schema_version != REPORT_SCHEMA_VERSION {
@@ -594,19 +600,47 @@ fn read_history(root: &Path, hook: Option<&str>) -> Result<Vec<StoredRun>> {
             .report
             .started_at_unix_ms
             .cmp(&left.report.started_at_unix_ms)
+            .then_with(|| right.id.cmp(&left.id))
     });
     Ok(runs)
 }
 
-fn unique_run_path(directory: &Path, started_at_unix_ms: u128) -> Result<PathBuf> {
-    let first = directory.join(format!("run-{started_at_unix_ms}.json"));
-    if !first.exists() {
-        return Ok(first);
-    }
-    for suffix in 1..=9999_u16 {
-        let candidate = directory.join(format!("run-{started_at_unix_ms}-{suffix:04}.json"));
-        if !candidate.exists() {
-            return Ok(candidate);
+fn write_history_report(directory: &Path, report: &LocalCiReport) -> Result<PathBuf> {
+    let serialized = serde_json::to_vec_pretty(report)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(directory).with_context(|| {
+        format!(
+            "could not create temporary history in {}",
+            directory.display()
+        )
+    })?;
+    temporary
+        .write_all(&serialized)
+        .context("could not write temporary local CI history")?;
+    temporary
+        .as_file()
+        .sync_all()
+        .context("could not sync temporary local CI history")?;
+
+    let started_at_unix_ms = report.started_at_unix_ms;
+    for suffix in 0..=9999_u16 {
+        let name = if suffix == 0 {
+            format!("run-{started_at_unix_ms}.json")
+        } else {
+            format!("run-{started_at_unix_ms}-{suffix:04}.json")
+        };
+        let candidate = directory.join(name);
+        // Publish the complete report without replacing a run created by a
+        // concurrent process between filename selection and persistence.
+        match temporary.persist_noclobber(&candidate) {
+            Ok(_) => return Ok(candidate),
+            Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
+                temporary = error.file;
+            }
+            Err(error) => {
+                return Err(error.error).with_context(|| {
+                    format!("could not retain history in {}", candidate.display())
+                });
+            }
         }
     }
     anyhow::bail!("could not allocate a unique local CI history file")
@@ -630,6 +664,19 @@ fn select_history_run<'a>(runs: &'a [StoredRun], selector: &str) -> Result<&'a S
                 .with_context(|| format!("retained local CI run `{value}` was not found"))
         }
     }
+}
+
+fn previous_history_run<'a>(runs: &'a [StoredRun], head: &StoredRun) -> Result<&'a StoredRun> {
+    runs.iter()
+        .skip_while(|run| run.id != head.id)
+        .skip(1)
+        .find(|run| run.report.hook == head.report.hook)
+        .with_context(|| {
+            format!(
+                "no retained local CI run before `{}` matches hook `{}`",
+                head.id, head.report.hook
+            )
+        })
 }
 
 fn history_entry(id: &str, report: &LocalCiReport) -> LocalCiHistoryEntry {
@@ -779,18 +826,33 @@ fn prune_history(directory: &Path) -> Result<()> {
         .with_context(|| format!("could not read {}", directory.display()))?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(OsStr::to_str)
-                .is_some_and(|name| name.starts_with("run-") && name.ends_with(".json"))
-        })
+        .filter_map(|path| history_file_order(&path).map(|order| (order, path)))
         .collect::<Vec<_>>();
     runs.sort();
     let remove_count = runs.len().saturating_sub(RETAINED_RUNS);
-    for path in runs.into_iter().take(remove_count) {
-        fs::remove_file(&path).with_context(|| format!("could not prune {}", path.display()))?;
+    for (_, path) in runs.into_iter().take(remove_count) {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("could not prune {}", path.display()));
+            }
+        }
     }
     Ok(())
+}
+
+fn history_file_order(path: &Path) -> Option<(u128, u16)> {
+    let id = path
+        .file_name()?
+        .to_str()?
+        .strip_prefix("run-")?
+        .strip_suffix(".json")?;
+    let (timestamp, suffix) = match id.split_once('-') {
+        Some((timestamp, suffix)) => (timestamp, suffix.parse().ok()?),
+        None => (id, 0),
+    };
+    Some((timestamp.parse().ok()?, suffix))
 }
 
 fn execute_step(
@@ -1626,12 +1688,134 @@ jobs:
     #[test]
     fn retained_history_does_not_replace_runs_started_in_the_same_millisecond() {
         let temporary = tempfile::tempdir().unwrap();
-        let first = unique_run_path(temporary.path(), 123).unwrap();
-        fs::write(&first, "{}").unwrap();
-        let second = unique_run_path(temporary.path(), 123).unwrap();
+        let first = write_history_report(temporary.path(), &history_report(123, 1)).unwrap();
+        let second = write_history_report(temporary.path(), &history_report(123, 2)).unwrap();
 
         assert_eq!(first.file_name().unwrap(), "run-123.json");
         assert_eq!(second.file_name().unwrap(), "run-123-0001.json");
+        let original: LocalCiReport = serde_json::from_slice(&fs::read(first).unwrap()).unwrap();
+        assert_eq!(original.duration_ms, 1);
+    }
+
+    #[test]
+    fn concurrent_history_writes_preserve_every_complete_report() {
+        let temporary = tempfile::tempdir().unwrap();
+        write_history_report(temporary.path(), &history_report(123, 0)).unwrap();
+        let barrier = std::sync::Barrier::new(8);
+
+        let paths = thread::scope(|scope| {
+            let handles = (1..=8)
+                .map(|duration| {
+                    let directory = temporary.path();
+                    let barrier = &barrier;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        write_history_report(directory, &history_report(123, duration)).unwrap()
+                    })
+                })
+                .collect::<Vec<_>>();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+
+        let unique = paths.into_iter().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), 8);
+        let runs = read_history_in(temporary.path(), None).unwrap();
+        let mut durations = runs
+            .iter()
+            .map(|run| run.report.duration_ms)
+            .collect::<Vec<_>>();
+        durations.sort();
+        assert_eq!(durations, (0..=8).collect::<Vec<_>>());
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 9);
+    }
+
+    #[test]
+    fn history_selectors_order_equal_timestamps_and_never_resolve_paths() {
+        let temporary = tempfile::tempdir().unwrap();
+        for name in ["run-123-0002.json", "run-123.json", "run-123-0001.json"] {
+            write_report(&history_report(123, 1), &temporary.path().join(name)).unwrap();
+        }
+
+        let runs = read_history_in(temporary.path(), None).unwrap();
+        assert_eq!(
+            select_history_run(&runs, "latest").unwrap().id,
+            "run-123-0002"
+        );
+        assert_eq!(
+            select_history_run(&runs, "previous").unwrap().id,
+            "run-123-0001"
+        );
+        for selector in ["123", "run-123", "123.json", "run-123.json"] {
+            assert_eq!(select_history_run(&runs, selector).unwrap().id, "run-123");
+        }
+        for selector in [
+            "../run-123.json",
+            "./run-123",
+            "/run-123.json",
+            "..\\run-123.json",
+        ] {
+            assert!(select_history_run(&runs, selector).is_err());
+        }
+    }
+
+    #[test]
+    fn history_pruning_orders_collisions_and_timestamp_widths_numerically() {
+        let temporary = tempfile::tempdir().unwrap();
+        write_history_report(temporary.path(), &history_report(9, 0)).unwrap();
+        for duration in 0..=20 {
+            write_history_report(temporary.path(), &history_report(10, duration)).unwrap();
+        }
+
+        prune_history(temporary.path()).unwrap();
+
+        assert!(!temporary.path().join("run-9.json").exists());
+        assert!(!temporary.path().join("run-10.json").exists());
+        let runs = read_history_in(temporary.path(), None).unwrap();
+        assert_eq!(runs.len(), RETAINED_RUNS);
+        assert_eq!(
+            select_history_run(&runs, "latest").unwrap().id,
+            "run-10-0020"
+        );
+        assert_eq!(
+            select_history_run(&runs, "previous").unwrap().id,
+            "run-10-0019"
+        );
+    }
+
+    #[test]
+    fn comparison_default_base_precedes_the_selected_head_and_matches_its_hook() {
+        let temporary = tempfile::tempdir().unwrap();
+        for timestamp in 1..=4 {
+            let mut report = history_report(timestamp, timestamp);
+            if timestamp == 2 {
+                report.hook = "pre-push".to_owned();
+            }
+            write_history_report(temporary.path(), &report).unwrap();
+        }
+        let runs = read_history_in(temporary.path(), None).unwrap();
+
+        let latest = select_history_run(&runs, "latest").unwrap();
+        assert_eq!(previous_history_run(&runs, latest).unwrap().id, "run-3");
+        let older = select_history_run(&runs, "run-3").unwrap();
+        assert_eq!(previous_history_run(&runs, older).unwrap().id, "run-1");
+        let oldest = select_history_run(&runs, "run-1").unwrap();
+        assert!(previous_history_run(&runs, oldest).is_err());
+        let isolated_hook = select_history_run(&runs, "run-2").unwrap();
+        assert!(previous_history_run(&runs, isolated_hook).is_err());
+    }
+
+    fn history_report(started_at_unix_ms: u128, duration_ms: u128) -> LocalCiReport {
+        LocalCiReport {
+            schema_version: REPORT_SCHEMA_VERSION,
+            hook: "pre-commit".to_owned(),
+            started_at_unix_ms,
+            duration_ms,
+            status: LocalCiStatus::Passed,
+            steps: Vec::new(),
+        }
     }
 
     #[test]

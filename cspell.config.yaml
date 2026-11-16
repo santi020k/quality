@@ -9,6 +9,10 @@ ignorePaths:
   - "**/target/**"
   - pnpm-lock.yaml
 words:
+  - ACMRT
+  - nocapture
+  - noclobber
+  - taskkill
   - ACMR
   - actionlint
   - apos
