@@ -36,6 +36,7 @@ words:
   - lede
   - linecap
   - libyaml
+  - linejoin
   - llms
   - lucide
   - lockfiles
@@ -44,6 +45,7 @@ words:
   - networkidle
   - noopener
   - noreferrer
+  - NOSYSTEM
   - pbxproj
   - prepush
   - pyproject
@@ -55,6 +57,7 @@ words:
   - Satteri
   - sendemail
   - serde
+  - Segoe
   - shiki
   - swfitlint
   - swiftlints

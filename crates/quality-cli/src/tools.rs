@@ -420,15 +420,24 @@ impl Tool {
             }
             "swiftformat" | "eslint" | "prettier" | "cspell" | "codespell" | "typos" => {
                 args.retain(|arg| arg != ".");
-                args.extend(files.iter().map(|path| path.display().to_string()));
+                args.extend(files.iter().map(|path| file_argument(path)));
             }
             "ktlint" => {
-                args.extend(files.iter().map(|path| path.display().to_string()));
+                args.extend(files.iter().map(|path| file_argument(path)));
             }
             "detekt" => {
-                if let Ok(paths) = std::env::join_paths(files) {
+                if !files
+                    .iter()
+                    .any(|path| path.to_string_lossy().contains(','))
+                {
                     args.push("--input".to_owned());
-                    args.push(paths.to_string_lossy().to_string());
+                    args.push(
+                        files
+                            .iter()
+                            .map(|path| file_argument(path))
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    );
                 }
             }
             // These adapters analyze their workspace as a unit.
@@ -584,11 +593,7 @@ pub fn external_invocation(
             if active_relevant.is_empty() {
                 return None;
             }
-            args.extend(
-                active_relevant
-                    .iter()
-                    .map(|path| path.display().to_string()),
-            );
+            args.extend(active_relevant.iter().map(|path| file_argument(path)));
         }
     }
 
@@ -608,6 +613,15 @@ pub fn external_invocation(
         }),
         timeout_seconds: config.timeout_seconds,
     })
+}
+
+fn file_argument(path: &Path) -> String {
+    let rendered = path.display().to_string();
+    if rendered.starts_with('-') {
+        Path::new(".").join(path).display().to_string()
+    } else {
+        rendered
+    }
 }
 
 fn external_accepts_path(path: &Path, config: &ExternalToolConfig) -> bool {

@@ -43,6 +43,19 @@ export async function sha256(file: string): Promise<string> {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Tool-cache lookups and insertions are keyed only by tool name, version,
+ * and arch, with no notion of which release repository or base URL the
+ * binary came from. Two distinct repositories (or a fork publishing a
+ * fixture server override) can therefore publish the same version string
+ * and silently reuse each other's cached binary. Hashing the fully
+ * resolved base URL into the tool name gives each source its own
+ * namespace while staying a fixed-length, path-safe cache key.
+ */
+export function cacheToolName(resolvedBaseUrl: string): string {
+  return `quality-${createHash("sha256").update(resolvedBaseUrl).digest("hex")}`;
+}
+
 export function checkArguments(inputs: {
   base: string;
   changedOnly: boolean;
@@ -85,4 +98,70 @@ export function actionFailureMessage(exitCode: number, stderr: string): string {
 
 export function resolveProjectPath(workspace: string, requested: string): string {
   return path.resolve(workspace, requested);
+}
+
+export interface SarifReportSummary {
+  tools: number;
+  findings: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function malformedReportError(detail: string): Error {
+  return new Error(`quality SARIF report is malformed: ${detail}`);
+}
+
+/**
+ * A `quality` CLI from before the `qualityExecuted` marker existed omits
+ * that property, so its runs always count toward `tools`. Only an
+ * explicit `qualityExecuted: false` (a tool whose process never started)
+ * excludes a run from that count; its diagnostics still count toward
+ * `findings`, since a required missing tool must stay visible.
+ */
+export function summarizeSarifReport(report: unknown): SarifReportSummary {
+  if (!isRecord(report)) {
+    throw malformedReportError("top-level value is not an object");
+  }
+  const runs = report["runs"];
+  if (runs === undefined) return { tools: 0, findings: 0 };
+  if (!isUnknownArray(runs)) {
+    throw malformedReportError('"runs" is not an array');
+  }
+
+  let tools = 0;
+  let findings = 0;
+  for (const [index, run] of runs.entries()) {
+    if (!isRecord(run)) {
+      throw malformedReportError(`runs[${index}] is not an object`);
+    }
+    const results = run["results"];
+    if (results !== undefined) {
+      if (!isUnknownArray(results)) {
+        throw malformedReportError(`runs[${index}].results is not an array`);
+      }
+      findings += results.length;
+    }
+    if (runQualityExecuted(run, index) !== false) tools += 1;
+  }
+  return { tools, findings };
+}
+
+function runQualityExecuted(run: Record<string, unknown>, index: number): boolean | undefined {
+  const properties = run["properties"];
+  if (properties === undefined) return undefined;
+  if (!isRecord(properties)) {
+    throw malformedReportError(`runs[${index}].properties is not an object`);
+  }
+  const executed = properties["qualityExecuted"];
+  if (executed === undefined) return undefined;
+  if (typeof executed !== "boolean") {
+    throw malformedReportError(`runs[${index}].properties.qualityExecuted is not a boolean`);
+  }
+  return executed;
 }

@@ -79,7 +79,8 @@ language-aware presets add this `commit-msg` policy automatically. An existing
 
 Installation is explicit and conflict-safe. `quality` does not overwrite
 hooks owned by Husky, Lefthook, or another manager. Remove the previous
-manager's `core.hooksPath` setting before installing, or invoke
+manager's `core.hooksPath` setting before installing, including settings inherited
+from global or conditional Git configuration, or invoke
 `quality hooks run <event>` from that manager manually. Local hooks remain an
 early feedback mechanism; protected CI checks remain the authoritative quality
 gate.

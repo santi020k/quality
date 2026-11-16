@@ -638,12 +638,36 @@ fn missing_required_tool_is_included_in_sarif() {
         sarif["runs"][0]["results"][0]["ruleId"],
         "tool-not-installed"
     );
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], false);
 
     let agent = quality(temp.path(), &["check", "--format", "agent"]);
     assert_eq!(agent.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&agent.stdout);
     assert!(stdout.contains("## Environment and toolchain problems"));
     assert!(!stdout.contains("## Findings"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_spawn_failure_is_reported_in_sarif_without_counting_as_execution() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let command = temp.path().join("not-executable");
+    fs::write(&command, "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  unavailable:\n    command: ./not-executable\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "sarif"]);
+    assert_eq!(output.status.code(), Some(1));
+    let sarif: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(sarif["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], false);
+    assert_eq!(sarif["runs"][0]["results"][0]["level"], "error");
 }
 
 #[test]
@@ -723,6 +747,7 @@ fn check_normalizes_a_tool_failure_to_json_and_sarif() {
     let sarif: serde_json::Value = serde_json::from_slice(&sarif_output.stdout).unwrap();
     assert_eq!(sarif["version"], "2.1.0");
     assert_eq!(sarif["runs"][0]["results"][0]["ruleId"], "example_rule");
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], true);
 
     let agent_output = quality(temp.path(), &["check", "--format", "agent"]);
     assert_eq!(agent_output.status.code(), Some(1));
@@ -1664,6 +1689,85 @@ fn baseline_refuses_to_hide_a_missing_required_tool() {
 
 #[cfg(unix)]
 #[test]
+fn existing_baseline_does_not_hide_a_later_analyzer_crash() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let analyzer = temp.path().join("analyzer");
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf 'App.swift:1:1: warning: Existing problem (example_rule)\\n'\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&analyzer, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ncustom:\n  analyzer:\n    command: ./analyzer\n    enabled: true\n    check_args: []\n    parser: generic\n",
+    )
+    .unwrap();
+
+    let created = quality(temp.path(), &["baseline", "create"]);
+    assert!(created.status.success());
+    assert!(quality(temp.path(), &["check"]).status.success());
+
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf 'App.swift:1:1: warning: Existing problem (example_rule)\\n'\nprintf 'fatal: analyzer crashed\\n'\nexit 2\n",
+    )
+    .unwrap();
+    let output = quality(temp.path(), &["check", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["suppressed"], 0);
+    assert_eq!(report["results"][0]["status"], "failed");
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["message"],
+        "Existing problem"
+    );
+    assert!(
+        report["results"][0]["output"]
+            .as_str()
+            .unwrap()
+            .contains("fatal: analyzer crashed")
+    );
+
+    let errors_only = quality(
+        temp.path(),
+        &["check", "--format", "json", "--fail-level", "error"],
+    );
+    assert_eq!(errors_only.status.code(), Some(1));
+}
+
+#[cfg(unix)]
+#[test]
+fn structured_findings_do_not_become_environment_failures_from_their_message() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  lint:\n    command: sh\n    args: [-c, 'cat findings.json; exit 1']\n    parser: eslint-json\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("findings.json"),
+        r#"[{"filePath":"src/watch.ts","messages":[{"severity":2,"message":"too many open files in this comment","ruleId":"comment-content","line":1}]}]"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["results"][0]["failure_kind"], "code");
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+    assert_eq!(output.status.code(), Some(1));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("## Findings"));
+    assert!(text.contains("too many open files in this comment"));
+    assert!(!text.contains("## Environment and toolchain problems"));
+}
+
+#[cfg(unix)]
+#[test]
 fn external_adapter_supports_detection_changed_files_and_normalization() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -1708,6 +1812,59 @@ fn external_adapter_supports_detection_changed_files_and_normalization() {
     assert!(format_check.status.success());
     let format_report: serde_json::Value = serde_json::from_slice(&format_check.stdout).unwrap();
     assert_eq!(format_report["results"].as_array().unwrap().len(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn changed_paths_starting_with_a_dash_are_passed_as_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let analyzer = temp.path().join("record");
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > arguments.txt\nprintf '[]\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&analyzer, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntools:\n  eslint:\n    enabled: true\n    command: ./record\n  detekt:\n    enabled: true\n    command: ./record\ncustom:\n  analyzer:\n    command: ./record\n    extensions: [md]\n    check_args: [--check]\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::write(temp.path().join("--config.ts"), "export {};\n").unwrap();
+    fs::write(temp.path().join("--config.md"), "Example\n").unwrap();
+    fs::write(temp.path().join("--config.kt"), "class Example\n").unwrap();
+    fs::write(temp.path().join("Second file.kt"), "class Second\n").unwrap();
+
+    for (adapter, expected_path) in [
+        ("eslint", "./--config.ts"),
+        ("analyzer", "./--config.md"),
+        ("detekt", "./--config.kt,Second file.kt"),
+    ] {
+        let output = quality(temp.path(), &["check", "--changed", "--only", adapter]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let arguments = fs::read_to_string(temp.path().join("arguments.txt")).unwrap();
+        assert!(arguments.lines().any(|argument| argument == expected_path));
+        assert!(
+            !arguments
+                .lines()
+                .any(|argument| argument == &expected_path[2..])
+        );
+    }
+
+    fs::write(temp.path().join("Comma,Name.kt"), "class Other\n").unwrap();
+    let output = quality(temp.path(), &["check", "--changed", "--only", "detekt"]);
+    assert!(output.status.success());
+    let arguments = fs::read_to_string(temp.path().join("arguments.txt")).unwrap();
+    assert!(!arguments.lines().any(|argument| argument == "--input"));
 }
 
 #[test]
@@ -2547,6 +2704,35 @@ fn hooks_status_reports_an_inactive_custom_hooks_path() {
 
     assert_eq!(status.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&status.stderr).contains("not active"));
+}
+
+#[test]
+fn hooks_respect_an_inherited_hooks_path_without_writing_to_it() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let global_config = temp.path().join("global.gitconfig");
+    fs::write(&global_config, "[core]\n\thooksPath = .custom-hooks\n").unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-commit:\n    steps:\n      - command: git\n        args: [status, --short]\n",
+    )
+    .unwrap();
+
+    for operation in ["install", "status"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+            .arg("--root")
+            .arg(temp.path())
+            .args(["hooks", operation])
+            .env("GIT_CONFIG_GLOBAL", &global_config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("core.hooksPath"));
+        assert!(!temp.path().join(".custom-hooks").exists());
+        assert!(!temp.path().join(".git/hooks/pre-commit").exists());
+    }
 }
 
 #[cfg(unix)]

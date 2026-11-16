@@ -6,12 +6,14 @@ import path from "node:path";
 import {
   checkArguments,
   actionFailureMessage,
+  cacheToolName,
   checksumFromFile,
   releaseBaseUrl,
   releaseRepository,
   releaseTarget,
   resolveProjectPath,
   sha256,
+  summarizeSarifReport,
 } from "./lib.js";
 
 async function installQuality(version: string): Promise<string> {
@@ -19,16 +21,20 @@ async function installQuality(version: string): Promise<string> {
   const windows = process.platform === "win32";
   const binaryName = windows ? "quality.exe" : "quality";
   const cacheVersion = version === "latest" ? "" : version;
-  const cached = cacheVersion ? cache.find("quality", cacheVersion, target) : "";
-  if (cached) return path.join(cached, binaryName);
 
   const repository = releaseRepository(
     process.env.GITHUB_ACTION_REPOSITORY,
     process.env.QUALITY_ACTION_REPOSITORY,
   );
+  const resolvedBaseUrl = releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL);
+  const toolName = cacheToolName(resolvedBaseUrl);
+
+  const cached = cacheVersion ? cache.find(toolName, cacheVersion, target) : "";
+  if (cached) return path.join(cached, binaryName);
+
   const release = version === "latest" ? "releases/latest/download" : `releases/download/${version}`;
   const asset = `quality-${target}.${windows ? "zip" : "tar.gz"}`;
-  const base = `${releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL)}/${release}`;
+  const base = `${resolvedBaseUrl}/${release}`;
 
   core.info(`Installing quality ${version} for ${target}`);
   const archive = await cache.downloadTool(`${base}/${asset}`);
@@ -44,7 +50,7 @@ async function installQuality(version: string): Promise<string> {
   const cachedDirectory = await cache.cacheFile(
     binary,
     binaryName,
-    "quality",
+    toolName,
     cacheVersion,
     target,
   );
@@ -98,11 +104,10 @@ async function run(): Promise<void> {
     let findings = 0;
     let tools = 0;
     if (sarif) {
-      const report = JSON.parse(await readFile(sarif, "utf8")) as {
-        runs?: Array<{ results?: unknown[] }>;
-      };
-      tools = report.runs?.length ?? 0;
-      findings = report.runs?.reduce((count, entry) => count + (entry.results?.length ?? 0), 0) ?? 0;
+      const report: unknown = JSON.parse(await readFile(sarif, "utf8"));
+      const summary = summarizeSarifReport(report);
+      tools = summary.tools;
+      findings = summary.findings;
       core.setOutput("sarif", sarif);
     }
     core.setOutput("findings", findings);
