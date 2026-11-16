@@ -45,7 +45,7 @@ export function mergeReleaseNotes(notes) {
       const sectionEntries = section
         .slice(headingEnd + 1)
         .trim()
-        .split(/\n\n(?=- )/)
+        .split(/\n+(?=- )/)
         .filter(Boolean);
 
       for (const entry of sectionEntries) {
@@ -76,9 +76,17 @@ export function mergeReleaseNotes(notes) {
 }
 
 export function ensureReleaseHeading(contents, targetVersion, releaseNotes = "- No changes yet.") {
-  if (hasReleaseHeading(contents, targetVersion)) return contents;
+  if (hasReleaseHeading(contents, targetVersion)) {
+    const heading = `## ${targetVersion}\n`;
+    const start = contents.indexOf(heading) + heading.length;
+    const next = contents.indexOf("\n## ", start);
+    return `${contents.slice(0, start)}\n${releaseNotes.trim()}\n${next === -1 ? "" : contents.slice(next)}`;
+  }
 
-  const unreleased = /## Unreleased\n\n(?<notes>[\s\S]*?)(?=\n## )/;
+  const unreleased = /## Unreleased\n\n(?<notes>[\s\S]*?)(?=\n## |$)/;
+  if (!unreleased.test(contents)) {
+    throw new Error("Could not find the Unreleased changelog section");
+  }
   return contents.replace(unreleased, (section) =>
     `${section.trimEnd()}\n\n## ${targetVersion}\n\n${releaseNotes.trim()}\n`,
   );

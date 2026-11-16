@@ -83,3 +83,29 @@ test("keeps shared release notes under the highest package change type", () => {
     `### Minor Changes\n\n${shared}\n\n- CLI-only feature.`,
   );
 });
+
+test("merges adjacent rendered entries without losing migration paragraphs", () => {
+  const shared = "- Shared change.\n\n  Migration: update the pin.";
+  assert.equal(
+    mergeReleaseNotes([
+      `### Patch Changes\n\n${shared}\n- Action-only change.`,
+      `### Major Changes\n\n${shared}\n- CLI-only change.`,
+    ]),
+    `### Major Changes\n\n${shared}\n\n- CLI-only change.\n\n### Patch Changes\n\n- Action-only change.`,
+  );
+});
+
+test("synchronizes prepared notes and preserves older releases", () => {
+  const original = "# Changes\n\n## Unreleased\n\n- Pending.\n\n## 2.0.0\n\n- Old notes.\n\n## 1.4.0\n\n- Published notes.\n";
+  const expected = original.replace("- Old notes.", "- Complete prepared notes.");
+  assert.equal(ensureReleaseHeading(original, "2.0.0", "- Complete prepared notes."), expected);
+  assert.equal(ensureReleaseHeading(expected, "2.0.0", "- Complete prepared notes."), expected);
+});
+
+test("fails explicitly when a missing release cannot be inserted", () => {
+  assert.throws(() => ensureReleaseHeading("# Changes\n\n## 1.0.0\n", "2.0.0"), /Unreleased/);
+  assert.equal(
+    ensureReleaseHeading("# Changes\n\n## Unreleased\n\n- Pending.\n", "1.0.0", "- Initial release."),
+    "# Changes\n\n## Unreleased\n\n- Pending.\n\n## 1.0.0\n\n- Initial release.\n",
+  );
+});

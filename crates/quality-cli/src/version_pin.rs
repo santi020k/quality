@@ -18,9 +18,9 @@ fn check(root: &Path, actual: &str) -> Result<()> {
     }
     let required =
         fs::read_to_string(&path).with_context(|| format!("could not read {}", path.display()))?;
-    let required = required.trim();
+    let required = required.strip_prefix('\u{feff}').unwrap_or(&required).trim();
     if required.is_empty() {
-        anyhow::bail!("{VERSION_FILE} is empty; write a version such as `1.2.0`");
+        anyhow::bail!("{VERSION_FILE} is empty; write a version such as `2.0.0`");
     }
     if !version_pattern().is_match(required) {
         anyhow::bail!(
@@ -70,6 +70,8 @@ mod tests {
     fn accepts_a_matching_version_and_an_absent_pin() {
         let temporary = tempfile::tempdir().unwrap();
         check(temporary.path(), "1.2.0").unwrap();
+        fs::write(temporary.path().join(VERSION_FILE), "\u{feff}2.0.0\r\n").unwrap();
+        check(temporary.path(), "2.0.0").unwrap();
         fs::write(temporary.path().join(VERSION_FILE), "1.2.0\n").unwrap();
         check(temporary.path(), "1.2.0").unwrap();
     }
