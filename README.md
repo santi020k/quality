@@ -107,7 +107,7 @@ Unix users can install a checksum-verified native binary without Rust:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
+  https://raw.githubusercontent.com/santi020k/quality/v2.0.0/install.sh \
   | sh -s -- santi020k/quality v2.0.0
 ```
 

@@ -60,6 +60,7 @@ test("extracts release notes from a package changelog", () => {
     "### Patch Changes\n\n- Added registry support.",
   );
   assert.equal(releaseNotesForVersion(changelog, "2.0.0"), "");
+  assert.equal(releaseNotesForVersion("### 1.1.1\n\n- Not a release heading.\n", "1.1.1"), "");
 });
 
 test("merges and deduplicates release notes from multiple packages", () => {

@@ -18,8 +18,8 @@ export function hasReleaseHeading(contents, targetVersion) {
 
 export function releaseNotesForVersion(contents, targetVersion) {
   const heading = `## ${targetVersion}\n`;
-  const start = contents.indexOf(heading);
-  if (start === -1) return "";
+  const start = contents.startsWith(heading) ? 0 : contents.indexOf(`\n${heading}`) + 1;
+  if (start === 0 && !contents.startsWith(heading)) return "";
   const bodyStart = start + heading.length;
   const nextHeading = contents.indexOf("\n## ", bodyStart);
   return contents.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading).trim();

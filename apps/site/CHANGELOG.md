@@ -1,6 +1,40 @@
 # @quality/site
 
-## 0.3.2
+## 0.4.0
+
+### Minor Changes
+
+- Add structured diagnostics to local hook failures, enforce optional `.quality-version` pins, and provide versioned metadata-only Local CI history, show, and comparison commands with published JSON schemas.
+- Consolidate the v2 development line with reliable analyzer failures, bounded output,
+  local CI history and comparisons, and repository tool-version pins. Renamed
+  configuration and file-type changes now select the required checks. Concurrent
+  history writes preserve each run, and comparisons choose the preceding matching run.
+  Timed analyzers stop their managed process group or tree on expiry and preserve
+  Unix terminal input and signal behavior. A small Unix-only signal-handling dependency provides safe forwarding.
+
+  Refresh the documentation site to Lumen 5 and compatible stable build dependencies.
+  The development workspace requires Node.js 22.23.4 or newer. TypeScript 6 remains
+  required by the Astro checker and Action bundler; the Action runtime remains Node 24.
+
+  Migration: install Quality 2 before relying on `.quality-version`; older binaries
+  ignore pins. Pins apply to the selected project root. Analyzer execution failures
+  and incomplete structured reports now fail even with `--fail-level error` or an
+  existing baseline. Fix the analyzer or increase `--max-output-bytes`; never accept
+  an incomplete baseline. `baseline create` now accepts execution limits too.
+
+  The Action defaults to the CLI version bundled with that Action release. Set
+  `version: latest` explicitly only when deliberate automatic upgrades are wanted.
+  Exact versions are validated and downloaded or cached binaries must match them.
+  The `tools` output counts only executed adapters; private temporary reports keep
+  counts accurate when public SARIF output is disabled. GitHub annotations and
+  SARIF locations now resolve nested projects relative to the checkout.
+
+  The installer hashes the requested archive directly and requires one matching
+  SHA-256 entry. Other filenames, malformed or duplicate entries, and SHA-1 digests
+  are rejected. Prepared release notes include migration guidance; immutable tags
+  must match the qualified revision, and stable latest promotion waits for smoke
+  verification. No application data migration is required. Recover published issues
+  through a new patch release; never replace a published version tag.
 
 ### Patch Changes
 

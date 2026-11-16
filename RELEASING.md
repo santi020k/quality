@@ -61,11 +61,38 @@ selected release branch rather than creating a competing version proposal.
    locally, and return to an up-to-date local `main`. Remote changes require the
    user's authorization.
 
+Production documentation waits for a published stable release whose immutable
+tag is an ancestor of the selected main revision, with successful published
+Action smoke and stable promotion jobs. Release completion automatically retries
+the site workflow; docs-only main changes can deploy against that verified
+release. The source SHA is checked again before loading deployment secrets. Every main
+push evaluates a deployment candidate so a source-only commit cannot drop an
+older pending documentation update. This may rebuild the site for source-only
+changes until narrower selection is qualified.
+
+An unmerged or untagged deliberate `release/v*` branch suppresses automated
+version PR preparation. Consume every Changeset on that branch before merging.
+If publication succeeds but smoke fails, rerun the original release workflow at
+its original SHA. A code fix requires a new version; do not move the existing tag.
+
 ## Migration and recovery for 2.0.0
 
 The CLI and Action move together to major version 2. The impact graph is an
 explicit separate `quality-impact.json` contract; existing analyzer configuration
 and `quality ci plan` retain their meanings. See [Impact pipelines](docs/impact-pipelines.md).
+Existing consumers should review these v2 changes before updating:
+
+- Install Quality 2 before relying on `.quality-version`. Pins apply to the
+  selected project root; older binaries ignore them.
+- Unparsed analyzer failures and incomplete structured output remain failures
+  even with a baseline or a higher severity threshold. Fix the tool or raise the
+  capture limit. Baseline creation accepts the same execution limits as checks.
+- The Action defaults to its own packaged CLI version. `version: latest` is an
+  explicit opt-in, exact versions are verified, and `tools` counts only executed
+  adapters. Counts remain accurate with public SARIF output disabled.
+- The installer requires exactly one SHA-256 entry naming the requested archive.
+  Invalid, duplicate, wrong-algorithm, and unrelated entries are rejected.
+
 No application-data migration is required. Keep full release validation while
 qualifying impact selection, and retain the existing pre-push and release gates.
 

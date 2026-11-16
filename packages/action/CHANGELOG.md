@@ -4,11 +4,55 @@
 
 ### Major Changes
 
+- Consolidate the v2 development line with reliable analyzer failures, bounded output,
+  local CI history and comparisons, and repository tool-version pins. Renamed
+  configuration and file-type changes now select the required checks. Concurrent
+  history writes preserve each run, and comparisons choose the preceding matching run.
+  Timed analyzers stop their managed process group or tree on expiry and preserve
+  Unix terminal input and signal behavior. A small Unix-only signal-handling dependency provides safe forwarding.
+
+  Refresh the documentation site to Lumen 5 and compatible stable build dependencies.
+  The development workspace requires Node.js 22.23.4 or newer. TypeScript 6 remains
+  required by the Astro checker and Action bundler; the Action runtime remains Node 24.
+
+  Migration: install Quality 2 before relying on `.quality-version`; older binaries
+  ignore pins. Pins apply to the selected project root. Analyzer execution failures
+  and incomplete structured reports now fail even with `--fail-level error` or an
+  existing baseline. Fix the analyzer or increase `--max-output-bytes`; never accept
+  an incomplete baseline. `baseline create` now accepts execution limits too.
+
+  The Action defaults to the CLI version bundled with that Action release. Set
+  `version: latest` explicitly only when deliberate automatic upgrades are wanted.
+  Exact versions are validated and downloaded or cached binaries must match them.
+  The `tools` output counts only executed adapters; private temporary reports keep
+  counts accurate when public SARIF output is disabled. GitHub annotations and
+  SARIF locations now resolve nested projects relative to the checkout.
+
+  The installer hashes the requested archive directly and requires one matching
+  SHA-256 entry. Other filenames, malformed or duplicate entries, and SHA-1 digests
+  are rejected. Prepared release notes include migration guidance; immutable tags
+  must match the qualified revision, and stable latest promotion waits for smoke
+  verification. No application data migration is required. Recover published issues
+  through a new patch release; never replace a published version tag.
 - Add deterministic impact planning and strict result verification for dependency-aware validation pipelines. Plans explain selected checks, prerequisites, independent execution batches, and conservative full-validation fallbacks without executing repository commands.
 
   Migration: configure the separate `quality-impact.json` contract to adopt impact planning. Existing `quality.yml`, `quality check`, and `quality ci plan` retain their meanings. The Action and CLI move together to version 2; update pinned release references when adopting the published release.
 
   Render changelogs locally from reviewed Changesets without network-dependent enrichment. Keep full release gates during impact-plan qualification; deployment and publication remain protected workflow operations.
+
+### Patch Changes
+
+- Add an additive `qualityExecuted` property to each SARIF run, marking whether
+  the tool's process actually started. A missing required tool still produces a
+  visible SARIF run and diagnostic, but is no longer counted in the Action's
+  `tools` output, which now reflects adapters that ran rather than every
+  reported run.
+
+  Fix a tool-cache collision in the Action: it resolved the release repository
+  and base URL after already checking the cache under a fixed `quality` key, so
+  a fork or fixture server publishing the same version string could silently
+  reuse another source's cached binary. The cache is now namespaced by the
+  resolved release base URL and looked up only after that URL is resolved.
 
 ## 1.4.0
 
