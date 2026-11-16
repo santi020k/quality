@@ -81,7 +81,9 @@ hooks:
 ```
 
 Failed reports then include normalized file, line, column, severity, message,
-and rule fields. Successful output is never treated as a diagnostic.
+and rule fields. Structured parsers read standard output independently of
+standard error, so a tool warning cannot corrupt a JSON report. Successful hook
+output is never treated as a diagnostic.
 
 Managed Git hooks use this same execution and reporting path. A typical policy
 keeps `pre-commit` limited to staged-file checks and uses `pre-push` for affected
@@ -107,9 +109,10 @@ corresponding hook. Existing hook configuration is preserved.
 
 ## Reports and privacy
 
-The 20 most recent runs store metadata without command output under
-the Git directory at `quality/local-ci/` (per-worktree in a linked worktree). The history stays outside the worktree and therefore
-cannot be committed accidentally. A history write failure emits a warning but
+The 20 most recent runs of each hook store metadata without command output
+under the Git directory at `quality/local-ci/` (per-worktree in a linked
+worktree). Frequent commit-message checks cannot evict pre-push history. The
+history stays outside the worktree and cannot be committed accidentally. A history write failure emits a warning but
 does not change the gate result. Disable history with `--no-history`.
 
 Inspect timing and status without retaining command output or diagnostics:
@@ -121,14 +124,16 @@ quality ci compare --hook pre-push
 quality ci compare run-1790000000000 latest --format json
 ```
 
-`compare` defaults to the latest two runs of the same hook and reports total and
-per-step duration changes. Selectors accept `latest`, `previous`, a millisecond
+`compare` defaults to the latest run and the preceding run of the same hook
+with the same executed step identities. It reports total and per-step duration
+changes. A skipped step has no duration delta; an explicit base can compare
+different workloads. Selectors accept `latest`, `previous`, a millisecond
 timestamp, a `run-<timestamp>` ID, or its `run-<timestamp>-<sequence>` collision form.
 `previous` selects the second-newest retained run after applying the hook filter.
 
 Concurrent runs receive distinct IDs even when they start in the same millisecond.
 Use the full ID from `history` to select a particular run. When you select an older
-head without an explicit base, comparison uses the preceding run of the same hook.
+head without an explicit base, comparison uses the preceding comparable run.
 
 Write a complete versioned report explicitly when another local tool needs the
 captured output:

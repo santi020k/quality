@@ -141,7 +141,7 @@ quality ci github --install '…' # Generate a runnable GitHub Actions workflow
 quality ci plan        # Compare PR workflow steps with the local pre-push gate
 quality ci local       # Run and time the local pre-push gate
 quality ci history     # Inspect retained metadata-only runs
-quality ci compare     # Compare the latest two runs of the same hook
+quality ci compare     # Compare recent runs with matching executed steps
 quality hooks install   # Install the Git hooks declared in quality.yml
 quality hooks status    # Verify that every configured hook is installed
 ```
@@ -494,8 +494,9 @@ already present in `quality.yml`. Wrapper steps can declare exact workflow
 commands under `covers` so the planner records intentional equivalence without
 guessing from script names.
 
-The latest 20 metadata-only runs are retained under `.git/quality/local-ci/`;
-output and diagnostics are omitted from automatic history. Use `ci history`,
+The latest 20 metadata-only runs per hook are retained in the Git directory at
+`quality/local-ci/`, separately for linked worktrees. Output and diagnostics are
+omitted from automatic history. Use `ci history`,
 `ci show`, and `ci compare` to inspect timing regressions. Pass `--report PATH`
 when a complete, versioned JSON report is needed. That explicit report can
 contain command output and should not be committed when checks may print

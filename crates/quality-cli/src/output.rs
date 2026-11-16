@@ -315,6 +315,20 @@ fn render_agent_run(
         output.push_str("\n## Unstructured failure output\n");
         for result in raw_failures.iter().take(shown_raw_failures) {
             let _ = writeln!(output, "\n### {}\n", agent_text(&result.name, 120));
+            if let Some(diagnostic) = result.diagnostics.first() {
+                let first_line = result.output.lines().find(|line| !line.trim().is_empty());
+                if first_line
+                    .map(crate::runner::unparsed_failure_message)
+                    .as_deref()
+                    != Some(diagnostic.message.as_str())
+                {
+                    let _ = writeln!(
+                        output,
+                        "{}\n",
+                        agent_text(&diagnostic.message, AGENT_TEXT_LIMIT)
+                    );
+                }
+            }
             let mut lines = result.output.lines().filter(|line| !line.trim().is_empty());
             for line in lines.by_ref().take(AGENT_OUTPUT_LINE_LIMIT) {
                 let _ = writeln!(output, "    {}", agent_text(line, 240));
@@ -677,13 +691,19 @@ fn agent_has_synthesized_failure(result: &crate::runner::ToolResult) -> bool {
         && diagnostic.line.is_none()
         && diagnostic.column.is_none()
         && diagnostic.rule.is_none()
-        && result
-            .output
-            .lines()
-            .find(|line| !line.trim().is_empty())
-            .map_or(diagnostic.message == "tool exited unsuccessfully", |line| {
-                line.trim() == diagnostic.message
-            })
+        && {
+            let mut lines = result
+                .output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .peekable();
+            if lines.peek().is_none() {
+                diagnostic.message == "tool exited unsuccessfully"
+            } else {
+                lines
+                    .any(|line| crate::runner::unparsed_failure_message(line) == diagnostic.message)
+            }
+        }
 }
 
 fn agent_selection_description(scope: &crate::runner::RunScope) -> String {
@@ -1195,6 +1215,43 @@ fn sarif_level(severity: &str) -> &str {
 mod tests {
     use super::*;
     use crate::runner::{Diagnostic, ToolResult};
+
+    #[test]
+    fn agent_output_keeps_bounded_and_stderr_fallback_messages_visible() {
+        for (output, message) in [
+            ("x".repeat(1200), format!("{}…", "x".repeat(1000))),
+            (
+                format!("{}\ncheck failed", "stdout banner\n".repeat(12)),
+                "check failed".to_owned(),
+            ),
+        ] {
+            let mut result = tool_result(true);
+            result.status = Status::Failed;
+            result.failure_kind = Some(FailureKind::Code);
+            result.baseline_safe = false;
+            result.output = output;
+            result.diagnostics = vec![Diagnostic {
+                tool: "example".to_owned(),
+                path: None,
+                line: None,
+                column: None,
+                severity: "error".to_owned(),
+                message: message.clone(),
+                rule: None,
+            }];
+            assert!(agent_has_synthesized_failure(&result));
+            let report = RunReport::new(
+                vec![result],
+                None,
+                crate::runner::ExecutionSettings::default(),
+            );
+            let text = render_agent_run(&report, Operation::Check, Severity::Info, Severity::Info);
+            assert!(text.contains("## Unstructured failure output"), "{text}");
+            if message == "check failed" {
+                assert!(text.contains("check failed"), "{text}");
+            }
+        }
+    }
 
     #[test]
     fn report_paths_rebase_nested_projects_and_encode_uri_bytes() {

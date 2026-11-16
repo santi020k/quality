@@ -670,8 +670,8 @@ fn run_one(
             };
             let stdout = collect_output(stdout);
             let stderr = collect_output(stderr);
-            let (combined, output_truncated) =
-                combine_limited_output(stdout, stderr, settings.max_output_bytes);
+            let limit = settings.max_output_bytes;
+            let (combined, output_truncated) = combine_limited_output(&stdout, &stderr, limit);
             if timed_out {
                 let seconds = timeout.unwrap_or_default();
                 return ToolResult {
@@ -690,7 +690,7 @@ fn run_one(
                         message: format!("tool exceeded its {seconds}-second timeout"),
                         rule: Some("tool-timeout".to_owned()),
                     }],
-                    output: combined,
+                    output: display_output(combined, output_truncated, limit),
                     output_truncated,
                     guidance: cleanup_error
                         .map(|error| format!("could not terminate analyzer processes: {error}")),
@@ -702,29 +702,40 @@ fn run_one(
                 Ok(status) => status,
                 Err(error) => return execution_error(invocation, command_display, started, error),
             };
-            let result_status = if status.success() {
-                Status::Passed
-            } else {
-                Status::Failed
-            };
-            let (diagnostics, baseline_safe) = parse_diagnostics_at(
+            let stdout_text = String::from_utf8_lossy(&stdout.0);
+            let stderr_text = String::from_utf8_lossy(&stderr.0);
+            let parsed = parse_output(
                 invocation.parser,
                 &invocation.id,
                 root,
                 &invocation.working_directory,
-                &combined,
+                &ToolOutput {
+                    stdout: &stdout_text,
+                    stdout_capture: stream_capture(&stdout, limit),
+                    stderr: &stderr_text,
+                    combined: &combined,
+                },
                 !status.success(),
             );
-            let failure_kind = (!status.success()).then(|| {
-                if baseline_safe {
+            let (result_status, failure_kind) = if !status.success() {
+                let kind = if parsed.fully_parsed {
                     FailureKind::Code
+                } else if parsed.unreadable {
+                    // Unreadable structured output is not evidence of its contents.
+                    classify_failure(&stderr_text)
                 } else {
                     classify_failure(&combined)
-                }
-            });
+                };
+                (Status::Failed, Some(kind))
+            } else if parsed.unreadable {
+                // A successful exit cannot vouch for findings that could not be read.
+                (Status::Failed, Some(FailureKind::Toolchain))
+            } else {
+                (Status::Passed, None)
+            };
             // A truncated or unfinished capture never proves the output is complete,
             // even when the retained prefix happens to parse cleanly on its own.
-            let baseline_safe = baseline_safe && !output_truncated;
+            let baseline_safe = parsed.fully_parsed && !parsed.unreadable && !output_truncated;
             ToolResult {
                 tool: invocation.id,
                 name: invocation.name,
@@ -732,8 +743,8 @@ fn run_one(
                 failure_kind,
                 duration_ms: started.elapsed().as_millis(),
                 command: command_display,
-                diagnostics,
-                output: combined,
+                diagnostics: parsed.diagnostics,
+                output: display_output(combined, output_truncated, limit),
                 output_truncated,
                 guidance: None,
                 baseline_safe,
@@ -880,64 +891,142 @@ fn collect_output(handle: Option<OutputReader>) -> CapturedOutput {
     captured
 }
 
+/// Keeps the first `limit` captured bytes, preferring standard output.
 fn combine_limited_output(
-    stdout: (Vec<u8>, bool),
-    stderr: (Vec<u8>, bool),
+    stdout: &CapturedOutput,
+    stderr: &CapturedOutput,
     limit: usize,
 ) -> (String, bool) {
-    let mut bytes = stdout.0;
-    bytes.extend_from_slice(&stderr.0);
-    let truncated = stdout.1 || stderr.1 || bytes.len() > limit;
-    bytes.truncate(limit);
-    let mut output = String::from_utf8_lossy(&bytes).to_string();
+    let stdout_keep = stdout.0.len().min(limit);
+    let stderr_keep = stderr.0.len().min(limit - stdout_keep);
+    let truncated = stdout.1 || stderr.1 || stdout.0.len() + stderr.0.len() > limit;
+    (
+        join_streams(&stdout.0[..stdout_keep], &stderr.0[..stderr_keep]),
+        truncated,
+    )
+}
+
+/// Joins captured streams, ending an unterminated standard output line so it
+/// cannot merge with the first standard error line, such as a file path. The
+/// separator is not captured output and does not count toward the limit.
+pub(crate) fn join_streams(stdout: &[u8], stderr: &[u8]) -> String {
+    let mut bytes = Vec::with_capacity(stdout.len() + stderr.len() + 1);
+    bytes.extend_from_slice(stdout);
+    if !stdout.is_empty() && !stderr.is_empty() && !stdout.ends_with(b"\n") {
+        bytes.push(b'\n');
+    }
+    bytes.extend_from_slice(stderr);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Appends the truncation notice shown to people; parsers never see it.
+fn display_output(mut output: String, truncated: bool, limit: usize) -> String {
     if truncated {
         output.push_str(&format!(
             "\n[quality: output truncated after {limit} bytes]\n"
         ));
     }
-    (output, truncated)
+    output
 }
 
-#[cfg(test)]
-fn parse_diagnostics(
-    parser: DiagnosticParser,
-    tool: &str,
-    root: &std::path::Path,
-    output: &str,
-    synthesize_failure: bool,
-) -> (Vec<Diagnostic>, bool) {
-    parse_diagnostics_at(parser, tool, root, root, output, synthesize_failure)
+fn stream_capture(captured: &CapturedOutput, limit: usize) -> StreamCapture {
+    if !captured.1 {
+        StreamCapture::Complete
+    } else if captured.0.len() >= limit {
+        StreamCapture::Truncated(limit)
+    } else {
+        StreamCapture::Unfinished
+    }
 }
 
-pub(crate) fn parse_diagnostics_at(
+/// Whether a captured stream contains everything the command wrote to it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StreamCapture {
+    Complete,
+    /// Output beyond this many bytes was discarded.
+    Truncated(usize),
+    /// Reading failed or had not finished when collection stopped.
+    Unfinished,
+}
+
+/// One command's captured output. Structured parsers read standard output
+/// alone, so warnings on standard error cannot corrupt a machine-readable
+/// document; the generic parser and failure messages use both streams.
+pub(crate) struct ToolOutput<'a> {
+    pub stdout: &'a str,
+    pub stdout_capture: StreamCapture,
+    pub stderr: &'a str,
+    /// Both bounded streams joined by [`join_streams`], without display notices.
+    pub combined: &'a str,
+}
+
+pub(crate) struct ParsedOutput {
+    pub diagnostics: Vec<Diagnostic>,
+    /// Every finding in the output is represented by a diagnostic.
+    pub fully_parsed: bool,
+    /// Standard output resembles the declared structured format or its capture
+    /// is incomplete, and the findings could not be read completely. A successful
+    /// exit cannot vouch for findings that were never read.
+    pub unreadable: bool,
+}
+
+const UNREADABLE_OUTPUT_RULE: &str = "tool-output-unreadable";
+/// Longest message, in characters, synthesized from unparsed failure output.
+const UNPARSED_MESSAGE_LIMIT: usize = 1000;
+
+pub(crate) fn parse_output(
     parser: DiagnosticParser,
     tool: &str,
     root: &std::path::Path,
     working_directory: &std::path::Path,
-    output: &str,
+    output: &ToolOutput<'_>,
     synthesize_failure: bool,
-) -> (Vec<Diagnostic>, bool) {
-    let structured = match parser {
-        DiagnosticParser::Codespell => parse_codespell(tool, root, working_directory, output),
-        DiagnosticParser::EslintJson => parse_eslint_json(tool, root, working_directory, output),
-        DiagnosticParser::SwiftlintJson => {
-            parse_swiftlint_json(tool, root, working_directory, output)
+) -> ParsedOutput {
+    let structured = parse_structured(parser, tool, root, working_directory, output.stdout);
+    let resembles_structured = resembles_structured_output(parser, output.stdout);
+    let parsed_structured = structured.is_some();
+    // A bounded prefix can stop before the first JSON token (for example, in
+    // leading whitespace). Only a parsed, closed document proves completeness
+    // when a declared structured stream was not captured in full.
+    let unreadable = resembles_structured && !parsed_structured
+        || parser != DiagnosticParser::Generic
+            && output.stdout_capture != StreamCapture::Complete
+            && !(parsed_structured && self_delimiting(parser, output.stdout));
+    if let Some(mut diagnostics) = structured {
+        // A failed run without structured findings usually explains itself on
+        // standard error, which the generic fallback below reports instead.
+        if !(synthesize_failure && diagnostics.is_empty() && has_meaningful_line(output.stderr)) {
+            if unreadable {
+                diagnostics.push(unreadable_output_diagnostic(
+                    tool,
+                    parser,
+                    output.stdout_capture,
+                ));
+            }
+            return ParsedOutput {
+                diagnostics,
+                fully_parsed: true,
+                unreadable,
+            };
         }
-        DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, output),
-        DiagnosticParser::SantiOgJson => parse_santi_og_json(tool, root, working_directory, output),
-        DiagnosticParser::TyposJson => parse_typos_json(tool, root, working_directory, output),
-        DiagnosticParser::Generic => None,
-    };
-    if let Some(structured) = structured {
-        return (structured, true);
     }
     if parser == DiagnosticParser::Generic && !synthesize_failure {
-        return (Vec::new(), false);
+        return ParsedOutput {
+            diagnostics: Vec::new(),
+            fully_parsed: false,
+            unreadable: false,
+        };
     }
 
+    // Fragments of an unreadable structured document are not diagnostics.
+    let text = if unreadable {
+        output.stderr
+    } else {
+        output.combined
+    };
     let pattern = diagnostic_pattern();
     let mut diagnostics = Vec::new();
-    let meaningful_lines: Vec<_> = output
+    let meaningful_lines: Vec<_> = text
         .lines()
         .filter(|line| !line.trim().is_empty())
         .collect();
@@ -945,21 +1034,27 @@ pub(crate) fn parse_diagnostics_at(
         let Some(captures) = pattern.captures(line.trim()) else {
             continue;
         };
+        // Positions are one-based; tools print 0 for findings without a location.
+        let position = |name: &str| {
+            captures
+                .name(name)
+                .and_then(|value| value.as_str().parse::<u64>().ok())
+                .filter(|position| *position > 0)
+        };
+        let source_line = position("line");
         diagnostics.push(Diagnostic {
             tool: tool.to_owned(),
             path: captures
                 .name("path")
                 .map(|value| normalize_path(root, working_directory, value.as_str())),
-            line: captures
-                .name("line")
-                .and_then(|value| value.as_str().parse().ok()),
-            column: captures
-                .name("column")
-                .and_then(|value| value.as_str().parse().ok()),
-            severity: captures
-                .name("severity")
-                .map(|value| value.as_str().to_owned())
-                .unwrap_or_else(|| "warning".to_owned()),
+            line: source_line,
+            column: source_line.and(position("column")),
+            severity: match captures.name("severity").map(|value| value.as_str()) {
+                // The report contract has no style level; style findings are informational.
+                Some("style") => "info".to_owned(),
+                Some(severity) => severity.to_owned(),
+                None => "warning".to_owned(),
+            },
             message: captures
                 .name("message")
                 .map(|value| value.as_str().to_owned())
@@ -967,24 +1062,145 @@ pub(crate) fn parse_diagnostics_at(
             rule: captures.name("rule").map(|value| value.as_str().to_owned()),
         });
     }
-    let fully_parsed = !diagnostics.is_empty() && diagnostics.len() == meaningful_lines.len();
-    if diagnostics.is_empty() && synthesize_failure {
+    let fully_parsed =
+        !unreadable && !diagnostics.is_empty() && diagnostics.len() == meaningful_lines.len();
+    if unreadable {
+        diagnostics.push(unreadable_output_diagnostic(
+            tool,
+            parser,
+            output.stdout_capture,
+        ));
+    } else if diagnostics.is_empty() && synthesize_failure {
+        // Valid structured output without findings leaves standard error as the explanation.
+        let explanation = if parsed_structured {
+            output.stderr
+        } else {
+            output.combined
+        };
         diagnostics.push(Diagnostic {
             tool: tool.to_owned(),
             path: None,
             line: None,
             column: None,
             severity: "error".to_owned(),
-            message: output
-                .lines()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or("tool exited unsuccessfully")
-                .trim()
-                .to_owned(),
+            message: unparsed_failure_message(explanation),
             rule: None,
         });
     }
-    (diagnostics, fully_parsed)
+    ParsedOutput {
+        diagnostics,
+        fully_parsed,
+        unreadable,
+    }
+}
+
+fn parse_structured(
+    parser: DiagnosticParser,
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    stdout: &str,
+) -> Option<Vec<Diagnostic>> {
+    match parser {
+        DiagnosticParser::Codespell => parse_codespell(tool, root, working_directory, stdout),
+        DiagnosticParser::EslintJson => parse_eslint_json(tool, root, working_directory, stdout),
+        DiagnosticParser::SwiftlintJson => {
+            parse_swiftlint_json(tool, root, working_directory, stdout)
+        }
+        DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, stdout),
+        DiagnosticParser::SantiOgJson => parse_santi_og_json(tool, root, working_directory, stdout),
+        DiagnosticParser::TyposJson => parse_typos_json(tool, root, working_directory, stdout),
+        DiagnosticParser::Generic => None,
+    }
+}
+
+/// Whether standard output contains a line that starts like the parser's JSON
+/// format, including JSON preceded by a script banner. Output in any other
+/// format, such as a formatter selected by custom arguments, keeps the generic
+/// fallback instead of being treated as a damaged document.
+fn resembles_structured_output(parser: DiagnosticParser, stdout: &str) -> bool {
+    match parser {
+        DiagnosticParser::EslintJson
+        | DiagnosticParser::SwiftlintJson
+        | DiagnosticParser::KtlintJson
+        | DiagnosticParser::SantiOgJson
+        | DiagnosticParser::TyposJson => stdout
+            .lines()
+            .any(|line| line.trim_start().starts_with(['[', '{'])),
+        DiagnosticParser::Codespell | DiagnosticParser::Generic => false,
+    }
+}
+
+/// Whether a successful structured parse proves standard output ended even
+/// though its capture did not: a JSON document closes explicitly, while
+/// line-oriented output may have stopped at any line boundary.
+fn self_delimiting(parser: DiagnosticParser, stdout: &str) -> bool {
+    match parser {
+        DiagnosticParser::EslintJson
+        | DiagnosticParser::SwiftlintJson
+        | DiagnosticParser::SantiOgJson => true,
+        DiagnosticParser::KtlintJson => stdout.trim_start().starts_with('['),
+        DiagnosticParser::TyposJson | DiagnosticParser::Codespell | DiagnosticParser::Generic => {
+            false
+        }
+    }
+}
+
+fn has_meaningful_line(text: &str) -> bool {
+    text.lines().any(|line| !line.trim().is_empty())
+}
+
+pub(crate) fn unparsed_failure_message(output: &str) -> String {
+    let line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("tool exited unsuccessfully");
+    match line.char_indices().nth(UNPARSED_MESSAGE_LIMIT) {
+        Some((end, _)) => format!("{}…", &line[..end]),
+        None => line.to_owned(),
+    }
+}
+
+fn unreadable_output_diagnostic(
+    tool: &str,
+    parser: DiagnosticParser,
+    capture: StreamCapture,
+) -> Diagnostic {
+    let format = parser_name(parser);
+    let message = match capture {
+        StreamCapture::Truncated(limit) => format!(
+            "{format} output exceeded the {limit}-byte capture limit, so its findings could not be read; rerun with a larger --max-output-bytes"
+        ),
+        StreamCapture::Unfinished => format!(
+            "{format} output capture did not finish, so its findings could not be read; make sure no background process keeps standard output open"
+        ),
+        StreamCapture::Complete => format!(
+            "standard output is not valid {format} output, so its findings could not be read; make sure the command writes only {format} to standard output"
+        ),
+    };
+    Diagnostic {
+        tool: tool.to_owned(),
+        path: None,
+        line: None,
+        column: None,
+        severity: "error".to_owned(),
+        message,
+        rule: Some(UNREADABLE_OUTPUT_RULE.to_owned()),
+    }
+}
+
+/// The `parser` value accepted in `quality.yml`.
+fn parser_name(parser: DiagnosticParser) -> &'static str {
+    match parser {
+        DiagnosticParser::Generic => "generic",
+        DiagnosticParser::Codespell => "codespell",
+        DiagnosticParser::EslintJson => "eslint-json",
+        DiagnosticParser::SwiftlintJson => "swiftlint-json",
+        DiagnosticParser::KtlintJson => "ktlint-json",
+        DiagnosticParser::SantiOgJson => "santi-og-json",
+        DiagnosticParser::TyposJson => "typos-json",
+    }
 }
 
 fn diagnostic_pattern() -> &'static Regex {
@@ -1052,8 +1268,11 @@ fn parse_typos_json(
     let mut diagnostics = Vec::with_capacity(lines.len());
     for line in lines {
         let finding = serde_json::from_str::<serde_json::Value>(line).ok()?;
-        if finding.get("type").and_then(serde_json::Value::as_str) != Some("typo") {
-            return None;
+        match finding.get("type").and_then(serde_json::Value::as_str) {
+            Some("typo") => {}
+            // Typos reports each skipped binary file; it is not a finding.
+            Some("binary_file") => continue,
+            _ => return None,
         }
         let path = finding.get("path")?.as_str()?;
         let typo = finding.get("typo")?.as_str()?;
@@ -1348,6 +1567,286 @@ fn is_executable(path: &std::path::Path) -> bool {
 mod tests {
     use super::*;
 
+    const PROJECT: &str = "/project";
+    const ESLINT_ERROR: &str = r#"[{"filePath":"/project/a.ts","messages":[{"ruleId":"semi","severity":2,"message":"Missing semicolon.","line":1,"column":1}]}]"#;
+
+    fn parse_diagnostics(
+        parser: DiagnosticParser,
+        tool: &str,
+        working_directory: &std::path::Path,
+        output: &str,
+        synthesize_failure: bool,
+    ) -> (Vec<Diagnostic>, bool) {
+        let parsed = parse_captured(
+            parser,
+            tool,
+            working_directory,
+            output,
+            StreamCapture::Complete,
+            "",
+            synthesize_failure,
+        );
+        (parsed.diagnostics, parsed.fully_parsed)
+    }
+
+    fn parse_streams(
+        parser: DiagnosticParser,
+        stdout: &str,
+        stderr: &str,
+        synthesize_failure: bool,
+    ) -> ParsedOutput {
+        parse_captured(
+            parser,
+            "tool",
+            std::path::Path::new(PROJECT),
+            stdout,
+            StreamCapture::Complete,
+            stderr,
+            synthesize_failure,
+        )
+    }
+
+    fn parse_captured(
+        parser: DiagnosticParser,
+        tool: &str,
+        working_directory: &std::path::Path,
+        stdout: &str,
+        stdout_capture: StreamCapture,
+        stderr: &str,
+        synthesize_failure: bool,
+    ) -> ParsedOutput {
+        let combined = join_streams(stdout.as_bytes(), stderr.as_bytes());
+        parse_output(
+            parser,
+            tool,
+            std::path::Path::new(PROJECT),
+            working_directory,
+            &ToolOutput {
+                stdout,
+                stdout_capture,
+                stderr,
+                combined: &combined,
+            },
+            synthesize_failure,
+        )
+    }
+
+    #[test]
+    fn structured_parsers_read_stdout_without_stderr_warnings() {
+        let parsed = parse_streams(
+            DiagnosticParser::EslintJson,
+            ESLINT_ERROR,
+            "(node:7) ExperimentalWarning: noise\n",
+            true,
+        );
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(parsed.diagnostics[0].path.as_deref(), Some("a.ts"));
+        assert!(parsed.fully_parsed);
+        assert!(!parsed.unreadable);
+    }
+
+    #[test]
+    fn failures_without_structured_findings_still_explain_themselves_from_stderr() {
+        let parsed = parse_streams(
+            DiagnosticParser::EslintJson,
+            "[]\n",
+            "Error: could not find a configuration file\n",
+            true,
+        );
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(
+            parsed.diagnostics[0].message,
+            "Error: could not find a configuration file"
+        );
+        assert!(!parsed.fully_parsed);
+
+        let silent = parse_streams(DiagnosticParser::Codespell, "", "", true);
+        assert!(silent.diagnostics.is_empty());
+        assert!(silent.fully_parsed);
+    }
+
+    #[test]
+    fn malformed_structured_output_is_unreadable_and_not_parsed_as_text() {
+        let truncated = &ESLINT_ERROR[..60];
+        for synthesize_failure in [false, true] {
+            let parsed = parse_streams(
+                DiagnosticParser::EslintJson,
+                truncated,
+                "src/real.ts:3:4: error: from stderr (stderr-rule)\n",
+                synthesize_failure,
+            );
+            assert!(parsed.unreadable);
+            assert!(!parsed.fully_parsed);
+            let rules = parsed
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_deref())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                rules,
+                [Some("stderr-rule"), Some(UNREADABLE_OUTPUT_RULE)],
+                "stdout fragments must not become diagnostics"
+            );
+            assert!(parsed.diagnostics[1].message.contains("eslint-json"));
+        }
+    }
+
+    #[test]
+    fn line_oriented_output_from_an_incomplete_capture_is_unreadable() {
+        let line = r#"{"type":"typo","path":"src/lib.rs","line_num":1,"byte_offset":0,"typo":"teh","corrections":["the"]}"#;
+        let parsed = parse_captured(
+            DiagnosticParser::TyposJson,
+            "typos",
+            std::path::Path::new(PROJECT),
+            line,
+            StreamCapture::Truncated(line.len()),
+            "",
+            false,
+        );
+        assert!(parsed.unreadable);
+        assert_eq!(parsed.diagnostics.len(), 2);
+        assert!(parsed.diagnostics[1].message.contains("--max-output-bytes"));
+
+        // A closed JSON document proves completeness despite an unfinished pipe.
+        let document = parse_captured(
+            DiagnosticParser::EslintJson,
+            "eslint",
+            std::path::Path::new(PROJECT),
+            ESLINT_ERROR,
+            StreamCapture::Unfinished,
+            "",
+            false,
+        );
+        assert!(!document.unreadable);
+        assert_eq!(document.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn incomplete_blank_structured_streams_never_prove_there_are_no_findings() {
+        for parser in [
+            DiagnosticParser::Codespell,
+            DiagnosticParser::EslintJson,
+            DiagnosticParser::SwiftlintJson,
+            DiagnosticParser::KtlintJson,
+            DiagnosticParser::SantiOgJson,
+            DiagnosticParser::TyposJson,
+        ] {
+            for capture in [StreamCapture::Truncated(3), StreamCapture::Unfinished] {
+                let parsed = parse_captured(
+                    parser,
+                    "tool",
+                    std::path::Path::new(PROJECT),
+                    " \n ",
+                    capture,
+                    "",
+                    false,
+                );
+                assert!(parsed.unreadable, "{parser:?} with {capture:?}");
+                assert_eq!(
+                    parsed.diagnostics.last().unwrap().rule.as_deref(),
+                    Some(UNREADABLE_OUTPUT_RULE)
+                );
+            }
+        }
+        let generic = parse_captured(
+            DiagnosticParser::Generic,
+            "tool",
+            std::path::Path::new(PROJECT),
+            " \n ",
+            StreamCapture::Truncated(3),
+            "",
+            false,
+        );
+        assert!(!generic.unreadable);
+        assert!(generic.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn json_after_a_script_banner_is_unreadable() {
+        let banner = format!("\n> app@1.0.0 lint\n> eslint . --format json\n\n{ESLINT_ERROR}\n");
+        for synthesize_failure in [false, true] {
+            let parsed = parse_streams(
+                DiagnosticParser::EslintJson,
+                &banner,
+                "",
+                synthesize_failure,
+            );
+            assert!(parsed.unreadable);
+            assert_eq!(parsed.diagnostics.len(), 1);
+            assert_eq!(
+                parsed.diagnostics[0].rule.as_deref(),
+                Some(UNREADABLE_OUTPUT_RULE)
+            );
+        }
+    }
+
+    #[test]
+    fn typos_binary_file_notices_are_not_findings() {
+        let binary = r#"{"type":"binary_file","path":"./assets/logo.png"}"#;
+        let typo = r#"{"type":"typo","path":"./src/lib.rs","line_num":3,"byte_offset":4,"typo":"retrive","corrections":["retrieve"]}"#;
+
+        let clean = parse_streams(DiagnosticParser::TyposJson, binary, "", false);
+        assert!(clean.diagnostics.is_empty());
+        assert!(!clean.unreadable);
+
+        let (found, baseline_safe) = parse_diagnostics(
+            DiagnosticParser::TyposJson,
+            "typos",
+            std::path::Path::new(PROJECT),
+            &format!("{binary}\n{typo}\n"),
+            true,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path.as_deref(), Some("src/lib.rs"));
+        assert!(baseline_safe);
+    }
+
+    #[test]
+    fn output_in_another_format_keeps_the_generic_fallback() {
+        let parsed = parse_streams(
+            DiagnosticParser::SwiftlintJson,
+            "Sources/App.swift:10:5: warning: Line should be shorter (line_length)\n",
+            "",
+            false,
+        );
+        assert!(!parsed.unreadable);
+        assert_eq!(
+            parsed.diagnostics[0].path.as_deref(),
+            Some("Sources/App.swift")
+        );
+    }
+
+    #[test]
+    fn joined_streams_keep_line_boundaries() {
+        assert_eq!(
+            join_streams(b"checking", b"src/a.ts:1:2: x"),
+            "checking\nsrc/a.ts:1:2: x"
+        );
+        assert_eq!(join_streams(b"done\n", b"warning"), "done\nwarning");
+        assert_eq!(join_streams(b"", b"warning"), "warning");
+        assert_eq!(join_streams(b"only stdout", b""), "only stdout");
+
+        let (combined, truncated) = combine_limited_output(
+            &(b"checking".to_vec(), false),
+            &(b"src/a.ts".to_vec(), false),
+            16,
+        );
+        assert_eq!(combined, "checking\nsrc/a.ts");
+        assert!(!truncated, "the separator is not captured output");
+    }
+
+    #[test]
+    fn unparsed_failure_messages_are_bounded_on_character_boundaries() {
+        let message = unparsed_failure_message(&format!("\n  {}  \nsecond", "é".repeat(1500)));
+        assert_eq!(message.chars().count(), UNPARSED_MESSAGE_LIMIT + 1);
+        assert!(message.ends_with('…'));
+        assert_eq!(unparsed_failure_message("  short line  "), "short line");
+        assert_eq!(
+            unparsed_failure_message("\n\n"),
+            "tool exited unsuccessfully"
+        );
+    }
+
     #[test]
     fn parses_swiftlint_style_diagnostics() {
         let (found, baseline_safe) = parse_diagnostics(
@@ -1430,10 +1929,9 @@ mod tests {
 
     #[test]
     fn parses_santi_og_stale_outputs_against_the_workspace_config() {
-        let (found, baseline_safe) = parse_diagnostics_at(
+        let (found, baseline_safe) = parse_diagnostics(
             DiagnosticParser::SantiOgJson,
             "santi-og@apps/site",
-            std::path::Path::new("/project"),
             std::path::Path::new("/project/apps/site"),
             r#"{"command":"check","config":"/project/apps/site/og.config.mjs","stale":["index.webp","docs.webp"]}"#,
             true,
@@ -1445,6 +1943,22 @@ mod tests {
         assert_eq!(found[0].rule.as_deref(), Some("og-output-stale"));
         assert!(found[0].message.contains("index.webp"));
         assert!(baseline_safe);
+    }
+
+    #[test]
+    fn generic_findings_use_report_severities_and_one_based_positions() {
+        let (found, baseline_safe) = parse_diagnostics(
+            DiagnosticParser::Generic,
+            "cppcheck",
+            std::path::Path::new(PROJECT),
+            "src/a.cpp:0:0: style: formatting finding\nsrc/b.cpp:0:4: info: no line\nsrc/c.cpp:3:0: error: no column",
+            true,
+        );
+        assert!(baseline_safe);
+        assert_eq!(found[0].severity, "info");
+        assert_eq!((found[0].line, found[0].column), (None, None));
+        assert_eq!((found[1].line, found[1].column), (None, None));
+        assert_eq!((found[2].line, found[2].column), (Some(3), None));
     }
 
     #[test]

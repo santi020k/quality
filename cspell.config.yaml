@@ -47,6 +47,8 @@ words:
   - Avenir
   - baselined
   - clippy
+  - cppcheck
+  - peekable
   - codegen
   - codespell
   - codespellrc

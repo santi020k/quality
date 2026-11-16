@@ -4,7 +4,6 @@
 
 ### Minor Changes
 
-- Add structured diagnostics to local hook failures, enforce optional `.quality-version` pins, and provide versioned metadata-only Local CI history, show, and comparison commands with published JSON schemas.
 - Consolidate the v2 development line with reliable analyzer failures, bounded output,
   local CI history and comparisons, and repository tool-version pins. Renamed
   configuration and file-type changes now select the required checks. Concurrent
@@ -35,6 +34,7 @@
   must match the qualified revision, and stable latest promotion waits for smoke
   verification. No application data migration is required. Recover published issues
   through a new patch release; never replace a published version tag.
+- Add structured diagnostics to local hook failures, enforce optional `.quality-version` pins, and provide versioned metadata-only Local CI history, show, and comparison commands with published JSON schemas.
 
 ### Patch Changes
 
@@ -42,6 +42,11 @@
   GHSA-r3h5-4585-7x3w and GHSA-mh32-jxcr-mh9f. The development workspace and site
   build now require Node 22.23.4 or later; native CLI compatibility and the Action's
   Node 24 runtime are unchanged.
+- Parse structured analyzer output independently from stderr and refuse incomplete reports even after a successful exit. Bound fallback diagnostics, preserve complete alternate-format overrides, and ignore informational typos binary-file events.
+
+  Migration: generic `style` findings now use the published `info` severity. Review and recreate baselines containing these findings because their fingerprints change. Unreadable structured reports fail with `tool-output-unreadable`; fix the analyzer or increase the capture limit before accepting a baseline.
+
+  Retain 20 metadata-only local CI runs per hook, compare matching executed commands and directories by default, and omit duration deltas for skipped steps. Tail capture preserves complete line boundaries and retries interrupted reads.
 
 ## 0.3.1
 

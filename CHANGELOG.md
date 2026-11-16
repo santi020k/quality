@@ -67,6 +67,12 @@ release notes are generated from the same versioned changes.
   reuse another source's cached binary. The cache is now namespaced by the
   resolved release base URL and looked up only after that URL is resolved.
 
+- Parse structured analyzer output independently from stderr and refuse incomplete reports even after a successful exit. Bound fallback diagnostics, preserve complete alternate-format overrides, and ignore informational typos binary-file events.
+
+  Migration: generic `style` findings now use the published `info` severity. Review and recreate baselines containing these findings because their fingerprints change. Unreadable structured reports fail with `tool-output-unreadable`; fix the analyzer or increase the capture limit before accepting a baseline.
+
+  Retain 20 metadata-only local CI runs per hook, compare matching executed commands and directories by default, and omit duration deltas for skipped steps. Tail capture preserves complete line boundaries and retries interrupted reads.
+
 - Stop a configured timeout (or a normal exit) from hanging indefinitely when
   a command's stdout or stderr pipe is inherited by a descendant process, such
   as a background job under `sh -c '... &'`. Output capture is now bounded,

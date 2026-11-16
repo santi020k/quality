@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -680,17 +681,40 @@ fn select_history_run<'a>(runs: &'a [StoredRun], selector: &str) -> Result<&'a S
     }
 }
 
+/// The newest earlier run of the same hook that executed the same commands in
+/// the same order. Fail-fast and focused runs can both skip steps; compare what
+/// actually ran instead of trying to infer which selection produced the report.
 fn previous_history_run<'a>(runs: &'a [StoredRun], head: &StoredRun) -> Result<&'a StoredRun> {
+    let selection = executed_steps(&head.report);
     runs.iter()
         .skip_while(|run| run.id != head.id)
         .skip(1)
-        .find(|run| run.report.hook == head.report.hook)
+        .find(|run| {
+            run.report.hook == head.report.hook && executed_steps(&run.report) == selection
+        })
         .with_context(|| {
             format!(
-                "no retained local CI run before `{}` matches hook `{}`",
+                "no retained local CI run before `{}` matches hook `{}` and its executed steps; pass an explicit base run",
                 head.id, head.report.hook
             )
         })
+}
+
+type StepIdentity<'a> = (&'a str, &'a str, Option<&'a str>);
+
+fn executed_steps(report: &LocalCiReport) -> Vec<StepIdentity<'_>> {
+    report
+        .steps
+        .iter()
+        .filter(|step| step.status != LocalCiStatus::Skipped)
+        .map(|step| {
+            (
+                step.name.as_str(),
+                step.command.as_str(),
+                step.working_directory.as_deref(),
+            )
+        })
+        .collect()
 }
 
 fn history_entry(id: &str, report: &LocalCiReport) -> LocalCiHistoryEntry {
@@ -753,8 +777,12 @@ fn step_comparison(
         command: reference.command.clone(),
         base_duration_ms: base.map(|step| step.duration_ms),
         head_duration_ms: head.map(|step| step.duration_ms),
+        // A skipped step records 0 ms without running, so it measures nothing.
         duration_delta_ms: base
             .zip(head)
+            .filter(|(base, head)| {
+                base.status != LocalCiStatus::Skipped && head.status != LocalCiStatus::Skipped
+            })
             .map(|(base, head)| signed_delta(base.duration_ms, head.duration_ms)),
         base_status: base.map(|step| step.status),
         head_status: head.map(|step| step.status),
@@ -808,6 +836,14 @@ fn print_comparison_pretty(comparison: &LocalCiComparison) {
                 step.base_status.map(status_label).unwrap_or("missing"),
                 step.head_status.map(status_label).unwrap_or("missing")
             ),
+            (Some(base), Some(head), None) => println!(
+                "  {:<36} {:>8} -> {:>8}  (not compared)  {} -> {}",
+                step.name,
+                step_timing(base, step.base_status),
+                step_timing(head, step.head_status),
+                step.base_status.map(status_label).unwrap_or("missing"),
+                step.head_status.map(status_label).unwrap_or("missing")
+            ),
             (Some(base), None, None) => println!(
                 "  {:<36} removed (was {:.2}s, {})",
                 step.name,
@@ -827,6 +863,14 @@ fn print_comparison_pretty(comparison: &LocalCiComparison) {
     }
 }
 
+fn step_timing(duration_ms: u128, status: Option<LocalCiStatus>) -> String {
+    if status == Some(LocalCiStatus::Skipped) {
+        "skipped".to_owned()
+    } else {
+        format!("{:.2}s", duration_ms as f64 / 1000.0)
+    }
+}
+
 fn status_label(status: LocalCiStatus) -> &'static str {
     match status {
         LocalCiStatus::Passed => "passed",
@@ -835,6 +879,8 @@ fn status_label(status: LocalCiStatus) -> &'static str {
     }
 }
 
+/// Keeps the newest runs of each hook, so frequent hooks such as `commit-msg`
+/// cannot evict the history of slower ones such as `pre-push`.
 fn prune_history(directory: &Path) -> Result<()> {
     let mut runs = fs::read_dir(directory)
         .with_context(|| format!("could not read {}", directory.display()))?
@@ -842,10 +888,30 @@ fn prune_history(directory: &Path) -> Result<()> {
         .map(|entry| entry.path())
         .filter_map(|path| history_file_order(&path).map(|order| (order, path)))
         .collect::<Vec<_>>();
-    runs.sort();
-    let remove_count = runs.len().saturating_sub(RETAINED_RUNS);
-    for (_, path) in runs.into_iter().take(remove_count) {
-        match fs::remove_file(&path) {
+    runs.sort_by(|left, right| right.cmp(left));
+    let mut retained_by_hook = BTreeMap::<String, usize>::new();
+    for (position, (_, path)) in runs.iter().enumerate() {
+        let hook = match fs::read(path) {
+            Ok(bytes) => serde_json::from_slice::<RetainedHook>(&bytes)
+                .ok()
+                .map(|run| run.hook),
+            // A concurrent prune already removed it.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => None,
+        };
+        let keep = match hook {
+            Some(hook) => {
+                let retained = retained_by_hook.entry(hook).or_default();
+                *retained += 1;
+                *retained <= RETAINED_RUNS
+            }
+            // Files without a readable hook keep the overall bound and cannot accumulate.
+            None => position < RETAINED_RUNS,
+        };
+        if keep {
+            continue;
+        }
+        match fs::remove_file(path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
@@ -854,6 +920,12 @@ fn prune_history(directory: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The only field pruning needs; later report fields are ignored.
+#[derive(Deserialize)]
+struct RetainedHook {
+    hook: String,
 }
 
 fn history_file_order(path: &Path) -> Option<(u128, u16)> {
@@ -910,7 +982,7 @@ fn execute_step(
             let stdout = collect_output(stdout);
             let stderr = collect_output(stderr);
             let (output, output_truncated) =
-                combine_limited_output(stdout, stderr, max_output_bytes);
+                combine_limited_output(&stdout, &stderr, max_output_bytes);
             match status {
                 Ok(status) if status.success() => LocalCiStepResult {
                     number,
@@ -928,14 +1000,24 @@ fn execute_step(
                 },
                 Ok(status) => {
                     let name = step_name(step);
-                    let (diagnostics, _) = runner::parse_diagnostics_at(
+                    let stdout_text =
+                        String::from_utf8_lossy(retained_tail(&stdout, stdout.bytes.len()));
+                    let stderr_text =
+                        String::from_utf8_lossy(retained_tail(&stderr, stderr.bytes.len()));
+                    let diagnostics = runner::parse_output(
                         step.parser,
                         &name,
                         root,
                         &directory,
-                        &output,
+                        &runner::ToolOutput {
+                            stdout: &stdout_text,
+                            stdout_capture: stdout.completeness(max_output_bytes),
+                            stderr: &stderr_text,
+                            combined: &output,
+                        },
                         true,
-                    );
+                    )
+                    .diagnostics;
                     LocalCiStepResult {
                         number,
                         name,
@@ -1075,15 +1157,71 @@ fn display_argument(argument: &OsStr) -> String {
     }
 }
 
-type CapturedOutput = (Vec<u8>, bool);
+/// The most recent bytes of one stream. A ring buffer discards the oldest
+/// bytes in place, so retaining a large tail never shifts the whole capture.
+#[derive(Clone, Default)]
+struct TailCapture {
+    tail: VecDeque<u8>,
+    dropped: bool,
+    starts_mid_line: bool,
+    unfinished: bool,
+}
+
+impl TailCapture {
+    fn push(&mut self, bytes: &[u8], limit: usize) {
+        let retained = &bytes[bytes.len().saturating_sub(limit)..];
+        let excess = (self.tail.len() + retained.len()).saturating_sub(limit);
+        let last_dropped = if retained.len() < bytes.len() {
+            Some(bytes[bytes.len() - retained.len() - 1])
+        } else {
+            excess
+                .checked_sub(1)
+                .and_then(|index| self.tail.get(index).copied())
+        };
+        if let Some(byte) = last_dropped {
+            self.dropped = true;
+            self.starts_mid_line = byte != b'\n';
+        }
+        self.tail.drain(..excess);
+        self.tail.extend(retained);
+    }
+}
+
+/// A collected stream. `dropped` means earlier bytes were discarded, and
+/// `starts_mid_line` that the first retained line is therefore partial;
+/// `unfinished` means later output may be missing because reading failed or
+/// the stream stayed open.
+#[derive(Default)]
+struct CapturedOutput {
+    bytes: Vec<u8>,
+    dropped: bool,
+    starts_mid_line: bool,
+    unfinished: bool,
+}
+
+impl CapturedOutput {
+    fn truncated(&self) -> bool {
+        self.dropped || self.unfinished
+    }
+
+    fn completeness(&self, limit: usize) -> runner::StreamCapture {
+        if self.dropped {
+            runner::StreamCapture::Truncated(limit)
+        } else if self.unfinished {
+            runner::StreamCapture::Unfinished
+        } else {
+            runner::StreamCapture::Complete
+        }
+    }
+}
 
 struct OutputReader {
-    state: Arc<Mutex<CapturedOutput>>,
+    state: Arc<Mutex<TailCapture>>,
     completed: mpsc::Receiver<()>,
 }
 
 fn spawn_output_reader(mut reader: impl Read + Send + 'static, limit: usize) -> OutputReader {
-    let state = Arc::new(Mutex::new((Vec::new(), false)));
+    let state = Arc::new(Mutex::new(TailCapture::default()));
     let thread_state = Arc::clone(&state);
     let (completed_tx, completed) = mpsc::channel();
     thread::spawn(move || {
@@ -1093,69 +1231,101 @@ fn spawn_output_reader(mut reader: impl Read + Send + 'static, limit: usize) -> 
     OutputReader { state, completed }
 }
 
-fn read_limited(reader: &mut impl Read, limit: usize, state: &Mutex<CapturedOutput>) {
+fn read_limited(reader: &mut impl Read, limit: usize, state: &Mutex<TailCapture>) {
     let mut buffer = [0_u8; 8192];
     loop {
-        let Ok(read) = reader.read(&mut buffer) else {
-            if let Ok(mut captured) = state.lock() {
-                captured.1 = true;
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => {
+                if let Ok(mut captured) = state.lock() {
+                    captured.unfinished = true;
+                }
+                break;
             }
-            break;
         };
-        if read == 0 {
-            break;
-        }
         if let Ok(mut captured) = state.lock() {
-            captured.0.extend_from_slice(&buffer[..read]);
-            if captured.0.len() > limit {
-                let excess = captured.0.len() - limit;
-                captured.0.drain(..excess);
-                captured.1 = true;
-            }
+            captured.push(&buffer[..read], limit);
         }
     }
 }
 
 fn collect_output(reader: Option<OutputReader>) -> CapturedOutput {
     let Some(reader) = reader else {
-        return (Vec::new(), false);
+        return CapturedOutput::default();
     };
     let completed = reader
         .completed
         .recv_timeout(Duration::from_millis(250))
         .is_ok();
-    let mut captured = reader
-        .state
-        .lock()
-        .map(|state| state.clone())
-        .unwrap_or_else(|_| (Vec::new(), true));
-    captured.1 |= !completed;
-    captured
+    let Ok(mut state) = reader.state.lock() else {
+        return CapturedOutput {
+            unfinished: true,
+            ..CapturedOutput::default()
+        };
+    };
+    // A finished reader no longer touches its state; an unfinished one may.
+    let captured = if completed {
+        std::mem::take(&mut *state)
+    } else {
+        state.clone()
+    };
+    CapturedOutput {
+        bytes: Vec::from(captured.tail),
+        dropped: captured.dropped,
+        starts_mid_line: captured.starts_mid_line,
+        unfinished: captured.unfinished || !completed,
+    }
 }
 
+/// Keeps the tail of both streams, reserving up to half of the limit for
+/// standard error, and joins them without merging their boundary lines.
 fn combine_limited_output(
-    stdout: CapturedOutput,
-    stderr: CapturedOutput,
+    stdout: &CapturedOutput,
+    stderr: &CapturedOutput,
     limit: usize,
 ) -> (String, bool) {
-    let stderr_target = if stderr.0.is_empty() {
+    let stderr_target = if stderr.bytes.is_empty() {
         0
     } else {
         limit.div_ceil(2)
     };
-    let mut stderr_keep = stderr.0.len().min(stderr_target);
-    let stdout_keep = stdout.0.len().min(limit.saturating_sub(stderr_keep));
+    let mut stderr_keep = stderr.bytes.len().min(stderr_target);
+    let stdout_keep = stdout.bytes.len().min(limit.saturating_sub(stderr_keep));
     stderr_keep += stderr
-        .0
+        .bytes
         .len()
         .saturating_sub(stderr_keep)
         .min(limit.saturating_sub(stdout_keep + stderr_keep));
-    let mut bytes = stdout.0[stdout.0.len().saturating_sub(stdout_keep)..].to_vec();
-    bytes.extend_from_slice(&stderr.0[stderr.0.len().saturating_sub(stderr_keep)..]);
     (
-        String::from_utf8_lossy(&bytes).into_owned(),
-        stdout.1 || stderr.1 || stdout_keep < stdout.0.len() || stderr_keep < stderr.0.len(),
+        runner::join_streams(
+            retained_tail(stdout, stdout_keep),
+            retained_tail(stderr, stderr_keep),
+        ),
+        stdout.truncated()
+            || stderr.truncated()
+            || stdout_keep < stdout.bytes.len()
+            || stderr_keep < stderr.bytes.len(),
     )
+}
+
+/// The last `keep` bytes of a stream. When the tail starts inside a line, that
+/// partial line is dropped so its suffix cannot be parsed as a different path.
+fn retained_tail(captured: &CapturedOutput, keep: usize) -> &[u8] {
+    let start = captured.bytes.len() - keep;
+    let tail = &captured.bytes[start..];
+    let starts_mid_line = match start.checked_sub(1) {
+        Some(previous) => captured.bytes[previous] != b'\n',
+        None => captured.starts_mid_line,
+    };
+    if !starts_mid_line {
+        return tail;
+    }
+    match tail.iter().position(|byte| *byte == b'\n') {
+        Some(newline) if newline + 1 < tail.len() => &tail[newline + 1..],
+        _ => tail,
+    }
 }
 
 fn inspect_pull_request_workflows(
@@ -1821,6 +1991,152 @@ jobs:
         assert!(previous_history_run(&runs, isolated_hook).is_err());
     }
 
+    #[test]
+    fn history_retention_is_counted_separately_for_each_hook() {
+        let temporary = tempfile::tempdir().unwrap();
+        for timestamp in [1, 2] {
+            let mut report = history_report(timestamp, 1);
+            report.hook = "pre-push".to_owned();
+            write_history_report(temporary.path(), &report).unwrap();
+        }
+        for timestamp in 10..32 {
+            let mut report = history_report(timestamp, 1);
+            report.hook = "commit-msg".to_owned();
+            write_history_report(temporary.path(), &report).unwrap();
+        }
+        // An unreadable file keeps the overall bound instead of accumulating.
+        fs::write(temporary.path().join("run-0.json"), "not json").unwrap();
+
+        prune_history(temporary.path()).unwrap();
+
+        let commit_runs = read_history_in(temporary.path(), Some("commit-msg")).unwrap();
+        assert_eq!(commit_runs.len(), RETAINED_RUNS);
+        assert_eq!(commit_runs.last().unwrap().id, "run-12");
+        let push_runs = read_history_in(temporary.path(), Some("pre-push")).unwrap();
+        assert_eq!(
+            push_runs
+                .iter()
+                .map(|run| run.id.as_str())
+                .collect::<Vec<_>>(),
+            ["run-2", "run-1"]
+        );
+        assert!(!temporary.path().join("run-0.json").exists());
+    }
+
+    fn step(
+        number: usize,
+        name: &str,
+        status: LocalCiStatus,
+        duration_ms: u128,
+    ) -> LocalCiStepResult {
+        LocalCiStepResult {
+            number,
+            name: name.to_owned(),
+            status,
+            duration_ms,
+            command: name.to_ascii_lowercase(),
+            working_directory: None,
+            exit_code: None,
+            output: String::new(),
+            output_truncated: false,
+            diagnostics: Vec::new(),
+            failure: None,
+            rerun: None,
+        }
+    }
+
+    fn stored(id: &str, steps: Vec<LocalCiStepResult>) -> StoredRun {
+        let mut report = history_report(0, steps.iter().map(|step| step.duration_ms).sum());
+        report.steps = steps;
+        StoredRun {
+            id: id.to_owned(),
+            report,
+        }
+    }
+
+    #[test]
+    fn comparisons_match_executed_steps_even_when_the_first_step_fails() {
+        use LocalCiStatus::{Failed, Passed, Skipped};
+
+        let whole = stored(
+            "whole",
+            vec![step(1, "Build", Passed, 5), step(2, "Test", Passed, 9)],
+        );
+        assert_eq!(
+            executed_steps(&whole.report),
+            vec![("Build", "build", None), ("Test", "test", None)]
+        );
+        // A failed first step may be either a focused run or a fail-fast run.
+        // Both executed only Build and must not match a completed whole hook.
+        let failed = stored(
+            "failed",
+            vec![step(1, "Build", Failed, 5), step(2, "Test", Skipped, 0)],
+        );
+        assert_eq!(
+            executed_steps(&failed.report),
+            vec![("Build", "build", None)]
+        );
+        let focused = stored(
+            "focused",
+            vec![step(1, "Build", Skipped, 0), step(2, "Test", Failed, 9)],
+        );
+        assert_eq!(
+            executed_steps(&focused.report),
+            vec![("Test", "test", None)]
+        );
+        let first_only = stored(
+            "first",
+            vec![step(1, "Build", Passed, 5), step(2, "Test", Skipped, 0)],
+        );
+        assert_eq!(
+            executed_steps(&first_only.report),
+            vec![("Build", "build", None)]
+        );
+
+        let runs = [
+            stored(
+                "run-5",
+                vec![step(1, "Build", Skipped, 0), step(2, "Test", Passed, 7)],
+            ),
+            stored(
+                "run-4",
+                vec![step(1, "Build", Passed, 4), step(2, "Test", Skipped, 0)],
+            ),
+            stored(
+                "run-3",
+                vec![step(1, "Build", Passed, 4), step(2, "Test", Passed, 8)],
+            ),
+            stored(
+                "run-2",
+                vec![step(1, "Build", Skipped, 0), step(2, "Test", Passed, 6)],
+            ),
+        ];
+        assert_eq!(previous_history_run(&runs, &runs[0]).unwrap().id, "run-2");
+        assert!(previous_history_run(&runs, &runs[1]).is_err());
+        assert!(previous_history_run(&runs, &runs[2]).is_err());
+    }
+
+    #[test]
+    fn skipped_steps_have_no_duration_change() {
+        use LocalCiStatus::{Passed, Skipped};
+
+        let base = stored(
+            "run-1",
+            vec![step(1, "Build", Passed, 40), step(2, "Test", Passed, 10)],
+        );
+        let head = stored(
+            "run-2",
+            vec![step(1, "Build", Skipped, 0), step(2, "Test", Passed, 15)],
+        );
+
+        let comparison = compare_runs(&base, &head);
+
+        assert_eq!(comparison.steps[0].base_duration_ms, Some(40));
+        assert_eq!(comparison.steps[0].head_duration_ms, Some(0));
+        assert_eq!(comparison.steps[0].duration_delta_ms, None);
+        assert_eq!(comparison.steps[1].duration_delta_ms, Some(5));
+    }
+
     fn history_report(started_at_unix_ms: u128, duration_ms: u128) -> LocalCiReport {
         LocalCiReport {
             schema_version: REPORT_SCHEMA_VERSION,
@@ -1832,11 +2148,20 @@ jobs:
         }
     }
 
+    fn captured(bytes: &[u8], dropped_mid_line: bool) -> CapturedOutput {
+        CapturedOutput {
+            bytes: bytes.to_vec(),
+            dropped: dropped_mid_line,
+            starts_mid_line: dropped_mid_line,
+            unfinished: false,
+        }
+    }
+
     #[test]
     fn bounded_output_keeps_the_failure_tail_and_reserves_stderr() {
         let (output, truncated) = combine_limited_output(
-            (b"verbose stdout that ends with OUT_TAIL".to_vec(), true),
-            (b"diagnostic context and FINAL_ERROR".to_vec(), true),
+            &captured(b"verbose stdout that ends with OUT_TAIL", true),
+            &captured(b"diagnostic context and FINAL_ERROR", true),
             24,
         );
 
@@ -1844,6 +2169,126 @@ jobs:
         assert!(output.contains("FINAL_ERROR"));
         assert!(output.contains("OUT_TAIL"));
         assert!(!output.contains("verbose stdout"));
+        assert!(
+            output.contains("OUT_TAIL\n"),
+            "streams stay on separate lines: {output:?}"
+        );
+    }
+
+    #[test]
+    fn bounded_output_drops_partial_leading_lines() {
+        let (output, truncated) = combine_limited_output(
+            &captured(b"rst.ts:1:1: error: cut\nsrc/b.ts:2:1: error: kept\n", true),
+            &CapturedOutput::default(),
+            1024,
+        );
+        assert!(truncated);
+        assert_eq!(output, "src/b.ts:2:1: error: kept\n");
+
+        // A single partial line is still better context than nothing.
+        let (output, _) =
+            combine_limited_output(&captured(b"l-rule)\n", true), &CapturedOutput::default(), 8);
+        assert_eq!(output, "l-rule)\n");
+
+        // Complete streams are never trimmed.
+        let (output, truncated) = combine_limited_output(
+            &captured(b"first\nsecond\n", false),
+            &captured(b"error\n", false),
+            1024,
+        );
+        assert!(!truncated);
+        assert_eq!(output, "first\nsecond\nerror\n");
+    }
+
+    /// Yields a long stream in tiny reads, like a chatty command writing lines.
+    struct ChunkedReader {
+        remaining: usize,
+        chunk: usize,
+        next: u8,
+    }
+
+    impl Read for ChunkedReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let count = self.remaining.min(self.chunk).min(buffer.len());
+            for byte in &mut buffer[..count] {
+                *byte = self.next;
+                self.next = self.next.wrapping_add(1);
+            }
+            self.remaining -= count;
+            Ok(count)
+        }
+    }
+
+    #[test]
+    fn output_capture_retains_the_exact_tail_across_many_small_reads() {
+        let total = 300_007;
+        let limit = 4_096;
+        let state = Mutex::new(TailCapture::default());
+        let mut reader = ChunkedReader {
+            remaining: total,
+            chunk: 7,
+            next: 0,
+        };
+
+        read_limited(&mut reader, limit, &state);
+
+        let captured = state.into_inner().unwrap();
+        assert!(captured.dropped);
+        assert!(!captured.unfinished);
+        let expected = (total - limit..total)
+            .map(|index| (index % 256) as u8)
+            .collect::<Vec<_>>();
+        assert_eq!(Vec::from(captured.tail), expected);
+
+        let state = Mutex::new(TailCapture::default());
+        read_limited(
+            &mut ChunkedReader {
+                remaining: limit,
+                chunk: 9_000,
+                next: 0,
+            },
+            limit,
+            &state,
+        );
+        let captured = state.into_inner().unwrap();
+        assert!(!captured.dropped, "output exactly at the limit is complete");
+        assert_eq!(captured.tail.len(), limit);
+    }
+
+    #[test]
+    fn output_capture_keeps_only_the_tail_of_an_oversized_read() {
+        let mut capture = TailCapture::default();
+        capture.push(b"0123", 6);
+        capture.push(b"long-suffix", 6);
+        assert!(capture.dropped);
+        assert!(capture.starts_mid_line);
+        assert_eq!(Vec::from(capture.tail), b"suffix");
+    }
+
+    #[test]
+    fn whole_lines_survive_a_cut_on_a_line_boundary() {
+        let mut capture = TailCapture::default();
+        capture.push(b"src/a.ts:1:1: error: old\n", 64);
+        capture.push(b"src/b.ts:2:1: error: kept\n", 26);
+        assert!(capture.dropped);
+        assert!(!capture.starts_mid_line);
+        let stream = CapturedOutput {
+            bytes: Vec::from(capture.tail),
+            dropped: true,
+            starts_mid_line: false,
+            unfinished: false,
+        };
+        let (output, truncated) = combine_limited_output(&stream, &CapturedOutput::default(), 64);
+        assert!(truncated);
+        assert_eq!(output, "src/b.ts:2:1: error: kept\n");
+
+        // A cut made while combining also keeps a line that starts at the cut.
+        let (output, _) = combine_limited_output(
+            &captured(b"first\nsecond\n", false),
+            &CapturedOutput::default(),
+            7,
+        );
+        assert_eq!(output, "second\n");
     }
 
     #[test]

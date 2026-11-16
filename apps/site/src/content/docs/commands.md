@@ -243,8 +243,9 @@ time, exit status, normalized diagnostics, a concise tail of failure output,
 and a focused rerun command. Override the capture limit with
 `--max-output-bytes`.
 
-The 20 most recent metadata-only runs are kept below `.git/quality/local-ci/` unless
-`--no-history` is passed. `ci history`, `ci show`, and `ci compare` inspect
+The 20 most recent metadata-only runs per hook are kept in the Git directory at
+`quality/local-ci/` unless `--no-history` is passed; linked worktrees keep their
+own history. `ci history`, `ci show`, and `ci compare` inspect
 status and timing changes. Automatic history omits command output and diagnostics. An explicit
 `--report` retains bounded output and follows the published
 [`quality local CI report schema`](/quality-local-ci.schema.json); do not commit

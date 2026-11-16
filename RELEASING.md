@@ -91,6 +91,15 @@ Existing consumers should review these v2 changes before updating:
 - Unparsed analyzer failures and incomplete structured output remain failures
   even with a baseline or a higher severity threshold. Fix the tool or raise the
   capture limit. Baseline creation accepts the same execution limits as checks.
+- Structured parsers read standard output independently of standard error.
+  Unreadable structured reports fail with `tool-output-unreadable`, including
+  after a successful process exit. Complete alternate-format overrides remain
+  supported. Generic `style` findings now use the published `info` severity;
+  review and recreate baselines containing those findings because their
+  fingerprints change.
+- Local CI retains 20 metadata-only runs per hook. Default comparisons require
+  matching executed commands and working directories; pass an explicit base
+  to compare different workloads. Skipped steps have no duration delta.
 - The Action defaults to its own packaged CLI version. `version: latest` is an
   explicit opt-in, exact versions are verified, and `tools` counts only executed
   adapters. Counts remain accurate with public SARIF output disabled.
