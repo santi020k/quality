@@ -1,8 +1,27 @@
 use std::fs;
 use std::process::{Command, Output};
 
+// Fixture processes must not inherit the repository or recursion guard of a
+// parent Git/Quality hook. Tests can still set an explicit override afterwards.
+fn isolated_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    for variable in [
+        "QUALITY_LOCAL_CI",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+}
+
 fn quality(root: &std::path::Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_quality"))
+    isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(root)
         .args(args)
@@ -16,7 +35,7 @@ fn quality_with_path(root: &std::path::Path, args: &[&str], path: &std::path::Pa
         std::iter::once(path.to_path_buf()).chain(std::env::split_paths(&inherited)),
     )
     .unwrap();
-    Command::new(env!("CARGO_BIN_EXE_quality"))
+    isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(root)
         .args(args)
@@ -26,7 +45,7 @@ fn quality_with_path(root: &std::path::Path, args: &[&str], path: &std::path::Pa
 }
 
 fn git(root: &std::path::Path, args: &[&str]) {
-    let output = Command::new("git")
+    let output = isolated_command("git")
         .arg("-C")
         .arg(root)
         .args(args)
@@ -83,6 +102,22 @@ fn assert_matches_schema_node(
             "schema type mismatch at {location}: {value}"
         );
     }
+    if let (Some(number), Some(minimum)) = (
+        value.as_f64(),
+        schema.get("minimum").and_then(serde_json::Value::as_f64),
+    ) {
+        assert!(number >= minimum, "schema minimum mismatch at {location}");
+    }
+    if let (Some(text), Some(pattern)) = (
+        value.as_str(),
+        schema.get("pattern").and_then(serde_json::Value::as_str),
+    ) {
+        let pattern = regex::Regex::new(pattern).expect("supported report schema pattern");
+        assert!(
+            pattern.is_match(text),
+            "schema pattern mismatch at {location}"
+        );
+    }
     if let Some(object) = value.as_object() {
         let properties = schema
             .get("properties")
@@ -108,14 +143,40 @@ fn assert_matches_schema_node(
             }
         }
     }
-    if let (Some(values), Some(items)) = (
-        value.as_array(),
-        schema.get("items").filter(|items| items.is_object()),
-    ) {
-        for (index, child) in values.iter().enumerate() {
-            assert_matches_schema_node(child, items, root, &format!("{location}[{index}]"));
+    if let Some(values) = value.as_array() {
+        if let Some(minimum) = schema.get("minItems").and_then(serde_json::Value::as_u64) {
+            assert!(
+                values.len() as u64 >= minimum,
+                "schema minItems mismatch at {location}"
+            );
+        }
+        if let Some(items) = schema.get("items").filter(|items| items.is_object()) {
+            for (index, child) in values.iter().enumerate() {
+                assert_matches_schema_node(child, items, root, &format!("{location}[{index}]"));
+            }
         }
     }
+}
+
+#[test]
+#[should_panic(expected = "schema minimum mismatch")]
+fn schema_assertions_reject_values_below_the_minimum() {
+    assert_matches_published_schema(&serde_json::json!(0), r#"{"type":"integer","minimum":1}"#);
+}
+
+#[test]
+#[should_panic(expected = "schema minItems mismatch")]
+fn schema_assertions_reject_too_few_array_items_without_an_items_schema() {
+    assert_matches_published_schema(&serde_json::json!([]), r#"{"type":"array","minItems":1}"#);
+}
+
+#[test]
+#[should_panic(expected = "schema pattern mismatch")]
+fn schema_assertions_reject_invalid_history_identifiers() {
+    assert_matches_published_schema(
+        &serde_json::json!("run-invalid"),
+        r#"{"type":"string","pattern":"^run-[0-9]+(?:-[0-9]{4})?$"}"#,
+    );
 }
 
 fn schema_type_matches(value: &serde_json::Value, expected: &serde_json::Value) -> bool {
@@ -335,7 +396,7 @@ fn local_ci_blocks_recursive_process_invocations() {
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(temp.path())
         .args(["ci", "local"])
@@ -441,7 +502,7 @@ fn custom_tools_cannot_shadow_builtins() {
 #[test]
 fn completions_are_generated_without_project_discovery() {
     let missing_root = "/definitely/not/a/quality/project";
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(missing_root)
         .args(["completions", "fish"])
@@ -454,7 +515,7 @@ fn completions_are_generated_without_project_discovery() {
 #[test]
 fn agent_instructions_are_generated_without_project_discovery() {
     let missing_root = "/definitely/not/a/quality/project";
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(missing_root)
         .args(["instructions", "--format", "agents"])
@@ -1051,7 +1112,7 @@ fn severity_levels_separate_reporting_from_failure_and_write_a_summary() {
     .unwrap();
     let summary = temp.path().join("summary.md");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(temp.path())
         .args([
@@ -1172,7 +1233,7 @@ fn agent_rerun_preserves_changed_scope() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let head = Command::new("git")
+    let head = isolated_command("git")
         .arg("-C")
         .arg(temp.path())
         .args(["rev-parse", "HEAD"])
@@ -2719,7 +2780,7 @@ fn hooks_respect_an_inherited_hooks_path_without_writing_to_it() {
     .unwrap();
 
     for operation in ["install", "status"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
             .arg("--root")
             .arg(temp.path())
             .args(["hooks", operation])

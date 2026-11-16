@@ -2,6 +2,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+// Fixture processes must not inherit the repository or recursion guard of a
+// parent Git/Quality hook. Tests can still set an explicit override afterwards.
+fn isolated_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    for variable in [
+        "QUALITY_LOCAL_CI",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+}
+
 struct Repository {
     directory: tempfile::TempDir,
 }
@@ -34,7 +53,7 @@ impl Repository {
     }
 
     fn git(&self, args: &[&str]) -> Output {
-        let output = Command::new("git")
+        let output = isolated_command("git")
             .arg("-C")
             .arg(self.root())
             .args(args)
@@ -55,7 +74,7 @@ impl Repository {
     }
 
     fn preview(&self, root: &Path, base: &str) -> String {
-        let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+        let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
             .arg("--root")
             .arg(root)
             .args(["check", "--changed", base, "--dry-run", "--explain"])
