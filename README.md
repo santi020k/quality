@@ -501,8 +501,9 @@ when a complete, versioned JSON report is needed. That explicit report can
 contain command output and should not be committed when checks may print
 sensitive data.
 
-Repositories can pin the required CLI by writing a version such as `1.2.0` to
-`.quality-version`. A mismatch stops before checks run and prints the exact
+Quality 2 and newer enforce project pins. Write a version such as `2.0.0` to
+`.quality-version` in the selected project root. Older binaries ignore this file.
+A mismatch stops before checks run and prints the exact
 checksum-verified installation command on macOS and Linux or the matching
 Windows release location, keeping hooks reproducible across a team.
 

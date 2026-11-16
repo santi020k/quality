@@ -358,7 +358,11 @@ fn run() -> Result<()> {
             }
         },
         Command::Baseline { command } => match command {
-            BaselineCommand::Create { output, force } => {
+            BaselineCommand::Create {
+                output,
+                force,
+                execution,
+            } => {
                 let config = Config::load_or_default(&root)?;
                 let report = runner::execute(
                     &project,
@@ -367,7 +371,7 @@ fn run() -> Result<()> {
                     false,
                     None,
                     &AdapterSelection::default(),
-                    runner::ExecutionSettings::default(),
+                    execution_settings(execution, false),
                 )?;
                 let path = output
                     .map(|path| {
@@ -467,10 +471,17 @@ fn present_run(
         } else {
             root.join(report_path)
         };
-        output::write_sarif(run_report, &report_path, report_level)?;
+        output::write_sarif(run_report, &report_path, report_level, root)?;
         eprintln!("Wrote SARIF report to {}", display_path(&report_path));
     }
-    output::print_run(run_report, operation, format, report_level, fail_level)
+    output::print_run(
+        run_report,
+        operation,
+        format,
+        report_level,
+        fail_level,
+        root,
+    )
 }
 
 fn retain_local_ci_history(

@@ -174,6 +174,7 @@ Record current, fully parsed findings so adoption can focus on new regressions:
 ```bash
 quality baseline create
 quality baseline create --force
+quality baseline create --max-output-bytes 4194304 --timeout-seconds 120
 ```
 
 ## `quality completions`

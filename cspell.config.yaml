@@ -9,6 +9,23 @@ ignorePaths:
   - "**/target/**"
   - pnpm-lock.yaml
 words:
+  - libc
+  - SIGCONT
+  - SIGTSTP
+  - SIGTTIN
+  - TSTP
+  - sigaction
+  - Uninit
+  - feff
+  - mktemp
+  - noninteractive
+  - untimed
+  - Ajv
+  - GOPATH
+  - LASTEXITCODE
+  - connrefused
+  - noprofile
+  - norc
   - ACMRT
   - nocapture
   - noclobber

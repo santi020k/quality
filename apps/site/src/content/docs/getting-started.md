@@ -22,16 +22,17 @@ cargo install --path crates/quality-cli
 The release includes checksum-protected archives for x86-64 and ARM64 Linux,
 Apple Silicon and Intel macOS, and x86-64 Windows.
 
-Pin the required CLI for every developer and Git hook by adding a
-`.quality-version` file containing a released version without a leading `v`:
+Quality 2 and newer support an optional `.quality-version` in the project root.
+Install the required release, then write its version without a leading `v`:
 
 ```text
-1.2.0
+2.0.0
 ```
 
 When the active CLI differs, Quality stops before executing project commands.
 It prints the checksum-verified installation command on macOS and Linux and the
-matching archive and checksum location on Windows.
+matching archive and checksum location on Windows. Older binaries ignore this
+file. A nested project selected with `--root` needs its own pin.
 
 ## Initialize a repository
 

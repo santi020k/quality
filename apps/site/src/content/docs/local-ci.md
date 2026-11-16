@@ -108,7 +108,7 @@ corresponding hook. Existing hook configuration is preserved.
 ## Reports and privacy
 
 The 20 most recent runs store metadata without command output under
-`.git/quality/local-ci/`. The history stays outside the worktree and therefore
+the Git directory at `quality/local-ci/` (per-worktree in a linked worktree). The history stays outside the worktree and therefore
 cannot be committed accidentally. A history write failure emits a warning but
 does not change the gate result. Disable history with `--no-history`.
 
@@ -123,7 +123,8 @@ quality ci compare run-1790000000000 latest --format json
 
 `compare` defaults to the latest two runs of the same hook and reports total and
 per-step duration changes. Selectors accept `latest`, `previous`, a millisecond
-timestamp, or a `run-<timestamp>` ID.
+timestamp, a `run-<timestamp>` ID, or its `run-<timestamp>-<sequence>` collision form.
+`previous` selects the second-newest retained run after applying the hook filter.
 
 Concurrent runs receive distinct IDs even when they start in the same millisecond.
 Use the full ID from `history` to select a particular run. When you select an older
@@ -146,16 +147,20 @@ The contracts are published as the [plan schema](/quality-ci-plan.schema.json),
 
 ## Pin the project CLI
 
-Write the required released version without a leading `v` to `.quality-version`:
+Quality 2 and newer enforce `.quality-version` in the selected project root
+(the directory passed to `--root`, or the current directory). Write a released
+version without a leading `v`:
 
 ```text
-1.2.0
+2.0.0
 ```
 
 Every project command checks this optional file before loading configuration.
 On macOS and Linux, a mismatch fails with the exact checksum-verified installer
-command; Windows receives the matching release and checksum location. Git hooks
-never silently use a different CLI contract.
+command; Windows receives the matching release and checksum location. Managed
+hooks use this check when they invoke Quality 2 or newer. Older binaries do not
+enforce the pin; install the required release before relying on it. A pin in a
+parent repository does not apply automatically to a different `--root`.
 
 ## What remains in GitHub
 

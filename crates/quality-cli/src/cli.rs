@@ -492,6 +492,8 @@ impl AdapterSelection {
 pub enum BaselineCommand {
     /// Run all checks and record their current file findings.
     Create {
+        #[command(flatten)]
+        execution: ExecutionOptions,
         /// Write to a path other than the configured baseline.
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,

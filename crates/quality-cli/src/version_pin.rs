@@ -18,7 +18,10 @@ fn check(root: &Path, actual: &str) -> Result<()> {
     }
     let required =
         fs::read_to_string(&path).with_context(|| format!("could not read {}", path.display()))?;
-    let required = required.strip_prefix('\u{feff}').unwrap_or(&required).trim();
+    let required = required
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&required)
+        .trim();
     if required.is_empty() {
         anyhow::bail!("{VERSION_FILE} is empty; write a version such as `2.0.0`");
     }

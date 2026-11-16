@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 run_quality() {
-  cargo run --quiet --manifest-path "$repository_dir/Cargo.toml" -- \
+  cargo run --locked --quiet --manifest-path "$repository_dir/Cargo.toml" -- \
     --root "$sandbox" "$@"
 }
 

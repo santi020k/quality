@@ -70,3 +70,7 @@ a passing check.
 
 Failure thresholds apply to fully parsed findings. An unsuccessful analyzer with
 unrecognized output still fails when `--fail-level error` is selected.
+
+Baseline creation accepts the same `--jobs`, `--timeout-seconds`, and
+`--max-output-bytes` controls as checks. Raise the capture limit when a structured
+report exceeds the default limit; incomplete findings must not become a baseline.
