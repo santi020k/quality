@@ -6,7 +6,7 @@
   "license": "MIT",
   "packageManager": "pnpm@11.22.0",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "build": "turbo run build",
@@ -35,9 +35,9 @@
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@santi020k/commitprompt": "1.1.0",
-    "cspell": "10.3.6",
-    "turbo": "2.11.7",
-    "wrangler": "4.148.0"
+    "cspell": "10.5.1",
+    "turbo": "2.11.11",
+    "wrangler": "4.163.0"
   },
   "repository": {
     "type": "git",
