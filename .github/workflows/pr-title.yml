@@ -2,7 +2,7 @@ name: PR Title
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "release/v*"]
     types: [edited, labeled, opened, reopened, synchronize, unlabeled]
 
 concurrency:

@@ -157,11 +157,53 @@ pub enum Command {
         #[command(subcommand)]
         command: RepositoriesCommand,
     },
+    /// Plan affected validation and verify complete, revision-bound results.
+    Impact {
+        #[command(subcommand)]
+        command: ImpactCommand,
+    },
     /// Install and run package-manager-independent Git hooks.
     Hooks {
         #[command(subcommand)]
         command: HooksCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ImpactCommand {
+    /// Plan committed changes without executing commands or reading local source edits.
+    Plan {
+        #[arg(long, default_value = "quality-impact.json", value_name = "PATH")]
+        config: PathBuf,
+        #[arg(long, required_unless_present = "full", value_name = "REF")]
+        base: Option<String>,
+        #[arg(long, default_value = "HEAD", value_name = "REF")]
+        head: String,
+        #[arg(long, value_enum, default_value_t = ImpactComparison::MergeBase)]
+        comparison: ImpactComparison,
+        /// Select every configured node, regardless of changed paths.
+        #[arg(long)]
+        full: bool,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Reject missing, stale, malformed, failed, or skipped planned results.
+    Verify {
+        #[arg(long, value_name = "PATH")]
+        plan: PathBuf,
+        #[arg(long, value_name = "PATH")]
+        results: PathBuf,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImpactComparison {
+    #[default]
+    MergeBase,
+    Direct,
 }
 
 #[derive(Debug, Subcommand)]
@@ -214,6 +256,39 @@ pub enum CiCommand {
         /// Arguments supplied by Git to the hook.
         #[arg(last = true, allow_hyphen_values = true)]
         args: Vec<OsString>,
+    },
+    /// List retained metadata-only local CI runs.
+    History {
+        /// Limit results to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        /// Maximum number of runs to display.
+        #[arg(long, default_value = "10")]
+        limit: NonZeroUsize,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Show one retained local CI run (`latest`, `previous`, or a run ID).
+    Show {
+        #[arg(default_value = "latest")]
+        run: String,
+        /// Limit selectors to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
+    },
+    /// Compare two retained local CI runs.
+    Compare {
+        /// Base run (`previous`, `latest`, a timestamp, or a run ID). Defaults to the run before HEAD.
+        base: Option<String>,
+        /// Head run. Defaults to `latest`.
+        head: Option<String>,
+        /// Limit selectors to one configured Git hook.
+        #[arg(long)]
+        hook: Option<String>,
+        #[arg(long, value_enum, default_value_t = CiOutputFormat::Pretty)]
+        format: CiOutputFormat,
     },
 }
 
@@ -417,6 +492,8 @@ impl AdapterSelection {
 pub enum BaselineCommand {
     /// Run all checks and record their current file findings.
     Create {
+        #[command(flatten)]
+        execution: ExecutionOptions,
         /// Write to a path other than the configured baseline.
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,

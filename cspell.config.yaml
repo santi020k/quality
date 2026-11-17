@@ -9,6 +9,36 @@ ignorePaths:
   - "**/target/**"
   - pnpm-lock.yaml
 words:
+  - libc
+  - SIGCONT
+  - SIGTSTP
+  - SIGTTIN
+  - TSTP
+  - sigaction
+  - Uninit
+  - feff
+  - mktemp
+  - noninteractive
+  - untimed
+  - Ajv
+  - GOPATH
+  - LASTEXITCODE
+  - connrefused
+  - noprofile
+  - norc
+  - ACMRT
+  - nocapture
+  - noclobber
+  - taskkill
+  - aaronmgz
+  - Cartera
+  - coolstead
+  - fenix
+  - kinjar
+  - Komori
+  - memudo
+  - roadscore
+  - workscene
   - ACMR
   - actionlint
   - apos
@@ -17,6 +47,8 @@ words:
   - Avenir
   - baselined
   - clippy
+  - cppcheck
+  - peekable
   - codegen
   - codespell
   - codespellrc
@@ -32,10 +64,15 @@ words:
   - fflate
   - fsmonitor
   - gradlew
+  - GHSA
+  - hexdigit
+  - jxcr
+  - textconv
   - labelledby
   - lede
   - linecap
   - libyaml
+  - linejoin
   - llms
   - lucide
   - lockfiles
@@ -44,6 +81,7 @@ words:
   - networkidle
   - noopener
   - noreferrer
+  - NOSYSTEM
   - pbxproj
   - prepush
   - pyproject
@@ -55,6 +93,7 @@ words:
   - Satteri
   - sendemail
   - serde
+  - Segoe
   - shiki
   - swfitlint
   - swiftlints

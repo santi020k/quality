@@ -9,8 +9,8 @@ On macOS or Linux:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/santi020k/quality/main/install.sh \
-  | sh -s -- santi020k/quality v1.4.0
+  https://raw.githubusercontent.com/santi020k/quality/v2.0.0/install.sh \
+  | sh -s -- santi020k/quality v2.0.0
 ```
 
 Install from a local checkout when developing the CLI itself:
@@ -21,6 +21,18 @@ cargo install --path crates/quality-cli
 
 The release includes checksum-protected archives for x86-64 and ARM64 Linux,
 Apple Silicon and Intel macOS, and x86-64 Windows.
+
+Quality 2 and newer support an optional `.quality-version` in the project root.
+Install the required release, then write its version without a leading `v`:
+
+```text
+2.0.0
+```
+
+When the active CLI differs, Quality stops before executing project commands.
+It prints the checksum-verified installation command on macOS and Linux and the
+matching archive and checksum location on Windows. Older binaries ignore this
+file. A nested project selected with `--root` needs its own pin.
 
 ## Initialize a repository
 

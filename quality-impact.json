@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "global_inputs": [
+    "quality-impact.json",
+    "quality.yml",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "turbo.json",
+    "Cargo.toml",
+    "Cargo.lock",
+    ".github/",
+    "scripts/",
+    "templates/",
+    "install.sh",
+    "apps/site/public/quality.schema.json",
+    "apps/site/public/quality-report.schema.json",
+    "crates/quality-cli/src/impact.rs",
+    "crates/quality-cli/src/cli.rs",
+    "crates/quality-cli/src/main.rs",
+    "apps/site/public/"
+  ],
+  "ignored_inputs": [],
+  "nodes": {
+    "action": {
+      "inputs": [
+        "packages/action/"
+      ],
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "turbo",
+        "run",
+        "check",
+        "test",
+        "build",
+        "--filter=@quality/action"
+      ]
+    },
+    "rust": {
+      "inputs": [
+        "crates/quality-cli/",
+        "playground/"
+      ],
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "turbo",
+        "run",
+        "check",
+        "test",
+        "build",
+        "--filter=@quality/cli"
+      ]
+    },
+    "site-build": {
+      "inputs": [
+        "apps/site/"
+      ],
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "turbo",
+        "run",
+        "check",
+        "test",
+        "build",
+        "--filter=@quality/site"
+      ]
+    },
+    "site-browser": {
+      "inputs": [],
+      "depends_on": [
+        "site-build"
+      ],
+      "command": "pnpm",
+      "args": [
+        "test:site"
+      ]
+    },
+    "security": {
+      "inputs": [],
+      "always": true,
+      "command": "pnpm",
+      "args": [
+        "run",
+        "check:security"
+      ]
+    },
+    "release-contracts": {
+      "inputs": [],
+      "always": true,
+      "command": "pnpm",
+      "args": [
+        "run",
+        "check:versions"
+      ]
+    },
+    "analyzers": {
+      "inputs": [],
+      "always": true,
+      "command": "pnpm",
+      "args": [
+        "run",
+        "check"
+      ]
+    },
+    "playground": {
+      "inputs": [
+        "playground/"
+      ],
+      "depends_on": [
+        "rust"
+      ],
+      "command": "pnpm",
+      "args": [
+        "run",
+        "playground:verify"
+      ]
+    },
+    "action-dist": {
+      "inputs": [],
+      "depends_on": [
+        "action"
+      ],
+      "command": "pnpm",
+      "args": [
+        "run",
+        "check:action-dist"
+      ]
+    }
+  }
+}

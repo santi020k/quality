@@ -6,7 +6,7 @@ version=${2:-latest}
 
 usage() {
     echo "Usage: install.sh OWNER/REPOSITORY [VERSION]" >&2
-    echo "Example: install.sh your-org/quality v1.4.0" >&2
+    echo "Example: install.sh your-org/quality v2.0.0" >&2
     exit 2
 }
 
@@ -53,14 +53,42 @@ curl --fail --location --silent --show-error \
 curl --fail --location --silent --show-error \
     "$download_url/$asset.sha256" --output "$temporary_directory/$asset.sha256"
 
+# Use only the entry that names this archive. A checksum tool's --check mode
+# verifies whatever files the download lists, even /dev/null, and some
+# implementations succeed without verifying any file.
+entries=0
+expected_digest=
+carriage_return=$(printf '\r')
+while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%"$carriage_return"}
+    digest=${line%%[!0123456789abcdefABCDEF]*}
+    case ${line#"$digest"} in
+        " $asset" | "  $asset" | " *$asset")
+            entries=$((entries + 1))
+            expected_digest=$digest
+            ;;
+    esac
+done < "$temporary_directory/$asset.sha256"
+if [ "$entries" -ne 1 ] || [ "${#expected_digest}" -ne 64 ]; then
+    echo "The checksum file must contain exactly one SHA-256 entry for $asset." >&2
+    exit 1
+fi
+expected_digest=$(printf '%s\n' "$expected_digest" | tr ABCDEF abcdef)
+
 if command -v sha256sum >/dev/null 2>&1; then
-    (cd "$temporary_directory" && sha256sum --check "$asset.sha256")
+    actual_digest=$(sha256sum < "$temporary_directory/$asset")
 elif command -v shasum >/dev/null 2>&1; then
-    (cd "$temporary_directory" && shasum -a 256 --check "$asset.sha256")
+    actual_digest=$(shasum -a 256 < "$temporary_directory/$asset")
 else
     echo "A SHA-256 tool (sha256sum or shasum) is required." >&2
     exit 1
 fi
+actual_digest=${actual_digest%%[!0123456789abcdef]*}
+if [ "$actual_digest" != "$expected_digest" ]; then
+    echo "Checksum mismatch for $asset: expected $expected_digest, got $actual_digest." >&2
+    exit 1
+fi
+echo "Verified the SHA-256 checksum of $asset."
 
 tar -xzf "$temporary_directory/$asset" -C "$temporary_directory"
 [ -f "$temporary_directory/quality" ] || {

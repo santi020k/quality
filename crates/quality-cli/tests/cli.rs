@@ -1,8 +1,27 @@
 use std::fs;
 use std::process::{Command, Output};
 
+// Fixture processes must not inherit the repository or recursion guard of a
+// parent Git/Quality hook. Tests can still set an explicit override afterwards.
+fn isolated_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    for variable in [
+        "QUALITY_LOCAL_CI",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+}
+
 fn quality(root: &std::path::Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_quality"))
+    isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(root)
         .args(args)
@@ -16,7 +35,7 @@ fn quality_with_path(root: &std::path::Path, args: &[&str], path: &std::path::Pa
         std::iter::once(path.to_path_buf()).chain(std::env::split_paths(&inherited)),
     )
     .unwrap();
-    Command::new(env!("CARGO_BIN_EXE_quality"))
+    isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(root)
         .args(args)
@@ -26,7 +45,7 @@ fn quality_with_path(root: &std::path::Path, args: &[&str], path: &std::path::Pa
 }
 
 fn git(root: &std::path::Path, args: &[&str]) {
-    let output = Command::new("git")
+    let output = isolated_command("git")
         .arg("-C")
         .arg(root)
         .args(args)
@@ -83,6 +102,22 @@ fn assert_matches_schema_node(
             "schema type mismatch at {location}: {value}"
         );
     }
+    if let (Some(number), Some(minimum)) = (
+        value.as_f64(),
+        schema.get("minimum").and_then(serde_json::Value::as_f64),
+    ) {
+        assert!(number >= minimum, "schema minimum mismatch at {location}");
+    }
+    if let (Some(text), Some(pattern)) = (
+        value.as_str(),
+        schema.get("pattern").and_then(serde_json::Value::as_str),
+    ) {
+        let pattern = regex::Regex::new(pattern).expect("supported report schema pattern");
+        assert!(
+            pattern.is_match(text),
+            "schema pattern mismatch at {location}"
+        );
+    }
     if let Some(object) = value.as_object() {
         let properties = schema
             .get("properties")
@@ -108,14 +143,40 @@ fn assert_matches_schema_node(
             }
         }
     }
-    if let (Some(values), Some(items)) = (
-        value.as_array(),
-        schema.get("items").filter(|items| items.is_object()),
-    ) {
-        for (index, child) in values.iter().enumerate() {
-            assert_matches_schema_node(child, items, root, &format!("{location}[{index}]"));
+    if let Some(values) = value.as_array() {
+        if let Some(minimum) = schema.get("minItems").and_then(serde_json::Value::as_u64) {
+            assert!(
+                values.len() as u64 >= minimum,
+                "schema minItems mismatch at {location}"
+            );
+        }
+        if let Some(items) = schema.get("items").filter(|items| items.is_object()) {
+            for (index, child) in values.iter().enumerate() {
+                assert_matches_schema_node(child, items, root, &format!("{location}[{index}]"));
+            }
         }
     }
+}
+
+#[test]
+#[should_panic(expected = "schema minimum mismatch")]
+fn schema_assertions_reject_values_below_the_minimum() {
+    assert_matches_published_schema(&serde_json::json!(0), r#"{"type":"integer","minimum":1}"#);
+}
+
+#[test]
+#[should_panic(expected = "schema minItems mismatch")]
+fn schema_assertions_reject_too_few_array_items_without_an_items_schema() {
+    assert_matches_published_schema(&serde_json::json!([]), r#"{"type":"array","minItems":1}"#);
+}
+
+#[test]
+#[should_panic(expected = "schema pattern mismatch")]
+fn schema_assertions_reject_invalid_history_identifiers() {
+    assert_matches_published_schema(
+        &serde_json::json!("run-invalid"),
+        r#"{"type":"string","pattern":"^run-[0-9]+(?:-[0-9]{4})?$"}"#,
+    );
 }
 
 fn schema_type_matches(value: &serde_json::Value, expected: &serde_json::Value) -> bool {
@@ -335,7 +396,7 @@ fn local_ci_blocks_recursive_process_invocations() {
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(temp.path())
         .args(["ci", "local"])
@@ -441,7 +502,7 @@ fn custom_tools_cannot_shadow_builtins() {
 #[test]
 fn completions_are_generated_without_project_discovery() {
     let missing_root = "/definitely/not/a/quality/project";
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(missing_root)
         .args(["completions", "fish"])
@@ -454,7 +515,7 @@ fn completions_are_generated_without_project_discovery() {
 #[test]
 fn agent_instructions_are_generated_without_project_discovery() {
     let missing_root = "/definitely/not/a/quality/project";
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(missing_root)
         .args(["instructions", "--format", "agents"])
@@ -638,12 +699,36 @@ fn missing_required_tool_is_included_in_sarif() {
         sarif["runs"][0]["results"][0]["ruleId"],
         "tool-not-installed"
     );
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], false);
 
     let agent = quality(temp.path(), &["check", "--format", "agent"]);
     assert_eq!(agent.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&agent.stdout);
     assert!(stdout.contains("## Environment and toolchain problems"));
     assert!(!stdout.contains("## Findings"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_spawn_failure_is_reported_in_sarif_without_counting_as_execution() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let command = temp.path().join("not-executable");
+    fs::write(&command, "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  unavailable:\n    command: ./not-executable\n",
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "sarif"]);
+    assert_eq!(output.status.code(), Some(1));
+    let sarif: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(sarif["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], false);
+    assert_eq!(sarif["runs"][0]["results"][0]["level"], "error");
 }
 
 #[test]
@@ -723,6 +808,7 @@ fn check_normalizes_a_tool_failure_to_json_and_sarif() {
     let sarif: serde_json::Value = serde_json::from_slice(&sarif_output.stdout).unwrap();
     assert_eq!(sarif["version"], "2.1.0");
     assert_eq!(sarif["runs"][0]["results"][0]["ruleId"], "example_rule");
+    assert_eq!(sarif["runs"][0]["properties"]["qualityExecuted"], true);
 
     let agent_output = quality(temp.path(), &["check", "--format", "agent"]);
     assert_eq!(agent_output.status.code(), Some(1));
@@ -1026,7 +1112,7 @@ fn severity_levels_separate_reporting_from_failure_and_write_a_summary() {
     .unwrap();
     let summary = temp.path().join("summary.md");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_quality"))
+    let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
         .arg("--root")
         .arg(temp.path())
         .args([
@@ -1147,7 +1233,7 @@ fn agent_rerun_preserves_changed_scope() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let head = Command::new("git")
+    let head = isolated_command("git")
         .arg("-C")
         .arg(temp.path())
         .args(["rev-parse", "HEAD"])
@@ -1664,6 +1750,85 @@ fn baseline_refuses_to_hide_a_missing_required_tool() {
 
 #[cfg(unix)]
 #[test]
+fn existing_baseline_does_not_hide_a_later_analyzer_crash() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let analyzer = temp.path().join("analyzer");
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf 'App.swift:1:1: warning: Existing problem (example_rule)\\n'\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&analyzer, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ncustom:\n  analyzer:\n    command: ./analyzer\n    enabled: true\n    check_args: []\n    parser: generic\n",
+    )
+    .unwrap();
+
+    let created = quality(temp.path(), &["baseline", "create"]);
+    assert!(created.status.success());
+    assert!(quality(temp.path(), &["check"]).status.success());
+
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf 'App.swift:1:1: warning: Existing problem (example_rule)\\n'\nprintf 'fatal: analyzer crashed\\n'\nexit 2\n",
+    )
+    .unwrap();
+    let output = quality(temp.path(), &["check", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["suppressed"], 0);
+    assert_eq!(report["results"][0]["status"], "failed");
+    assert_eq!(
+        report["results"][0]["diagnostics"][0]["message"],
+        "Existing problem"
+    );
+    assert!(
+        report["results"][0]["output"]
+            .as_str()
+            .unwrap()
+            .contains("fatal: analyzer crashed")
+    );
+
+    let errors_only = quality(
+        temp.path(),
+        &["check", "--format", "json", "--fail-level", "error"],
+    );
+    assert_eq!(errors_only.status.code(), Some(1));
+}
+
+#[cfg(unix)]
+#[test]
+fn structured_findings_do_not_become_environment_failures_from_their_message() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntasks:\n  lint:\n    command: sh\n    args: [-c, 'cat findings.json; exit 1']\n    parser: eslint-json\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("findings.json"),
+        r#"[{"filePath":"src/watch.ts","messages":[{"severity":2,"message":"too many open files in this comment","ruleId":"comment-content","line":1}]}]"#,
+    )
+    .unwrap();
+
+    let output = quality(temp.path(), &["check", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["results"][0]["failure_kind"], "code");
+
+    let output = quality(temp.path(), &["check", "--format", "agent"]);
+    assert_eq!(output.status.code(), Some(1));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("## Findings"));
+    assert!(text.contains("too many open files in this comment"));
+    assert!(!text.contains("## Environment and toolchain problems"));
+}
+
+#[cfg(unix)]
+#[test]
 fn external_adapter_supports_detection_changed_files_and_normalization() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -1708,6 +1873,59 @@ fn external_adapter_supports_detection_changed_files_and_normalization() {
     assert!(format_check.status.success());
     let format_report: serde_json::Value = serde_json::from_slice(&format_check.stdout).unwrap();
     assert_eq!(format_report["results"].as_array().unwrap().len(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn changed_paths_starting_with_a_dash_are_passed_as_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let analyzer = temp.path().join("record");
+    fs::write(
+        &analyzer,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > arguments.txt\nprintf '[]\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&analyzer, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\ntools:\n  eslint:\n    enabled: true\n    command: ./record\n  detekt:\n    enabled: true\n    command: ./record\ncustom:\n  analyzer:\n    command: ./record\n    extensions: [md]\n    check_args: [--check]\n",
+    )
+    .unwrap();
+    git(temp.path(), &["add", "."]);
+    git(temp.path(), &["commit", "--quiet", "-m", "initial"]);
+    fs::write(temp.path().join("--config.ts"), "export {};\n").unwrap();
+    fs::write(temp.path().join("--config.md"), "Example\n").unwrap();
+    fs::write(temp.path().join("--config.kt"), "class Example\n").unwrap();
+    fs::write(temp.path().join("Second file.kt"), "class Second\n").unwrap();
+
+    for (adapter, expected_path) in [
+        ("eslint", "./--config.ts"),
+        ("analyzer", "./--config.md"),
+        ("detekt", "./--config.kt,Second file.kt"),
+    ] {
+        let output = quality(temp.path(), &["check", "--changed", "--only", adapter]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let arguments = fs::read_to_string(temp.path().join("arguments.txt")).unwrap();
+        assert!(arguments.lines().any(|argument| argument == expected_path));
+        assert!(
+            !arguments
+                .lines()
+                .any(|argument| argument == &expected_path[2..])
+        );
+    }
+
+    fs::write(temp.path().join("Comma,Name.kt"), "class Other\n").unwrap();
+    let output = quality(temp.path(), &["check", "--changed", "--only", "detekt"]);
+    assert!(output.status.success());
+    let arguments = fs::read_to_string(temp.path().join("arguments.txt")).unwrap();
+    assert!(!arguments.lines().any(|argument| argument == "--input"));
 }
 
 #[test]
@@ -2097,7 +2315,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     let success = temp.path().join("pass-check");
     fs::write(
         &failure,
-        "#!/bin/sh\necho 'src/app.ts:4: broken check' >&2\nexit 7\n",
+        "#!/bin/sh\necho 'src/app.ts:4:5: error: broken check (local-rule)' >&2\nexit 7\n",
     )
     .unwrap();
     fs::write(&success, "#!/bin/sh\nprintf 'ran\\n' > focused-rerun.txt\n").unwrap();
@@ -2105,7 +2323,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     fs::set_permissions(&success, fs::Permissions::from_mode(0o755)).unwrap();
     fs::write(
         temp.path().join("quality.yml"),
-        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Failing check\n        command: ./fail-check\n      - name: Passing check\n        command: ./pass-check\n",
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Failing check\n        command: ./fail-check\n        parser: generic\n      - name: Passing check\n        command: ./pass-check\n",
     )
     .unwrap();
 
@@ -2117,7 +2335,7 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
     assert_eq!(failed.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&failed.stdout);
     assert!(stdout.contains("command exited with code 7"));
-    assert!(stdout.contains("src/app.ts:4: broken check"));
+    assert!(stdout.contains("src/app.ts:4:5 error: broken check [local-rule]"));
     assert!(stdout.contains("quality ci local --hook pre-push --step 1"));
     assert!(stdout.contains("wall time"));
     assert!(!temp.path().join("focused-rerun.txt").exists());
@@ -2126,11 +2344,23 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
             .unwrap();
     assert_eq!(report["status"], "failed");
     assert_eq!(report["steps"][0]["exit_code"], 7);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["path"], "src/app.ts");
+    assert_eq!(report["steps"][0]["diagnostics"][0]["line"], 4);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["column"], 5);
+    assert_eq!(report["steps"][0]["diagnostics"][0]["rule"], "local-rule");
     assert_eq!(report["steps"][1]["status"], "skipped");
     assert_matches_published_schema(
         &report,
         include_str!("../../../apps/site/public/quality-local-ci.schema.json"),
     );
+
+    let retained_failure = quality(temp.path(), &["ci", "local", "--format", "json"]);
+    assert_eq!(retained_failure.status.code(), Some(1));
+    let retained = quality(temp.path(), &["ci", "show", "latest", "--format", "json"]);
+    assert!(retained.status.success());
+    let retained: serde_json::Value = serde_json::from_slice(&retained.stdout).unwrap();
+    assert!(retained["steps"][0].get("output").is_none());
+    assert!(retained["steps"][0].get("diagnostics").is_none());
 
     let bounded = quality(
         temp.path(),
@@ -2155,6 +2385,85 @@ fn ci_local_reports_failure_timing_and_supports_a_focused_rerun() {
         fs::read_to_string(temp.path().join("focused-rerun.txt")).unwrap(),
         "ran\n"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn ci_history_shows_and_compares_metadata_only_runs() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let command = temp.path().join("timed-check");
+    fs::write(
+        &command,
+        "#!/bin/sh\nsleep 0.01\necho 'private command output'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-push:\n    steps:\n      - name: Timed check\n        command: ./timed-check\n",
+    )
+    .unwrap();
+
+    assert!(quality(temp.path(), &["ci", "local"]).status.success());
+    assert!(quality(temp.path(), &["ci", "local"]).status.success());
+
+    let history = quality(
+        temp.path(),
+        &["ci", "history", "--format", "json", "--limit", "2"],
+    );
+    assert!(
+        history.status.success(),
+        "{}",
+        String::from_utf8_lossy(&history.stderr)
+    );
+    let entries: serde_json::Value = serde_json::from_slice(&history.stdout).unwrap();
+    assert_eq!(entries["schema_version"], 1);
+    assert_eq!(entries["runs"].as_array().unwrap().len(), 2);
+    assert_eq!(entries["runs"][0]["hook"], "pre-push");
+    assert_matches_published_schema(
+        &entries,
+        include_str!("../../../apps/site/public/quality-local-ci-history.schema.json"),
+    );
+
+    let shown = quality(temp.path(), &["ci", "show", "latest", "--format", "json"]);
+    assert!(shown.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    assert!(report["steps"][0].get("output").is_none());
+    assert!(report["steps"][0].get("diagnostics").is_none());
+
+    let compared = quality(temp.path(), &["ci", "compare", "--format", "json"]);
+    assert!(compared.status.success());
+    let comparison: serde_json::Value = serde_json::from_slice(&compared.stdout).unwrap();
+    assert_eq!(comparison["schema_version"], 1);
+    assert_ne!(comparison["base"]["id"], comparison["head"]["id"]);
+    assert_eq!(comparison["steps"][0]["name"], "Timed check");
+    assert!(comparison["duration_delta_ms"].is_number());
+    assert_matches_published_schema(
+        &comparison,
+        include_str!("../../../apps/site/public/quality-local-ci-comparison.schema.json"),
+    );
+}
+
+#[test]
+fn quality_version_pin_is_enforced_before_project_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    fs::write(temp.path().join(".quality-version"), "99.0.0\n").unwrap();
+
+    let mismatch = quality(temp.path(), &["ci", "history"]);
+    assert_eq!(mismatch.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&mismatch.stderr);
+    assert!(stderr.contains("requires quality 99.0.0"));
+    assert!(stderr.contains("v99.0.0"));
+
+    fs::write(
+        temp.path().join(".quality-version"),
+        format!("{}\n", env!("CARGO_PKG_VERSION")),
+    )
+    .unwrap();
+    assert!(quality(temp.path(), &["ci", "history"]).status.success());
 }
 
 #[cfg(unix)]
@@ -2456,6 +2765,35 @@ fn hooks_status_reports_an_inactive_custom_hooks_path() {
 
     assert_eq!(status.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&status.stderr).contains("not active"));
+}
+
+#[test]
+fn hooks_respect_an_inherited_hooks_path_without_writing_to_it() {
+    let temp = tempfile::tempdir().unwrap();
+    initialize_git(temp.path());
+    let global_config = temp.path().join("global.gitconfig");
+    fs::write(&global_config, "[core]\n\thooksPath = .custom-hooks\n").unwrap();
+    fs::write(
+        temp.path().join("quality.yml"),
+        "version: 1\nhooks:\n  pre-commit:\n    steps:\n      - command: git\n        args: [status, --short]\n",
+    )
+    .unwrap();
+
+    for operation in ["install", "status"] {
+        let output = isolated_command(env!("CARGO_BIN_EXE_quality"))
+            .arg("--root")
+            .arg(temp.path())
+            .args(["hooks", operation])
+            .env("GIT_CONFIG_GLOBAL", &global_config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("core.hooksPath"));
+        assert!(!temp.path().join(".custom-hooks").exists());
+        assert!(!temp.path().join(".git/hooks/pre-commit").exists());
+    }
 }
 
 #[cfg(unix)]

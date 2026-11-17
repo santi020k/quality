@@ -5,6 +5,8 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+const GIT_HISTORY_GUIDANCE: &str = "fetch the base ref and missing history (for example, `git fetch origin <base-branch>`); in CI, set `fetch-depth: 0` on actions/checkout, then retry";
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ChangeSet {
     pub base: String,
@@ -19,9 +21,14 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
     resolve_revision(root, "HEAD").context(
         "changed-file mode needs at least one Git commit; run without `--changed` in a new repository",
     )?;
-    let resolved_base = resolve_revision(root, base)
-        .with_context(|| format!("Git base `{base}` does not resolve to a commit"))?;
+    let resolved_base = resolve_revision(root, base).with_context(|| {
+        format!("Git base `{base}` does not resolve to a commit; {GIT_HISTORY_GUIDANCE}")
+    })?;
 
+    // Treat renames as a deletion and an addition so removing a configuration
+    // path still triggers its analyzer, even when Git recognizes the new path.
+    // Include type changes: replacing a source file with a symlink (or the
+    // reverse) changes the analyzer's input just as a content edit does.
     let mut files = BTreeSet::new();
     let comparison = if base == "HEAD" {
         "HEAD".to_owned()
@@ -32,22 +39,26 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         root,
         &[
             "diff",
+            "--no-renames",
             "--relative",
             "--name-only",
             "-z",
-            "--diff-filter=ACMR",
+            "--diff-filter=ACMRT",
             &comparison,
             "--",
             ".",
         ],
         &mut files,
     )
-    .with_context(|| format!("could not compare the project with `{base}`"))?;
+    .with_context(|| {
+        format!("could not compare the project with `{base}`; {GIT_HISTORY_GUIDANCE}")
+    })?;
     let mut deleted = BTreeSet::new();
     collect_paths(
         root,
         &[
             "diff",
+            "--no-renames",
             "--relative",
             "--name-only",
             "-z",
@@ -58,17 +69,20 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
         ],
         &mut deleted,
     )
-    .with_context(|| format!("could not inspect deletions since `{base}`"))?;
+    .with_context(|| {
+        format!("could not inspect deletions since `{base}`; {GIT_HISTORY_GUIDANCE}")
+    })?;
 
     if base != "HEAD" {
         collect_paths(
             root,
             &[
                 "diff",
+                "--no-renames",
                 "--relative",
                 "--name-only",
                 "-z",
-                "--diff-filter=ACMR",
+                "--diff-filter=ACMRT",
                 "HEAD",
                 "--",
                 ".",
@@ -80,6 +94,7 @@ pub fn discover(root: &Path, base: &str) -> Result<ChangeSet> {
             root,
             &[
                 "diff",
+                "--no-renames",
                 "--relative",
                 "--name-only",
                 "-z",
@@ -160,10 +175,22 @@ fn collect_paths(root: &Path, args: &[&str], paths: &mut BTreeSet<PathBuf>) -> R
 }
 
 fn git(root: &Path, args: &[&str]) -> Result<std::process::Output> {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
+    let mut command = Command::new("git");
+    command.arg("-C").arg(root).args(args);
+    // Hook-exported repository paths must not override an explicit project root.
+    // Preserve intentional Git configuration and authentication environment.
+    for variable in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(variable);
+    }
+    command
         .output()
         .context("could not run Git; install Git or run without `--changed`")
 }
@@ -173,13 +200,12 @@ mod tests {
     use super::*;
 
     fn run_git(root: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .status()
-            .unwrap();
-        assert!(status.success());
+        let output = git(root, args).unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

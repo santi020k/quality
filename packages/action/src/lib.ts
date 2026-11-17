@@ -9,6 +9,36 @@ export type Platform =
   | "x86_64-pc-windows-msvc"
   | "x86_64-unknown-linux-gnu";
 
+const numericIdentifier = "(?:0|[1-9][0-9]*)";
+const prereleaseIdentifier = `(?:${numericIdentifier}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`;
+const semanticVersion = new RegExp(
+  `^${numericIdentifier}\\.${numericIdentifier}\\.${numericIdentifier}` +
+    `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?` +
+    "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$(?![\\s\\S])",
+  "u",
+);
+
+export function releaseVersion(input: string, actionVersion: string): string {
+  const requested = input || actionVersion;
+  if (requested === "latest") return requested;
+  const version = requested.startsWith("v") ? requested.slice(1) : requested;
+  if (!semanticVersion.test(version)) {
+    throw new Error("version must be an exact semantic version (with an optional v prefix), or latest");
+  }
+  return `v${version}`;
+}
+
+export function verifyBinaryVersion(stdout: string, requested: string): string {
+  const version = stdout.trim().match(/^quality ([^\s]+)$/u)?.[1];
+  if (!version || !semanticVersion.test(version)) {
+    throw new Error("installed quality binary did not report a valid version");
+  }
+  if (requested !== "latest" && requested !== `v${version}`) {
+    throw new Error(`installed quality version ${version} does not match requested ${requested}`);
+  }
+  return version;
+}
+
 export function releaseRepository(
   actionRepository: string | undefined,
   fallbackRepository: string | undefined,
@@ -43,6 +73,19 @@ export async function sha256(file: string): Promise<string> {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Tool-cache lookups and insertions are keyed only by tool name, version,
+ * and arch, with no notion of which release repository or base URL the
+ * binary came from. Two distinct repositories (or a fork publishing a
+ * fixture server override) can therefore publish the same version string
+ * and silently reuse each other's cached binary. Hashing the fully
+ * resolved base URL into the tool name gives each source its own
+ * namespace while staying a fixed-length, path-safe cache key.
+ */
+export function cacheToolName(resolvedBaseUrl: string): string {
+  return `quality-${createHash("sha256").update(resolvedBaseUrl).digest("hex")}`;
+}
+
 export function checkArguments(inputs: {
   base: string;
   changedOnly: boolean;
@@ -68,12 +111,17 @@ export function checkArguments(inputs: {
   if (inputs.timeoutSeconds) args.push("--timeout-seconds", inputs.timeoutSeconds);
   if (inputs.maxOutputBytes) args.push("--max-output-bytes", inputs.maxOutputBytes);
   if (inputs.sarif) args.push("--report", inputs.sarif);
-  if (inputs.changedOnly && inputs.base) args.push("--changed", inputs.base);
+  if (inputs.changedOnly && inputs.base) {
+    if (inputs.base.startsWith("-") || /[\u0000-\u001f\u007f]/u.test(inputs.base)) {
+      throw new Error("base must be a Git revision, not a command-line option or control character");
+    }
+    args.push(`--changed=${inputs.base}`);
+  }
   return args;
 }
 
 export function actionFailureMessage(exitCode: number, stderr: string): string {
-  if (exitCode === 1) return "quality found diagnostics at or above the configured failure level";
+  if (exitCode === 1) return "quality checks failed; inspect the reported diagnostics and tool failures";
   const detail = stderr
     .split(/\r?\n/u)
     .map((line) => line.trim())
@@ -85,4 +133,70 @@ export function actionFailureMessage(exitCode: number, stderr: string): string {
 
 export function resolveProjectPath(workspace: string, requested: string): string {
   return path.resolve(workspace, requested);
+}
+
+export interface SarifReportSummary {
+  tools: number;
+  findings: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function malformedReportError(detail: string): Error {
+  return new Error(`quality SARIF report is malformed: ${detail}`);
+}
+
+/**
+ * A `quality` CLI from before the `qualityExecuted` marker existed omits
+ * that property, so its runs always count toward `tools`. Only an
+ * explicit `qualityExecuted: false` (a tool whose process never started)
+ * excludes a run from that count; its diagnostics still count toward
+ * `findings`, since a required missing tool must stay visible.
+ */
+export function summarizeSarifReport(report: unknown): SarifReportSummary {
+  if (!isRecord(report)) {
+    throw malformedReportError("top-level value is not an object");
+  }
+  const runs = report["runs"];
+  if (runs === undefined) return { tools: 0, findings: 0 };
+  if (!isUnknownArray(runs)) {
+    throw malformedReportError('"runs" is not an array');
+  }
+
+  let tools = 0;
+  let findings = 0;
+  for (const [index, run] of runs.entries()) {
+    if (!isRecord(run)) {
+      throw malformedReportError(`runs[${index}] is not an object`);
+    }
+    const results = run["results"];
+    if (results !== undefined) {
+      if (!isUnknownArray(results)) {
+        throw malformedReportError(`runs[${index}].results is not an array`);
+      }
+      findings += results.length;
+    }
+    if (runQualityExecuted(run, index) !== false) tools += 1;
+  }
+  return { tools, findings };
+}
+
+function runQualityExecuted(run: Record<string, unknown>, index: number): boolean | undefined {
+  const properties = run["properties"];
+  if (properties === undefined) return undefined;
+  if (!isRecord(properties)) {
+    throw malformedReportError(`runs[${index}].properties is not an object`);
+  }
+  const executed = properties["qualityExecuted"];
+  if (executed === undefined) return undefined;
+  if (typeof executed !== "boolean") {
+    throw malformedReportError(`runs[${index}].properties.qualityExecuted is not a boolean`);
+  }
+  return executed;
 }

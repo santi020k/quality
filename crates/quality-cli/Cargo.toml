@@ -1,6 +1,6 @@
 [package]
 name = "quality-cli"
-version = "1.4.0"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.85"
 description = "One fast code-quality workflow for multi-platform projects"
@@ -28,3 +28,7 @@ tempfile = "3.20"
 wait-timeout = "0.2"
 walkdir = "2.5"
 which = "8.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+signal-hook = "0.4.6"

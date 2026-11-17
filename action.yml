@@ -7,8 +7,8 @@ branding:
 
 inputs:
   version:
-    description: Release tag to install, or latest.
-    default: latest
+    description: Exact release version to install, or latest. Empty uses this Action's release version.
+    default: ""
   working-directory:
     description: Project directory to check.
     default: .

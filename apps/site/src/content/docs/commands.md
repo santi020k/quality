@@ -174,6 +174,7 @@ Record current, fully parsed findings so adoption can focus on new regressions:
 ```bash
 quality baseline create
 quality baseline create --force
+quality baseline create --max-output-bytes 4194304 --timeout-seconds 120
 ```
 
 ## `quality completions`
@@ -224,6 +225,9 @@ quality ci local
 quality ci local --step 2
 quality ci local --hook pre-commit
 quality ci local --format json --report reports/local-ci.json
+quality ci history --hook pre-push
+quality ci show latest --hook pre-push
+quality ci compare --hook pre-push
 ```
 
 `ci plan` reports exact command coverage from the selected hook. `--strict`
@@ -235,15 +239,44 @@ verified. A wrapper step can explicitly list equivalent workflow commands under
 
 `ci local` runs each hook step sequentially, captures at most 1 MiB of combined
 output per step by default, stops after the first failure, and reports wall
-time, exit status, a concise tail of failure output, and a focused rerun
-command. Override the capture limit with `--max-output-bytes`.
+time, exit status, normalized diagnostics, a concise tail of failure output,
+and a focused rerun command. Override the capture limit with
+`--max-output-bytes`.
 
-The 20 most recent metadata-only runs are kept below `.git/quality/local-ci/` unless
-`--no-history` is passed. Automatic history omits command output. An explicit
+The 20 most recent metadata-only runs per hook are kept in the Git directory at
+`quality/local-ci/` unless `--no-history` is passed; linked worktrees keep their
+own history. `ci history`, `ci show`, and `ci compare` inspect
+status and timing changes. Automatic history omits command output and diagnostics. An explicit
 `--report` retains bounded output and follows the published
 [`quality local CI report schema`](/quality-local-ci.schema.json); do not commit
 reports from commands that may print sensitive information. JSON plans follow
 the [`local CI plan schema`](/quality-ci-plan.schema.json).
+
+## `quality impact plan` and `quality impact verify`
+
+Quality 2 plans committed-source validation graphs without executing commands:
+
+```bash
+quality impact plan --base origin/main --head HEAD --format json > plan.json
+quality impact plan --base LAST_DELIVERED_SHA --comparison direct --format json
+quality impact plan --full --format json
+quality impact verify --plan plan.json --results results.json --format json
+```
+
+Declare nodes and their inputs, dependencies, and commands in
+`quality-impact.json`. Match exact paths or directory prefixes ending in `/`.
+Unknown inputs and unavailable comparisons select the full configured graph;
+invalid configuration fails. Independent execution batches are included in the
+plan for a trusted workflow to schedule. Turbo and native tools retain their
+existing execution and cache responsibilities.
+
+Verification binds results to the source revision, committed configuration, and
+complete selected graph. Missing, duplicate, failed, cancelled, or skipped
+selected results cannot pass. Plan identities do not authenticate arbitrary
+result files. Keep full release gates while qualifying affected selection.
+
+See the [impact pipeline guide](https://github.com/santi020k/quality/blob/main/docs/impact-pipelines.md)
+for the configuration and result contracts, cache boundaries, and migration.
 
 ## `quality ci github`
 
@@ -251,7 +284,7 @@ Generate a GitHub Actions workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v1.4.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
 ```
 
 The generator selects Linux or macOS from the detected platforms and adds

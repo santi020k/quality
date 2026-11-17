@@ -22,13 +22,21 @@ overrides:
 
 minimumReleaseAgeExclude:
   # Reviewed stable releases required by the Lumen upgrade and browser checks.
-  - '@santi020k/lumen-astro@4.1.0'
-  - '@santi020k/lumen-core@4.1.0'
-  - '@santi020k/lumen@4.2.0'
-  - astro@7.3.7
-  - '@playwright/test@1.64.0'
-  - playwright@1.64.0
-  - playwright-core@1.64.0
+  - '@santi020k/lumen-astro@5.2.0'
+  - '@santi020k/lumen-core@5.2.0'
+  - '@santi020k/lumen@5.2.0'
+  - astro@7.4.12
+  - '@playwright/test@1.65.1'
+  - playwright@1.65.1
+  - playwright-core@1.65.1
   # OG 1.2 pins this reviewed renderer.
-  - '@santi020k/og@1.2.0'
+  - '@santi020k/og@1.2.1'
   - satori@0.36.0
+  - '@cloudflare/workerd-darwin-64@1.20261116.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20261116.1'
+  - '@cloudflare/workerd-linux-64@1.20261116.1'
+  - '@cloudflare/workerd-linux-arm64@1.20261116.1'
+  - '@cloudflare/workerd-windows-64@1.20261116.1'
+  - miniflare@5.20261116.0-beta
+  - workerd@1.20261116.1
+  - wrangler@4.163.0

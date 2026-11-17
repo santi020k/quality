@@ -31,6 +31,15 @@ configuration triggers a full run, and deleting a source file still triggers
 matching project-wide tasks and analyzers. File-scoped tools receive only paths
 that still exist, so a deleted file is never passed to an executable.
 
+Renames include both the removed path and the new path, so moving a configuration
+file still triggers its full analyzer. Replacing a regular file with a symlink,
+or a symlink with a regular file, also counts as a changed input.
+
+Paths beginning with a dash receive an explicit relative-path prefix before
+being passed as file arguments. The stable detekt CLI receives comma-separated
+inputs; filenames containing a comma trigger a complete project check because
+they cannot be represented unambiguously in that input list.
+
 Adapter selection composes with changed-file mode:
 
 ```bash
@@ -54,3 +63,14 @@ Fingerprints exclude line and column positions, so moving code does not create n
 ## Safety rules
 
 A baseline is refused when a required tool is missing, crashes, or returns output that cannot be fully parsed. Infrastructure failures must never become accepted code-quality debt.
+
+Existing baselines also leave findings visible when a failed analyzer's output
+cannot be fully parsed. A recorded warning cannot turn an execution failure into
+a passing check.
+
+Failure thresholds apply to fully parsed findings. An unsuccessful analyzer with
+unrecognized output still fails when `--fail-level error` is selected.
+
+Baseline creation accepts the same `--jobs`, `--timeout-seconds`, and
+`--max-output-bytes` controls as checks. Raise the capture limit when a structured
+report exceeds the default limit; incomplete findings must not become a baseline.

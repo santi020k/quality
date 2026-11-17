@@ -24,6 +24,7 @@ pub fn print_run(
     format: OutputFormat,
     report_level: Severity,
     fail_level: Severity,
+    root: &Path,
 ) -> Result<()> {
     match format {
         OutputFormat::Pretty => print_pretty_run(report, report_level),
@@ -34,9 +35,9 @@ pub fn print_run(
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(report)?),
         OutputFormat::Sarif => println!(
             "{}",
-            serde_json::to_string_pretty(&to_sarif(report, report_level))?
+            serde_json::to_string_pretty(&to_sarif(report, report_level, root))?
         ),
-        OutputFormat::Github => print_github_run(report, report_level, fail_level)?,
+        OutputFormat::Github => print_github_run(report, report_level, fail_level, root)?,
     }
     Ok(())
 }
@@ -314,6 +315,20 @@ fn render_agent_run(
         output.push_str("\n## Unstructured failure output\n");
         for result in raw_failures.iter().take(shown_raw_failures) {
             let _ = writeln!(output, "\n### {}\n", agent_text(&result.name, 120));
+            if let Some(diagnostic) = result.diagnostics.first() {
+                let first_line = result.output.lines().find(|line| !line.trim().is_empty());
+                if first_line
+                    .map(crate::runner::unparsed_failure_message)
+                    .as_deref()
+                    != Some(diagnostic.message.as_str())
+                {
+                    let _ = writeln!(
+                        output,
+                        "{}\n",
+                        agent_text(&diagnostic.message, AGENT_TEXT_LIMIT)
+                    );
+                }
+            }
             let mut lines = result.output.lines().filter(|line| !line.trim().is_empty());
             for line in lines.by_ref().take(AGENT_OUTPUT_LINE_LIMIT) {
                 let _ = writeln!(output, "    {}", agent_text(line, 240));
@@ -676,13 +691,19 @@ fn agent_has_synthesized_failure(result: &crate::runner::ToolResult) -> bool {
         && diagnostic.line.is_none()
         && diagnostic.column.is_none()
         && diagnostic.rule.is_none()
-        && result
-            .output
-            .lines()
-            .find(|line| !line.trim().is_empty())
-            .map_or(diagnostic.message == "tool exited unsuccessfully", |line| {
-                line.trim() == diagnostic.message
-            })
+        && {
+            let mut lines = result
+                .output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .peekable();
+            if lines.peek().is_none() {
+                diagnostic.message == "tool exited unsuccessfully"
+            } else {
+                lines
+                    .any(|line| crate::runner::unparsed_failure_message(line) == diagnostic.message)
+            }
+        }
 }
 
 fn agent_selection_description(scope: &crate::runner::RunScope) -> String {
@@ -708,12 +729,17 @@ fn agent_selection_description(scope: &crate::runner::RunScope) -> String {
     parts.join("; ")
 }
 
-pub fn write_sarif(report: &RunReport, path: &Path, report_level: Severity) -> Result<()> {
+pub fn write_sarif(
+    report: &RunReport,
+    path: &Path,
+    report_level: Severity,
+    root: &Path,
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create report directory {}", parent.display()))?;
     }
-    let serialized = serde_json::to_vec_pretty(&to_sarif(report, report_level))?;
+    let serialized = serde_json::to_vec_pretty(&to_sarif(report, report_level, root))?;
     crate::atomic::write(path, &serialized)
         .with_context(|| format!("could not write SARIF report to {}", path.display()))?;
     Ok(())
@@ -723,7 +749,9 @@ fn print_github_run(
     report: &RunReport,
     report_level: Severity,
     fail_level: Severity,
+    root: &Path,
 ) -> Result<()> {
+    let workspace = github_workspace();
     let mut annotations = 0;
     for result in &report.results {
         for diagnostic in &result.diagnostics {
@@ -734,12 +762,15 @@ fn print_github_run(
             let command = github_level(&diagnostic.severity);
             let mut properties = Vec::new();
             if let Some(path) = &diagnostic.path {
-                properties.push(format!("file={}", escape_github_property(path)));
+                properties.push(format!(
+                    "file={}",
+                    escape_github_property(&report_path(root, path, workspace.as_deref()))
+                ));
             }
-            if let Some(line) = diagnostic.line {
+            if let Some(line) = diagnostic.line.filter(|line| *line > 0) {
                 properties.push(format!("line={line}"));
             }
-            if let Some(column) = diagnostic.column {
+            if let Some(column) = diagnostic.column.filter(|column| *column > 0) {
                 properties.push(format!("col={column}"));
             }
             let title = diagnostic
@@ -759,14 +790,17 @@ fn print_github_run(
     let passed = report
         .results
         .iter()
-        .filter(|result| matches!(result.status, Status::Passed))
+        .filter(|result| result.executed && matches!(result.status, Status::Passed))
+        .count();
+    let executed = report
+        .results
+        .iter()
+        .filter(|result| result.executed)
         .count();
     if report.failed_at(fail_level) {
         println!(
             "::notice title=quality::{} annotations from {} tools; {} passed",
-            annotations,
-            report.results.len(),
-            passed
+            annotations, executed, passed
         );
     } else {
         let detail = report
@@ -777,8 +811,7 @@ fn print_github_run(
             .unwrap_or_default();
         println!(
             "::notice title=quality::All {} quality tools passed{}",
-            report.results.len(),
-            detail
+            executed, detail
         );
     }
     if report.suppressed > 0 {
@@ -1046,7 +1079,49 @@ fn print_pretty_run(report: &RunReport, report_level: Severity) {
     }
 }
 
-fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
+fn report_path(root: &Path, path: &str, workspace: Option<&Path>) -> String {
+    let resolved = root.join(path);
+    let path = workspace
+        .and_then(|workspace| resolved.strip_prefix(workspace).ok())
+        .unwrap_or_else(|| Path::new(path))
+        .to_string_lossy()
+        .into_owned();
+    #[cfg(windows)]
+    let path = path.replace('\\', "/");
+    path
+}
+
+fn github_workspace() -> Option<std::path::PathBuf> {
+    std::env::var_os("GITHUB_WORKSPACE").map(|workspace| {
+        let workspace = std::path::PathBuf::from(workspace);
+        workspace.canonicalize().unwrap_or(workspace)
+    })
+}
+
+fn artifact_uri(path: &str) -> String {
+    let windows_drive = path.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && path.as_bytes().get(1..3) == Some(b":/");
+    let mut uri = if windows_drive {
+        "file:///".to_owned()
+    } else if path.starts_with("//") {
+        "file:".to_owned()
+    } else if path.starts_with('/') {
+        "file://".to_owned()
+    } else {
+        String::new()
+    };
+    for (index, byte) in path.bytes().enumerate() {
+        if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) || windows_drive && index == 1 {
+            uri.push(char::from(byte));
+        } else {
+            let _ = write!(uri, "%{byte:02X}");
+        }
+    }
+    uri
+}
+
+fn to_sarif(report: &RunReport, report_level: Severity, root: &Path) -> serde_json::Value {
+    let workspace = github_workspace();
     let runs = report
         .results
         .iter()
@@ -1065,15 +1140,17 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
                     }
                     if let Some(path) = &diagnostic.path {
                         let mut region = json!({});
-                        if let Some(line) = diagnostic.line {
+                        if let Some(line) = diagnostic.line.filter(|line| *line > 0) {
                             region["startLine"] = json!(line);
                         }
-                        if let Some(column) = diagnostic.column {
+                        if let Some(column) = diagnostic.column.filter(|column| *column > 0) {
                             region["startColumn"] = json!(column);
                         }
                         result["locations"] = json!([{
                             "physicalLocation": {
-                                "artifactLocation": { "uri": path },
+                                "artifactLocation": {
+                                    "uri": artifact_uri(&report_path(root, path, workspace.as_deref()))
+                                },
                                 "region": region
                             }
                         }]);
@@ -1088,14 +1165,19 @@ fn to_sarif(report: &RunReport, report_level: Severity) -> serde_json::Value {
                     }
                 },
                 "invocations": [{
-                    "executionSuccessful": matches!(tool_result.status, Status::Passed),
+                    "executionSuccessful": tool_result.executed && !tool_result.output_truncated && (
+                        matches!(tool_result.status, Status::Passed) ||
+                        tool_result.baseline_safe && matches!(tool_result.failure_kind, Some(FailureKind::Code))
+                    ),
                     "commandLine": tool_result.command
                 }],
                 "results": results
             });
+            let mut properties = json!({ "qualityExecuted": tool_result.executed });
             if let Some(scope) = &report.scope {
-                run["properties"] = json!({ "qualityScope": scope });
+                properties["qualityScope"] = json!(scope);
             }
+            run["properties"] = properties;
             run
         })
         .collect::<Vec<_>>();
@@ -1135,6 +1217,91 @@ mod tests {
     use crate::runner::{Diagnostic, ToolResult};
 
     #[test]
+    fn agent_output_keeps_bounded_and_stderr_fallback_messages_visible() {
+        for (output, message) in [
+            ("x".repeat(1200), format!("{}…", "x".repeat(1000))),
+            (
+                format!("{}\ncheck failed", "stdout banner\n".repeat(12)),
+                "check failed".to_owned(),
+            ),
+        ] {
+            let mut result = tool_result(true);
+            result.status = Status::Failed;
+            result.failure_kind = Some(FailureKind::Code);
+            result.baseline_safe = false;
+            result.output = output;
+            result.diagnostics = vec![Diagnostic {
+                tool: "example".to_owned(),
+                path: None,
+                line: None,
+                column: None,
+                severity: "error".to_owned(),
+                message: message.clone(),
+                rule: None,
+            }];
+            assert!(agent_has_synthesized_failure(&result));
+            let report = RunReport::new(
+                vec![result],
+                None,
+                crate::runner::ExecutionSettings::default(),
+            );
+            let text = render_agent_run(&report, Operation::Check, Severity::Info, Severity::Info);
+            assert!(text.contains("## Unstructured failure output"), "{text}");
+            if message == "check failed" {
+                assert!(text.contains("check failed"), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn report_paths_rebase_nested_projects_and_encode_uri_bytes() {
+        assert_eq!(artifact_uri("sample:part.ts"), "sample%3Apart.ts");
+        assert_eq!(artifact_uri("/tmp/a b.ts"), "file:///tmp/a%20b.ts");
+        assert_eq!(artifact_uri("C:/work/a.ts"), "file:///C:/work/a.ts");
+        assert_eq!(
+            artifact_uri("//server/share/a.ts"),
+            "file://server/share/a.ts"
+        );
+        let workspace = std::env::temp_dir().join("quality-workspace");
+        let root = workspace.join("packages/app");
+        assert_eq!(
+            report_path(&root, "src/file.ts", Some(&workspace)),
+            "packages/app/src/file.ts"
+        );
+        assert_eq!(report_path(&root, "src/file.ts", None), "src/file.ts");
+        assert_eq!(
+            artifact_uri("src/café #1%.ts"),
+            "src/caf%C3%A9%20%231%25.ts"
+        );
+    }
+
+    #[test]
+    fn sarif_distinguishes_complete_findings_from_execution_failure() {
+        for (kind, safe, truncated, expected) in [
+            (FailureKind::Code, true, false, true),
+            (FailureKind::Code, false, false, false),
+            (FailureKind::Code, true, true, false),
+            (FailureKind::Environment, false, false, false),
+        ] {
+            let mut result = tool_result(true);
+            result.status = Status::Failed;
+            result.failure_kind = Some(kind);
+            result.baseline_safe = safe;
+            result.output_truncated = truncated;
+            let report = RunReport::new(
+                vec![result],
+                None,
+                crate::runner::ExecutionSettings::default(),
+            );
+            let sarif = to_sarif(&report, Severity::Info, Path::new("."));
+            assert_eq!(
+                sarif["runs"][0]["invocations"][0]["executionSuccessful"],
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn agent_text_removes_terminal_control_characters() {
         assert_eq!(
             normalized_agent_text("before\u{1b}[2J after", 500),
@@ -1161,6 +1328,7 @@ mod tests {
                 tool: "example".to_owned(),
                 name: "Example".to_owned(),
                 status: Status::Failed,
+                executed: true,
                 failure_kind: Some(FailureKind::Code),
                 duration_ms: 1,
                 command: "example".to_owned(),
@@ -1197,5 +1365,80 @@ mod tests {
 
         assert!(output.contains("### General findings"));
         assert!(output.contains("### `General`"));
+    }
+
+    fn tool_result(executed: bool) -> crate::runner::ToolResult {
+        ToolResult {
+            tool: "example".to_owned(),
+            name: "Example".to_owned(),
+            status: if executed {
+                Status::Passed
+            } else {
+                Status::Missing
+            },
+            executed,
+            failure_kind: None,
+            duration_ms: 0,
+            command: "example".to_owned(),
+            diagnostics: Vec::new(),
+            output: String::new(),
+            output_truncated: false,
+            guidance: (!executed).then(|| "install example".to_owned()),
+            baseline_safe: executed,
+        }
+    }
+
+    #[test]
+    fn sarif_marks_each_run_with_whether_it_executed() {
+        let executed_report = RunReport::new(
+            vec![tool_result(true)],
+            None,
+            crate::runner::ExecutionSettings::default(),
+        );
+        let missing_report = RunReport::new(
+            vec![tool_result(false)],
+            None,
+            crate::runner::ExecutionSettings::default(),
+        );
+
+        let executed_sarif = to_sarif(&executed_report, Severity::Info, Path::new("."));
+        let missing_sarif = to_sarif(&missing_report, Severity::Info, Path::new("."));
+
+        assert_eq!(
+            executed_sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(true)
+        );
+        assert_eq!(
+            missing_sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn sarif_properties_still_carry_the_scope_alongside_the_execution_marker() {
+        let scope = crate::runner::RunScope {
+            mode: Some("changed"),
+            base: Some("origin/main".to_owned()),
+            rerun_base: None,
+            files: Some(3),
+            only: vec!["eslint".to_owned()],
+            exclude: Vec::new(),
+        };
+        let report = RunReport::new(
+            vec![tool_result(true)],
+            Some(scope),
+            crate::runner::ExecutionSettings::default(),
+        );
+
+        let sarif = to_sarif(&report, Severity::Info, Path::new("."));
+
+        assert_eq!(
+            sarif["runs"][0]["properties"]["qualityExecuted"],
+            json!(true)
+        );
+        assert_eq!(
+            sarif["runs"][0]["properties"]["qualityScope"]["only"],
+            json!(["eslint"])
+        );
     }
 }

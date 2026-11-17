@@ -4,13 +4,16 @@ mod changes;
 mod cli;
 mod config;
 mod hooks;
+mod impact;
 mod local_ci;
 mod output;
 mod presets;
+mod process;
 mod project;
 mod repositories;
 mod runner;
 mod tools;
+mod version_pin;
 
 use std::env;
 use std::path::PathBuf;
@@ -26,6 +29,14 @@ use crate::config::Config;
 use crate::project::Project;
 
 fn main() {
+    #[cfg(unix)]
+    let _signals = match process::SignalForwarding::install() {
+        Ok(signals) => signals,
+        Err(error) => {
+            eprintln!("quality: could not install analyzer signal forwarding: {error}");
+            std::process::exit(2);
+        }
+    };
     if let Err(error) = run() {
         eprintln!("quality: {error:#}");
         std::process::exit(2);
@@ -59,8 +70,12 @@ fn run() -> Result<()> {
         .unwrap_or(env::current_dir().context("could not determine the current directory")?)
         .canonicalize()
         .context("project root does not exist")?;
+    version_pin::enforce(&root)?;
     if let Command::Repositories { command } = cli.command {
         return repositories::run(&root, command);
+    }
+    if let Command::Impact { command } = cli.command {
+        return impact::run(&root, command);
     }
     let project = Project::discover(&root)?;
 
@@ -301,6 +316,30 @@ fn run() -> Result<()> {
                     std::process::exit(1);
                 }
             }
+            Some(CiCommand::History {
+                hook,
+                limit,
+                format,
+            }) => {
+                local_ci::print_history(&root, hook.as_deref(), limit.get(), format)?;
+            }
+            Some(CiCommand::Show { run, hook, format }) => {
+                local_ci::print_history_run(&root, hook.as_deref(), &run, format)?;
+            }
+            Some(CiCommand::Compare {
+                base,
+                head,
+                hook,
+                format,
+            }) => {
+                local_ci::print_comparison(
+                    &root,
+                    hook.as_deref(),
+                    base.as_deref(),
+                    head.as_deref(),
+                    format,
+                )?;
+            }
             None => {
                 if legacy_install.is_none() && legacy_shared_ref.is_none() {
                     anyhow::bail!(
@@ -319,7 +358,11 @@ fn run() -> Result<()> {
             }
         },
         Command::Baseline { command } => match command {
-            BaselineCommand::Create { output, force } => {
+            BaselineCommand::Create {
+                output,
+                force,
+                execution,
+            } => {
                 let config = Config::load_or_default(&root)?;
                 let report = runner::execute(
                     &project,
@@ -328,7 +371,7 @@ fn run() -> Result<()> {
                     false,
                     None,
                     &AdapterSelection::default(),
-                    runner::ExecutionSettings::default(),
+                    execution_settings(execution, false),
                 )?;
                 let path = output
                     .map(|path| {
@@ -356,6 +399,7 @@ fn run() -> Result<()> {
         Command::Repositories { .. } => {
             unreachable!("repositories return before project discovery")
         }
+        Command::Impact { .. } => unreachable!("impact returns before project discovery"),
         Command::Hooks { command } => {
             let config = Config::load_or_default(&root)?;
             match command {
@@ -427,10 +471,17 @@ fn present_run(
         } else {
             root.join(report_path)
         };
-        output::write_sarif(run_report, &report_path, report_level)?;
+        output::write_sarif(run_report, &report_path, report_level, root)?;
         eprintln!("Wrote SARIF report to {}", display_path(&report_path));
     }
-    output::print_run(run_report, operation, format, report_level, fail_level)
+    output::print_run(
+        run_report,
+        operation,
+        format,
+        report_level,
+        fail_level,
+        root,
+    )
 }
 
 fn retain_local_ci_history(

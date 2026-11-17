@@ -22,7 +22,7 @@ without exposing their values:
    branches for equivalent changes before retiring them.
 2. Add a Changeset for user-visible changes. The CLI and Action are a fixed
    version group and must remain on the same version. For this candidate, the
-   target is `1.4.0`; the documentation package has its own version.
+   target is `2.0.0`; the documentation package has its own version.
 3. Run `pnpm changeset status` and review the proposed versions. Run the documented
    `pnpm version-packages` generator on the release branch to update Cargo,
    installation examples, compatibility references, and changelogs together.
@@ -60,6 +60,75 @@ selected release branch rather than creating a competing version proposal.
 5. Only after post-release verification, delete the release branch remotely and
    locally, and return to an up-to-date local `main`. Remote changes require the
    user's authorization.
+
+Production documentation waits for a published stable release whose immutable
+tag is an ancestor of the selected main revision, with successful published
+Action smoke and stable promotion jobs. Release completion automatically retries
+the site workflow; docs-only main changes can deploy against that verified
+release. The source SHA is checked again before loading deployment secrets. Every main
+push evaluates a deployment candidate so a source-only commit cannot drop an
+older pending documentation update. This may rebuild the site for source-only
+changes until narrower selection is qualified.
+
+An unmerged or untagged deliberate `release/v*` branch suppresses automated
+version PR preparation. Consume every Changeset on that branch before merging.
+If publication succeeds but smoke fails, rerun the original release workflow at
+its original SHA. Recovery checks preserve newer major aliases and the global
+latest release; a backport can advance its own major alias. Equal-precedence
+versions with different commits or build identities fail rather than choosing
+between them. Missing metadata or API failures block promotion. A code fix
+requires a new version; do not move the existing version tag.
+
+## Migration and recovery for 2.0.0
+
+The CLI and Action move together to major version 2. The impact graph is an
+explicit separate `quality-impact.json` contract; existing analyzer configuration
+and `quality ci plan` retain their meanings. See [Impact pipelines](docs/impact-pipelines.md).
+Existing consumers should review these v2 changes before updating:
+
+- Install Quality 2 before relying on `.quality-version`. Pins apply to the
+  selected project root; older binaries ignore them.
+- Unparsed analyzer failures and incomplete structured output remain failures
+  even with a baseline or a higher severity threshold. Fix the tool or raise the
+  capture limit. Baseline creation accepts the same execution limits as checks.
+- Structured parsers read standard output independently of standard error.
+  Unreadable structured reports fail with `tool-output-unreadable`, including
+  after a successful process exit. Complete alternate-format overrides remain
+  supported. Generic `style` findings now use the published `info` severity;
+  review and recreate baselines containing those findings because their
+  fingerprints change.
+- Local CI retains 20 metadata-only runs per hook. Default comparisons require
+  matching executed commands and working directories; pass an explicit base
+  to compare different workloads. Skipped steps have no duration delta.
+- The Action defaults to its own packaged CLI version. `version: latest` is an
+  explicit opt-in, exact versions are verified, and `tools` counts only executed
+  adapters. Counts remain accurate with public SARIF output disabled.
+- The installer requires exactly one SHA-256 entry naming the requested archive.
+  Invalid, duplicate, wrong-algorithm, and unrelated entries are rejected.
+
+No application-data migration is required. Keep full release validation while
+qualifying impact selection, and retain the existing pre-push and release gates.
+
+The development workspace now requires Node `>=22.23.4` for the documentation
+site's patched Astro 7.4.12 dependency and matching Markdown processor 0.4.10.
+This is a development and site-build
+requirement; the native CLI and the Action's Node 24 runtime are unchanged.
+Astro 7.4.12 includes the fixes for
+[the image endpoint path check](https://github.com/withastro/astro/security/advisories/GHSA-r3h5-4585-7x3w)
+and [dynamic tag attribute injection](https://github.com/withastro/astro/security/advisories/GHSA-mh32-jxcr-mh9f).
+Its [release notes](https://github.com/withastro/astro/releases/tag/astro%407.4.12)
+also document reduced content-collection memory use during builds. Keep the site
+manifest and lockfile together, and verify diagnostics, the production build,
+browser behavior, and the dependency audit after updates.
+
+Release notes now use the local deterministic Changesets renderer. Changesets
+still owns version propagation; the renderer never queries GitHub during version
+preparation. After publication, consumers must update reviewed exact-version or
+commit pins deliberately. Do not point workflows at an unpublished v2 binary.
+
+If planning or verification fails, run the full canonical gate and fix the
+configuration; do not accept missing results. Recovery after publication follows
+a new patch release through GitHub Actions. Never replace the v2.0.0 tag.
 
 ## Migration and recovery for 1.4.0
 

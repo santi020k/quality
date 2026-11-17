@@ -1,7 +1,7 @@
 # Contributing
 
 Install Rust 1.85 or newer, Node.js 24 (the CI version), and pnpm 11.22. The
-private development workspace requires Node.js 22.19.0 or newer.
+private development workspace requires Node.js 22.23.4 or newer.
 Then run:
 
 ```sh

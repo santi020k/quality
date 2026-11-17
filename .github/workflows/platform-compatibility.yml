@@ -2,7 +2,7 @@ name: Platform Compatibility
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "release/v*"]
     paths:
       - "crates/quality-cli/**"
       - "packages/action/**"
@@ -42,14 +42,14 @@ jobs:
         with:
           version: 11.22.0
           run_install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - name: Test portable CLI behavior
-        run: cargo test --locked --package quality-cli --test cross_platform
+        run: cargo test --locked --package quality-cli --test cross_platform --test runner_processes
       - name: Test GitHub Action logic
         run: pnpm --filter @quality/action test
       - name: Type-check GitHub Action

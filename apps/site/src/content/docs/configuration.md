@@ -76,7 +76,14 @@ Tasks run concurrently with built-in and custom adapters. Set
 `working_directory` for a workspace-specific command. When `extensions` or
 `config_files` are present, changed-file mode skips the task unless one of
 those inputs changed. With neither field, the task always runs.
-Tasks and custom adapters also accept `timeout_seconds`.
+Tasks and custom adapters also accept `timeout_seconds`. In noninteractive Unix
+runs, a timeout stops the analyzer and descendants in its isolated process group.
+On Windows, timeout cleanup stops the process tree. Deliberately detached
+processes are outside these boundaries. Unix analyzers that inherit terminal
+input keep the caller's group so prompts remain usable; their timeout stops the
+direct child only. Output collection is bounded even when another process keeps
+an inherited pipe open. If tree cleanup fails, the report includes recovery
+guidance and the check remains failed.
 
 During initialization, a canonical root package script is added as
 `repository-check` when available. Detected analyzers receive `check: false`
@@ -97,13 +104,17 @@ hooks:
         args: [run, pre-push]
         pass_hook_args: false
         covers: [pnpm run ci]
+        parser: generic
 ```
 
 `pass_hook_args` forwards arguments supplied by Git. `covers` lists exact
 GitHub Actions `run:` commands that a broader wrapper intentionally includes;
 it changes `quality ci plan` coverage only and never changes what is executed.
-Commands must be non-empty single lines. See [Local CI and PR gates](/local-ci/)
-for execution and reporting behavior.
+`parser` normalizes failed output with the same `generic`, `codespell`,
+`eslint-json`, `swiftlint-json`, `ktlint-json`, `santi-og-json`, and `typos-json`
+parsers available to repository tasks. The command must emit the format selected
+by the parser. Commands under `covers` must be non-empty single lines. See
+[Local CI and PR gates](/local-ci/) for execution and reporting behavior.
 
 ## Validation
 

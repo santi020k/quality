@@ -1,34 +1,61 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as cache from "@actions/tool-cache";
-import { chmod, readFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import actionPackage from "../package.json" with { type: "json" };
 import {
   checkArguments,
   actionFailureMessage,
+  cacheToolName,
   checksumFromFile,
   releaseBaseUrl,
   releaseRepository,
   releaseTarget,
+  releaseVersion,
   resolveProjectPath,
   sha256,
+  summarizeSarifReport,
+  verifyBinaryVersion,
 } from "./lib.js";
+
+async function verifyInstalledVersion(binary: string, requested: string): Promise<void> {
+  const result = await exec.getExecOutput(binary, ["--version"], {
+    silent: true,
+    ignoreReturnCode: true,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`installed quality binary could not report its version (exit ${result.exitCode})`);
+  }
+  verifyBinaryVersion(result.stdout, requested);
+}
 
 async function installQuality(version: string): Promise<string> {
   const target = releaseTarget(process.platform, process.arch);
   const windows = process.platform === "win32";
   const binaryName = windows ? "quality.exe" : "quality";
-  const cacheVersion = version === "latest" ? "" : version;
-  const cached = cacheVersion ? cache.find("quality", cacheVersion, target) : "";
-  if (cached) return path.join(cached, binaryName);
+  // tool-cache normalizes away SemVer build metadata, which can alias distinct
+  // immutable release tags. Install these exact versions without that cache.
+  const cacheVersion = version === "latest" || version.includes("+") ? "" : version;
 
   const repository = releaseRepository(
     process.env.GITHUB_ACTION_REPOSITORY,
     process.env.QUALITY_ACTION_REPOSITORY,
   );
+  const resolvedBaseUrl = releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL);
+  const toolName = cacheToolName(resolvedBaseUrl);
+
+  const cached = cacheVersion ? cache.find(toolName, cacheVersion, target) : "";
+  if (cached) {
+    const binary = path.join(cached, binaryName);
+    await verifyInstalledVersion(binary, version);
+    return binary;
+  }
+
   const release = version === "latest" ? "releases/latest/download" : `releases/download/${version}`;
   const asset = `quality-${target}.${windows ? "zip" : "tar.gz"}`;
-  const base = `${releaseBaseUrl(repository, process.env.QUALITY_RELEASE_BASE_URL)}/${release}`;
+  const base = `${resolvedBaseUrl}/${release}`;
 
   core.info(`Installing quality ${version} for ${target}`);
   const archive = await cache.downloadTool(`${base}/${asset}`);
@@ -40,11 +67,12 @@ async function installQuality(version: string): Promise<string> {
   const extracted = windows ? await cache.extractZip(archive) : await cache.extractTar(archive);
   const binary = path.join(extracted, binaryName);
   if (!windows) await chmod(binary, 0o755);
+  await verifyInstalledVersion(binary, version);
   if (!cacheVersion) return binary;
   const cachedDirectory = await cache.cacheFile(
     binary,
     binaryName,
-    "quality",
+    toolName,
     cacheVersion,
     target,
   );
@@ -53,8 +81,9 @@ async function installQuality(version: string): Promise<string> {
 
 async function run(): Promise<void> {
   const started = Date.now();
+  let temporaryReportDirectory: string | undefined;
   try {
-    const version = core.getInput("version", { required: true });
+    const version = releaseVersion(core.getInput("version"), actionPackage.version);
     const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
     const workingDirectory = resolveProjectPath(
       workspace,
@@ -71,8 +100,14 @@ async function run(): Promise<void> {
     }
 
     const sarifInput = core.getInput("sarif");
-    const sarif = sarifInput ? path.resolve(workingDirectory, sarifInput) : "";
-    const binary = await installQuality(version);
+    if (!sarifInput) {
+      temporaryReportDirectory = await mkdtemp(
+        path.join(process.env.RUNNER_TEMP || tmpdir(), "quality-action-"),
+      );
+    }
+    const sarif = temporaryReportDirectory
+      ? path.join(temporaryReportDirectory, "quality.sarif")
+      : path.resolve(workingDirectory, sarifInput);
     const args = checkArguments({
       base,
       changedOnly,
@@ -84,36 +119,37 @@ async function run(): Promise<void> {
       timeoutSeconds: core.getInput("timeout-seconds"),
       maxOutputBytes: core.getInput("max-output-bytes"),
     });
+    const binary = await installQuality(version);
     const result = await exec.getExecOutput(binary, args, {
       cwd: workingDirectory,
       ignoreReturnCode: true,
     });
 
     if (result.exitCode !== 0 && result.exitCode !== 1) {
-      core.setOutput("duration-ms", Date.now() - started);
       core.setFailed(actionFailureMessage(result.exitCode, result.stderr));
       return;
     }
 
-    let findings = 0;
-    let tools = 0;
-    if (sarif) {
-      const report = JSON.parse(await readFile(sarif, "utf8")) as {
-        runs?: Array<{ results?: unknown[] }>;
-      };
-      tools = report.runs?.length ?? 0;
-      findings = report.runs?.reduce((count, entry) => count + (entry.results?.length ?? 0), 0) ?? 0;
-      core.setOutput("sarif", sarif);
-    }
-    core.setOutput("findings", findings);
-    core.setOutput("tools", tools);
-    core.setOutput("duration-ms", Date.now() - started);
+    const report: unknown = JSON.parse(await readFile(sarif, "utf8"));
+    const summary = summarizeSarifReport(report);
+    if (sarifInput) core.setOutput("sarif", sarif);
+    core.setOutput("findings", summary.findings);
+    core.setOutput("tools", summary.tools);
 
     if (result.exitCode !== 0) {
       core.setFailed(actionFailureMessage(result.exitCode, result.stderr));
     }
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : String(error));
+  } finally {
+    if (temporaryReportDirectory) {
+      try {
+        await rm(temporaryReportDirectory, { recursive: true, force: true });
+      } catch {
+        core.warning("Could not remove the temporary quality report from the runner's temporary directory.");
+      }
+    }
+    core.setOutput("duration-ms", Date.now() - started);
   }
 }
 

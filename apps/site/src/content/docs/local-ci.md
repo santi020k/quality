@@ -61,11 +61,29 @@ quality ci local --step 2
 
 Steps run sequentially and stop after the first failure. The terminal report
 shows each step's wall time, the total wall time, the exit code and a concise
-tail of bounded failure output, followed by a focused rerun command. `--step`
+tail of bounded failure output, followed by normalized diagnostics and a focused rerun command. `--step`
 accepts a one-based number from the plan or prior report. When a step forwards
 Git hook arguments, the rerun uses a `<git-hook-args>` placeholder instead of
 persisting values such as remote URLs; replace it with the original hook
 arguments.
+
+Hook steps default to the generic `path:line[:column]` parser. Select a
+structured parser when the command emits that format:
+
+```yaml
+hooks:
+  pre-push:
+    steps:
+      - name: Lint source
+        command: pnpm
+        args: [exec, eslint, ., --format, json, --max-warnings=0]
+        parser: eslint-json
+```
+
+Failed reports then include normalized file, line, column, severity, message,
+and rule fields. Structured parsers read standard output independently of
+standard error, so a tool warning cannot corrupt a JSON report. Successful hook
+output is never treated as a diagnostic.
 
 Managed Git hooks use this same execution and reporting path. A typical policy
 keeps `pre-commit` limited to staged-file checks and uses `pre-push` for affected
@@ -91,10 +109,31 @@ corresponding hook. Existing hook configuration is preserved.
 
 ## Reports and privacy
 
-The 20 most recent runs store metadata without command output under
-`.git/quality/local-ci/`. The history stays outside the worktree and therefore
-cannot be committed accidentally. A history write failure emits a warning but
+The 20 most recent runs of each hook store metadata without command output
+under the Git directory at `quality/local-ci/` (per-worktree in a linked
+worktree). Frequent commit-message checks cannot evict pre-push history. The
+history stays outside the worktree and cannot be committed accidentally. A history write failure emits a warning but
 does not change the gate result. Disable history with `--no-history`.
+
+Inspect timing and status without retaining command output or diagnostics:
+
+```bash
+quality ci history --hook pre-push
+quality ci show latest --hook pre-push
+quality ci compare --hook pre-push
+quality ci compare run-1790000000000 latest --format json
+```
+
+`compare` defaults to the latest run and the preceding run of the same hook
+with the same executed step identities. It reports total and per-step duration
+changes. A skipped step has no duration delta; an explicit base can compare
+different workloads. Selectors accept `latest`, `previous`, a millisecond
+timestamp, a `run-<timestamp>` ID, or its `run-<timestamp>-<sequence>` collision form.
+`previous` selects the second-newest retained run after applying the hook filter.
+
+Concurrent runs receive distinct IDs even when they start in the same millisecond.
+Use the full ID from `history` to select a particular run. When you select an older
+head without an explicit base, comparison uses the preceding comparable run.
 
 Write a complete versioned report explicitly when another local tool needs the
 captured output:
@@ -106,8 +145,27 @@ quality ci local --format json --report reports/local-ci.json
 Combined output retention defaults to 1 MiB per step and can be changed with
 `--max-output-bytes`. Explicit reports may contain anything printed by a check;
 do not commit or share them when a command may expose sensitive information.
-The contracts are published as the [plan schema](/quality-ci-plan.schema.json)
-and [run-report schema](/quality-local-ci.schema.json).
+The contracts are published as the [plan schema](/quality-ci-plan.schema.json),
+[run-report schema](/quality-local-ci.schema.json),
+[history schema](/quality-local-ci-history.schema.json), and
+[comparison schema](/quality-local-ci-comparison.schema.json).
+
+## Pin the project CLI
+
+Quality 2 and newer enforce `.quality-version` in the selected project root
+(the directory passed to `--root`, or the current directory). Write a released
+version without a leading `v`:
+
+```text
+2.0.0
+```
+
+Every project command checks this optional file before loading configuration.
+On macOS and Linux, a mismatch fails with the exact checksum-verified installer
+command; Windows receives the matching release and checksum location. Managed
+hooks use this check when they invoke Quality 2 or newer. Older binaries do not
+enforce the pin; install the required release before relying on it. A pin in a
+parent repository does not apply automatically to a different `--root`.
 
 ## What remains in GitHub
 

@@ -18,5 +18,5 @@ if [ "$#" -eq 0 ]; then
   set -- doctor
 fi
 
-exec cargo run --quiet --manifest-path "$repository_dir/Cargo.toml" -- \
+exec cargo run --locked --quiet --manifest-path "$repository_dir/Cargo.toml" -- \
   --root "$sandbox" "$@"

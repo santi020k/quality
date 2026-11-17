@@ -39,6 +39,8 @@ pub fn create(report: &RunReport, path: &Path, force: bool) -> Result<BaselineSu
             path.display()
         );
     }
+    // Unreadable structured output fails even after a successful exit, so
+    // incomplete findings are refused here rather than recorded as complete.
     let unsafe_failures: Vec<_> = report
         .results
         .iter()
@@ -51,7 +53,7 @@ pub fn create(report: &RunReport, path: &Path, force: bool) -> Result<BaselineSu
         .collect();
     if !unsafe_failures.is_empty() {
         anyhow::bail!(
-            "cannot create a safe baseline because these tools did not produce file findings: {}; run `quality doctor` and fix their execution first",
+            "cannot create a safe baseline because these tools did not produce complete file findings: {}; run `quality check` to see why and fix their execution first",
             unsafe_failures.join(", ")
         );
     }
@@ -115,6 +117,9 @@ pub fn apply(report: &mut RunReport, path: &Path) -> Result<()> {
         .collect();
 
     for result in &mut report.results {
+        if matches!(result.status, Status::Failed) && !result.baseline_safe {
+            continue;
+        }
         let before = result.diagnostics.len();
         result.diagnostics.retain(|diagnostic| {
             let fingerprint = fingerprint(diagnostic);
@@ -134,6 +139,7 @@ pub fn apply(report: &mut RunReport, path: &Path) -> Result<()> {
             && matches!(result.status, Status::Failed)
         {
             result.status = Status::Passed;
+            result.failure_kind = None;
         }
     }
     report.refresh_summary();
@@ -166,7 +172,7 @@ fn fingerprint(diagnostic: &Diagnostic) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runner::{RunReport, ToolResult};
+    use crate::runner::{FailureKind, RunReport, ToolResult};
 
     fn diagnostic(line: u64) -> Diagnostic {
         Diagnostic {
@@ -213,6 +219,60 @@ mod tests {
         assert!(matches!(current.results[0].status, Status::Failed));
     }
 
+    #[test]
+    fn unsafe_execution_failures_preserve_existing_findings() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("baseline.json");
+        let mut report =
+            RunReport::new(vec![result(vec![diagnostic(2)])], None, Default::default());
+        create(&report, &path, false).unwrap();
+        report.results[0].baseline_safe = false;
+
+        apply(&mut report, &path).unwrap();
+
+        assert_eq!(report.suppressed, 0);
+        assert_eq!(report.results[0].diagnostics.len(), 1);
+        assert!(report.failed());
+        assert_eq!(report.summary.failed, 1);
+    }
+
+    #[test]
+    fn fully_suppressed_failures_pass_without_a_failure_kind() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("baseline.json");
+        let mut report =
+            RunReport::new(vec![result(vec![diagnostic(2)])], None, Default::default());
+        report.results[0].failure_kind = Some(FailureKind::Code);
+        create(&report, &path, false).unwrap();
+
+        apply(&mut report, &path).unwrap();
+
+        assert!(matches!(report.results[0].status, Status::Passed));
+        assert!(report.results[0].failure_kind.is_none());
+        assert!(!report.failed());
+    }
+
+    #[test]
+    fn incomplete_findings_never_become_a_baseline() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("baseline.json");
+        let mut unreadable = result(vec![diagnostic(2)]);
+        unreadable.name = "ESLint".to_owned();
+        unreadable.baseline_safe = false;
+        let report = RunReport::new(
+            vec![result(vec![diagnostic(4)]), unreadable],
+            None,
+            Default::default(),
+        );
+
+        let error = create(&report, &path, false).unwrap_err().to_string();
+
+        assert!(error.contains("cannot create a safe baseline"), "{error}");
+        assert!(error.contains("ESLint"), "{error}");
+        assert!(!error.contains("SwiftLint"), "{error}");
+        assert!(!path.exists());
+    }
+
     fn result(diagnostics: Vec<Diagnostic>) -> ToolResult {
         ToolResult {
             tool: "swiftlint".to_owned(),
@@ -226,6 +286,7 @@ mod tests {
             output_truncated: false,
             guidance: None,
             baseline_safe: true,
+            executed: true,
         }
     }
 }

@@ -60,7 +60,7 @@ runs:
 
     - name: Set up Node.js from version file with cache
       if: inputs.node-version-file != '' && inputs.cache == 'true'
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: ${{ inputs.node-version-file }}
         cache: pnpm
@@ -69,14 +69,14 @@ runs:
 
     - name: Set up Node.js from version file
       if: inputs.node-version-file != '' && inputs.cache != 'true'
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: ${{ inputs.node-version-file }}
         registry-url: ${{ inputs.registry-url }}
 
     - name: Set up Node.js version with cache
       if: inputs.node-version-file == '' && inputs.cache == 'true'
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
@@ -85,7 +85,7 @@ runs:
 
     - name: Set up Node.js version
       if: inputs.node-version-file == '' && inputs.cache != 'true'
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: ${{ inputs.node-version }}
         registry-url: ${{ inputs.registry-url }}
