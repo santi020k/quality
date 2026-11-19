@@ -74,6 +74,7 @@ pub enum DiagnosticParser {
     KtlintJson,
     SantiOgJson,
     TyposJson,
+    GithubAnnotations,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]

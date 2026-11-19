@@ -995,7 +995,14 @@ pub(crate) fn parse_output(
     if let Some(mut diagnostics) = structured {
         // A failed run without structured findings usually explains itself on
         // standard error, which the generic fallback below reports instead.
-        if !(synthesize_failure && diagnostics.is_empty() && has_meaningful_line(output.stderr)) {
+        // Annotation streams interleave free-form summaries, so a failed run
+        // without annotations may explain itself on either stream.
+        let explanation = if parser == DiagnosticParser::GithubAnnotations {
+            output.combined
+        } else {
+            output.stderr
+        };
+        if !(synthesize_failure && diagnostics.is_empty() && has_meaningful_line(explanation)) {
             if unreadable {
                 diagnostics.push(unreadable_output_diagnostic(
                     tool,
@@ -1071,8 +1078,9 @@ pub(crate) fn parse_output(
             output.stdout_capture,
         ));
     } else if diagnostics.is_empty() && synthesize_failure {
-        // Valid structured output without findings leaves standard error as the explanation.
-        let explanation = if parsed_structured {
+        // Valid structured output without findings leaves standard error as the
+        // explanation; annotation streams also carry free-form errors on stdout.
+        let explanation = if parsed_structured && parser != DiagnosticParser::GithubAnnotations {
             output.stderr
         } else {
             output.combined
@@ -1110,6 +1118,9 @@ fn parse_structured(
         DiagnosticParser::KtlintJson => parse_ktlint_json(tool, root, working_directory, stdout),
         DiagnosticParser::SantiOgJson => parse_santi_og_json(tool, root, working_directory, stdout),
         DiagnosticParser::TyposJson => parse_typos_json(tool, root, working_directory, stdout),
+        DiagnosticParser::GithubAnnotations => {
+            parse_github_annotations(tool, root, working_directory, stdout)
+        }
         DiagnosticParser::Generic => None,
     }
 }
@@ -1127,7 +1138,9 @@ fn resembles_structured_output(parser: DiagnosticParser, stdout: &str) -> bool {
         | DiagnosticParser::TyposJson => stdout
             .lines()
             .any(|line| line.trim_start().starts_with(['[', '{'])),
-        DiagnosticParser::Codespell | DiagnosticParser::Generic => false,
+        DiagnosticParser::Codespell
+        | DiagnosticParser::GithubAnnotations
+        | DiagnosticParser::Generic => false,
     }
 }
 
@@ -1140,9 +1153,10 @@ fn self_delimiting(parser: DiagnosticParser, stdout: &str) -> bool {
         | DiagnosticParser::SwiftlintJson
         | DiagnosticParser::SantiOgJson => true,
         DiagnosticParser::KtlintJson => stdout.trim_start().starts_with('['),
-        DiagnosticParser::TyposJson | DiagnosticParser::Codespell | DiagnosticParser::Generic => {
-            false
-        }
+        DiagnosticParser::TyposJson
+        | DiagnosticParser::Codespell
+        | DiagnosticParser::GithubAnnotations
+        | DiagnosticParser::Generic => false,
     }
 }
 
@@ -1200,6 +1214,7 @@ fn parser_name(parser: DiagnosticParser) -> &'static str {
         DiagnosticParser::KtlintJson => "ktlint-json",
         DiagnosticParser::SantiOgJson => "santi-og-json",
         DiagnosticParser::TyposJson => "typos-json",
+        DiagnosticParser::GithubAnnotations => "github-annotations",
     }
 }
 
@@ -1301,6 +1316,90 @@ fn parse_typos_json(
         });
     }
     Some(diagnostics)
+}
+
+/// Reads GitHub workflow-command annotations (`::error file=…,line=…::message`),
+/// which Biome and Oxlint emit with their `github` reporters. Other lines are
+/// summaries and progress output, not findings.
+fn parse_github_annotations(
+    tool: &str,
+    root: &std::path::Path,
+    working_directory: &std::path::Path,
+    output: &str,
+) -> Option<Vec<Diagnostic>> {
+    let mut diagnostics = Vec::new();
+    for line in output.lines().map(str::trim) {
+        let Some(command) = line.strip_prefix("::") else {
+            continue;
+        };
+        let Some((header, message)) = command.split_once("::") else {
+            continue;
+        };
+        let (level, properties) = header.split_once(' ').unwrap_or((header, ""));
+        let severity = match level {
+            "error" => "error",
+            "warning" => "warning",
+            "notice" => "info",
+            // Other workflow commands, such as `::group::`, are not findings.
+            _ => continue,
+        };
+        let mut path = None;
+        let mut source_line = None;
+        let mut column = None;
+        let mut rule = None;
+        for property in properties.split(',') {
+            let Some((key, value)) = property.split_once('=') else {
+                continue;
+            };
+            let value = unescape_annotation(value);
+            match key.trim() {
+                "file" if !value.is_empty() => path = Some(value),
+                "line" => source_line = value.parse::<u64>().ok().filter(|line| *line > 0),
+                "col" => column = value.parse::<u64>().ok().filter(|column| *column > 0),
+                "title" if !value.is_empty() => rule = Some(value),
+                _ => {}
+            }
+        }
+        let message = unescape_annotation(message);
+        let message = message.lines().next().unwrap_or_default().trim();
+        // Oxlint repeats the location as a `path:line:column: ` message prefix.
+        let message = path
+            .as_deref()
+            .and_then(|path| message.strip_prefix(path))
+            .and_then(|rest| rest.strip_prefix(':'))
+            .and_then(|rest| rest.split_once(": "))
+            .filter(|(location, _)| {
+                location.split(':').all(|part| {
+                    !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+                })
+            })
+            .map_or(message, |(_, rest)| rest);
+        let message = match rule.as_deref() {
+            Some("format") => "File is not formatted; run `quality format` to apply it".to_owned(),
+            _ if message.is_empty() => format!("{tool} finding"),
+            _ => message.to_owned(),
+        };
+        diagnostics.push(Diagnostic {
+            tool: tool.to_owned(),
+            path: path.map(|path| normalize_path(root, working_directory, &path)),
+            line: source_line,
+            column: source_line.and(column),
+            severity: severity.to_owned(),
+            message,
+            rule,
+        });
+    }
+    Some(diagnostics)
+}
+
+/// Reverses the percent-encoding GitHub requires for annotation properties and messages.
+fn unescape_annotation(value: &str) -> String {
+    value
+        .replace("%0D", "\r")
+        .replace("%0A", "\n")
+        .replace("%3A", ":")
+        .replace("%2C", ",")
+        .replace("%25", "%")
 }
 
 fn parse_eslint_json(
@@ -1877,6 +1976,83 @@ mod tests {
         assert_eq!(found[0].severity, "error");
         assert_eq!(found[0].rule.as_deref(), Some("semi"));
         assert!(baseline_safe);
+    }
+
+    #[test]
+    fn parses_biome_github_annotations_with_absolute_paths() {
+        let stdout = "::warning title=lint/style/useConst,file=/project/src/app.ts,line=3,endLine=3,col=1,endColumn=4::This let declares a variable that is only assigned once.\n::error title=format,file=/project/src/app.ts,line=1,endLine=1,col=2,endColumn=2::Formatter would have printed the following content:%0A%0A  const a = 1;\n";
+        let parsed = parse_streams(
+            DiagnosticParser::GithubAnnotations,
+            stdout,
+            "check ━━━\n\n  × Some errors were emitted while running checks.\n",
+            true,
+        );
+        assert!(parsed.fully_parsed);
+        assert_eq!(parsed.diagnostics.len(), 2);
+        let lint = &parsed.diagnostics[0];
+        assert_eq!(lint.path.as_deref(), Some("src/app.ts"));
+        assert_eq!((lint.line, lint.column), (Some(3), Some(1)));
+        assert_eq!(lint.severity, "warning");
+        assert_eq!(lint.rule.as_deref(), Some("lint/style/useConst"));
+        let format = &parsed.diagnostics[1];
+        assert_eq!(format.severity, "error");
+        assert_eq!(format.rule.as_deref(), Some("format"));
+        assert_eq!(
+            format.message,
+            "File is not formatted; run `quality format` to apply it"
+        );
+    }
+
+    #[test]
+    fn parses_oxlint_annotations_and_drops_the_repeated_location() {
+        let stdout = "::warning file=src/a%2Cb.ts,line=1,endLine=1,col=1,endColumn=10,title=eslint(no-debugger)::src/a,b.ts:1:1: `debugger` statement is not allowed\n::notice file=src/c.ts,line=0,col=0,title=oxc(x)::Note%3A 100%25 sure\n::group::noise\n\nFound 1 warning and 0 errors.\nFinished in 8ms on 2 files with 96 rules using 15 threads.\n";
+        let parsed = parse_streams(DiagnosticParser::GithubAnnotations, stdout, "", false);
+        assert!(parsed.fully_parsed);
+        assert_eq!(parsed.diagnostics.len(), 2);
+        let first = &parsed.diagnostics[0];
+        assert_eq!(first.path.as_deref(), Some("src/a,b.ts"));
+        assert_eq!(first.message, "`debugger` statement is not allowed");
+        assert_eq!(first.rule.as_deref(), Some("eslint(no-debugger)"));
+        let notice = &parsed.diagnostics[1];
+        assert_eq!(notice.severity, "info");
+        assert_eq!((notice.line, notice.column), (None, None));
+        assert_eq!(notice.message, "Note: 100% sure");
+
+        let unlocated = parse_streams(
+            DiagnosticParser::GithubAnnotations,
+            "::error file=src/a.ts,line=2,title=x::src/a.ts:: kept as written\n",
+            "",
+            false,
+        );
+        assert_eq!(
+            unlocated.diagnostics[0].message,
+            "src/a.ts:: kept as written"
+        );
+    }
+
+    #[test]
+    fn annotation_failures_without_findings_explain_themselves_from_stdout() {
+        let parsed = parse_streams(
+            DiagnosticParser::GithubAnnotations,
+            "Failed to parse oxlint configuration file.\n\n  x key must be a string\n",
+            "",
+            true,
+        );
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(
+            parsed.diagnostics[0].message,
+            "Failed to parse oxlint configuration file."
+        );
+        assert_eq!(parsed.diagnostics[0].severity, "error");
+
+        let clean = parse_streams(
+            DiagnosticParser::GithubAnnotations,
+            "Found 0 warnings and 0 errors.\n",
+            "",
+            false,
+        );
+        assert!(clean.diagnostics.is_empty());
+        assert!(clean.fully_parsed);
     }
 
     #[test]

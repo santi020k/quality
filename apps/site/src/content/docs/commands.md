@@ -158,6 +158,10 @@ quality format --check
 quality format --only prettier
 ```
 
+Enable one formatter per file type. Prettier and the Biome formatter both write
+JavaScript and TypeScript, so enabling both makes `quality format` race; see
+[Choosing a JavaScript linter and formatter](/adapters/#choosing-a-javascript-linter-and-formatter).
+
 ## `quality fix`
 
 Apply safe fixes exposed by configured analyzers:
@@ -284,7 +288,7 @@ Generate a GitHub Actions workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.1.0 --locked'
 ```
 
 The generator selects Linux or macOS from the detected platforms and adds

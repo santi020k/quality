@@ -44,6 +44,7 @@ Adapter selection composes with changed-file mode:
 
 ```bash
 quality check --changed origin/main --only eslint,astro-check
+quality check --changed --only oxlint
 quality format --changed --exclude swiftformat
 ```
 
