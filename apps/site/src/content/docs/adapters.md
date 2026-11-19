@@ -50,7 +50,9 @@ GitHub annotation format.
 
 - `biome` runs `biome check` for linting, formatting, and import sorting;
   `quality format` and `quality fix` use `biome format --write` and
-  `biome check --write`.
+  `biome check --write`. `quality format --check` runs `biome format` without
+  linting; when `format_args` is customized, it reuses those arguments without
+  `--write`.
 - `oxlint` runs `oxlint --format=github` and applies `oxlint --fix`. It has no
   formatter.
 
@@ -101,7 +103,13 @@ files twice and fail on findings Pawl intentionally allows. A repository is
 treated as Pawl-managed when a `package.json` depends on `@santi020k/pawl`, a
 package script runs `pawl`, a workspace package is named `@santi020k/pawl`, or a
 `pawl.config.{ts,mts,js,mjs,json}` file exists. In that case `biome`, `oxlint`,
-`eslint`, and `prettier` are no longer auto-detected.
+`eslint`, and `prettier` are no longer auto-detected, even when their own
+configuration files are present.
+
+The decision applies to the whole repository: in a monorepo, one workspace
+that adopts Pawl turns off auto-detection of these four adapters for every
+workspace, and `quality doctor` lists them as not detected. Enable the adapters
+you still want Quality to run in `quality.yml`.
 
 Explicit configuration always wins. Run Pawl as a repository task in the
 meantime, and enable an engine adapter only when you want Quality to run it in
@@ -109,9 +117,6 @@ addition to Pawl:
 
 ```yaml
 version: 1
-tools:
-  biome:
-    enabled: false
 tasks:
   pawl:
     name: Pawl

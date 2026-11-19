@@ -94,8 +94,24 @@ impl Tool {
             Operation::Format => self.format_args,
             Operation::Fix => self.fix_args.or(self.format_args),
         }?;
+        // A customized formatter command is verified in check mode: the same
+        // arguments without `--write`, reporting through the annotation parser.
+        let format_check_override = config.format_args.as_ref().map(|arguments| {
+            let mut arguments: Vec<_> = arguments
+                .iter()
+                .filter(|argument| argument.as_str() != "--write")
+                .cloned()
+                .collect();
+            if !arguments
+                .iter()
+                .any(|argument| argument.starts_with("--reporter"))
+            {
+                arguments.insert(1.min(arguments.len()), "--reporter=github".to_owned());
+            }
+            arguments
+        });
         let configured = match operation {
-            Operation::CheckFormat if self.format_check_args.is_some() => &None,
+            Operation::CheckFormat if self.format_check_args.is_some() => &format_check_override,
             Operation::Check | Operation::CheckFormat => &config.check_args,
             Operation::Format => &config.format_args,
             Operation::Fix => &config.fix_args,
@@ -411,7 +427,7 @@ impl Tool {
             }
             "oxlint" => {
                 name == "package.json"
-                    || name.starts_with(".oxlintrc.")
+                    || name == ".oxlintrc.json"
                     || name.starts_with("oxlint.config.")
                     || javascript_workspace_configuration(name)
             }
@@ -1007,7 +1023,11 @@ fn detects_android(project: &Project) -> bool {
 }
 
 fn detects_eslint(project: &Project) -> bool {
-    !detects_pawl(project) && package_manifest_uses(project, "eslint")
+    !detects_pawl(project) && detects_eslint_configuration(project)
+}
+
+fn detects_eslint_configuration(project: &Project) -> bool {
+    package_manifest_uses(project, "eslint")
         || [
             "eslint.config.js",
             "eslint.config.mjs",
@@ -1061,7 +1081,7 @@ fn detects_prettier_configuration(project: &Project) -> bool {
 fn detects_biome(project: &Project) -> bool {
     !detects_pawl(project)
         && (package_manifest_uses(project, "@biomejs/biome")
-            || package_manifest_uses(project, "biome")
+            || package_scripts_mention(project, "biome")
             || ["biome.json", "biome.jsonc"]
                 .iter()
                 .any(|name| project.has_file(name)))
@@ -1091,7 +1111,7 @@ fn detects_oxlint_configuration(project: &Project) -> bool {
 /// same files are not checked twice against two different baselines.
 fn detects_pawl(project: &Project) -> bool {
     package_manifest_uses(project, PAWL_PACKAGE)
-        || package_manifest_uses(project, "pawl")
+        || package_scripts_mention(project, "pawl")
         || project
             .paths_named("package.json")
             .any(|path| package_json_named(&project.root.join(path), PAWL_PACKAGE))
@@ -1201,6 +1221,25 @@ fn package_manifest_uses(project: &Project, tool: &str) -> bool {
     project
         .paths_named("package.json")
         .any(|path| package_json_uses(&project.root.join(path), tool))
+}
+
+/// Whether a package script runs `tool`, without matching an unrelated
+/// dependency that happens to share the command's bare name.
+fn package_scripts_mention(project: &Project, tool: &str) -> bool {
+    project.paths_named("package.json").any(|path| {
+        std::fs::read_to_string(project.root.join(path))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|manifest| manifest.get("scripts").cloned())
+            .and_then(|scripts| scripts.as_object().cloned())
+            .is_some_and(|scripts| {
+                scripts.values().any(|value| {
+                    value
+                        .as_str()
+                        .is_some_and(|script| command_mentions(script, tool))
+                })
+            })
+    })
 }
 
 fn swift_package_uses(project: &Project, tool: &str) -> bool {
@@ -1831,6 +1870,21 @@ mod tests {
             .unwrap();
         assert_eq!(format_check.args[0], "format");
         assert!(!format_check.args.contains(&"--write".to_owned()));
+        let custom_format = ToolConfig {
+            format_args: Some(
+                ["format", "--write", "--config-path", "tools", "."]
+                    .map(str::to_owned)
+                    .to_vec(),
+            ),
+            ..ToolConfig::default()
+        };
+        assert_eq!(
+            biome
+                .invocation(&project, &custom_format, Operation::CheckFormat, None)
+                .unwrap()
+                .args,
+            vec!["format", "--reporter=github", "--config-path", "tools", "."]
+        );
         let format = biome
             .invocation(&project, &ToolConfig::default(), Operation::Format, None)
             .unwrap();
@@ -1921,6 +1975,16 @@ mod tests {
             vec![
                 (
                     "package.json",
+                    r#"{"devDependencies":{"@santi020k/pawl":"0.1.0"}}"#.to_owned(),
+                ),
+                ("eslint.config.js", "export default []".to_owned()),
+                (".prettierrc", "{}".to_owned()),
+                ("biome.json", "{}".to_owned()),
+                (".oxlintrc.json", "{}".to_owned()),
+            ],
+            vec![
+                (
+                    "package.json",
                     format!(r#"{{"devDependencies":{{{engines}}}}}"#),
                 ),
                 (
@@ -1951,6 +2015,14 @@ mod tests {
         for id in ["biome", "oxlint", "eslint", "prettier"] {
             assert!(tools.contains(&id));
         }
+
+        // Unrelated packages that share a bare command name are not signals.
+        let (pawl, tools) = detected(&[(
+            "package.json",
+            r#"{"dependencies":{"pawl":"1.0.0","biome":"1.0.0"}}"#,
+        )]);
+        assert!(!pawl);
+        assert!(!tools.contains(&"biome"));
     }
 
     #[test]

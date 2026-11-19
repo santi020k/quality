@@ -48,7 +48,8 @@ jobs:
 ```
 
 With Quality 2, omitting `version` installs the same CLI version as the pinned
-Action. An explicit version must be an exact release such as `2.0.0` or `v2.1.0`;
+Action. An explicit version must be an exact release, with or without the `v` prefix
+(for example `v2.1.0`);
 prerelease and build identifiers are supported. Use `version: latest` explicitly
 to follow the latest release. Downloaded and cached exact-version binaries are
 checked with `quality --version` before checks run.

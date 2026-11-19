@@ -1369,9 +1369,9 @@ fn parse_github_annotations(
             .and_then(|rest| rest.strip_prefix(':'))
             .and_then(|rest| rest.split_once(": "))
             .filter(|(location, _)| {
-                location
-                    .split(':')
-                    .all(|part| part.chars().all(|character| character.is_ascii_digit()))
+                location.split(':').all(|part| {
+                    !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+                })
             })
             .map_or(message, |(_, rest)| rest);
         let message = match rule.as_deref() {
