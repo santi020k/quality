@@ -29,10 +29,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: santi020k/quality@v2.0.0
+      - uses: santi020k/quality@v2.1.0
         id: quality
         with:
-          version: v2.0.0
+          version: v2.1.0
           changed-only: true
           report-level: warning
           fail-level: warning
@@ -48,7 +48,7 @@ jobs:
 ```
 
 With Quality 2, omitting `version` installs the same CLI version as the pinned
-Action. An explicit version must be an exact release such as `2.0.0` or `v2.0.0`;
+Action. An explicit version must be an exact release such as `2.0.0` or `v2.1.0`;
 prerelease and build identifiers are supported. Use `version: latest` explicitly
 to follow the latest release. Downloaded and cached exact-version binaries are
 checked with `quality --version` before checks run.
@@ -74,7 +74,7 @@ Generate a workflow with an explicit installation command:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.1.0 --locked'
 ```
 
 The generated workflow:

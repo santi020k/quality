@@ -22,7 +22,7 @@ without exposing their values:
    branches for equivalent changes before retiring them.
 2. Add a Changeset for user-visible changes. The CLI and Action are a fixed
    version group and must remain on the same version. For this candidate, the
-   target is `2.0.0`; the documentation package has its own version.
+   target is `2.1.0`; the documentation package has its own version.
 3. Run `pnpm changeset status` and review the proposed versions. Run the documented
    `pnpm version-packages` generator on the release branch to update Cargo,
    installation examples, compatibility references, and changelogs together.

@@ -44,9 +44,9 @@ Website and documentation: <https://quality.santi020k.com>
   with:
     fetch-depth: 0
 
-- uses: santi020k/quality@v2.0.0
+- uses: santi020k/quality@v2.1.0
   with:
-    version: v2.0.0
+    version: v2.1.0
     changed-only: true
     report-level: warning
     fail-level: warning
@@ -107,8 +107,8 @@ Unix users can install a checksum-verified native binary without Rust:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/santi020k/quality/v2.0.0/install.sh \
-  | sh -s -- santi020k/quality v2.0.0
+  https://raw.githubusercontent.com/santi020k/quality/v2.1.0/install.sh \
+  | sh -s -- santi020k/quality v2.1.0
 ```
 
 Omit the version to install the latest release. Native archives are published for
@@ -475,7 +475,7 @@ from repository files, including Actionlint when its use is detected:
 
 ```bash
 quality ci github --install \
-  'cargo install --git https://github.com/your-org/quality --tag v2.0.0 --locked'
+  'cargo install --git https://github.com/your-org/quality --tag v2.1.0 --locked'
 ```
 
 Run the configured `pre-push` gate before spending a GitHub-hosted runner:
