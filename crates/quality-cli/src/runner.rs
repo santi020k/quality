@@ -2017,6 +2017,17 @@ mod tests {
         assert_eq!(notice.severity, "info");
         assert_eq!((notice.line, notice.column), (None, None));
         assert_eq!(notice.message, "Note: 100% sure");
+
+        let unlocated = parse_streams(
+            DiagnosticParser::GithubAnnotations,
+            "::error file=src/a.ts,line=2,title=x::src/a.ts:: kept as written\n",
+            "",
+            false,
+        );
+        assert_eq!(
+            unlocated.diagnostics[0].message,
+            "src/a.ts:: kept as written"
+        );
     }
 
     #[test]

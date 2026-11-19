@@ -95,18 +95,27 @@ impl Tool {
             Operation::Fix => self.fix_args.or(self.format_args),
         }?;
         // A customized formatter command is verified in check mode: the same
-        // arguments without `--write`, reporting through the annotation parser.
+        // arguments without writing (`--write` or its `--fix` alias), reporting
+        // through the annotation parser.
         let format_check_override = config.format_args.as_ref().map(|arguments| {
             let mut arguments: Vec<_> = arguments
                 .iter()
-                .filter(|argument| argument.as_str() != "--write")
+                .filter(|argument| {
+                    !["--write", "--fix"].iter().any(|flag| {
+                        argument.as_str() == *flag || argument.starts_with(&format!("{flag}="))
+                    })
+                })
                 .cloned()
                 .collect();
             if !arguments
                 .iter()
                 .any(|argument| argument.starts_with("--reporter"))
             {
-                arguments.insert(1.min(arguments.len()), "--reporter=github".to_owned());
+                let position = arguments
+                    .iter()
+                    .position(|argument| argument == "format")
+                    .map_or(arguments.len(), |index| index + 1);
+                arguments.insert(position, "--reporter=github".to_owned());
             }
             arguments
         });
@@ -1884,6 +1893,21 @@ mod tests {
                 .unwrap()
                 .args,
             vec!["format", "--reporter=github", "--config-path", "tools", "."]
+        );
+        let alias = ToolConfig {
+            format_args: Some(
+                ["--config-path", "tools", "format", "--fix=true", "."]
+                    .map(str::to_owned)
+                    .to_vec(),
+            ),
+            ..ToolConfig::default()
+        };
+        assert_eq!(
+            biome
+                .invocation(&project, &alias, Operation::CheckFormat, None)
+                .unwrap()
+                .args,
+            vec!["--config-path", "tools", "format", "--reporter=github", "."]
         );
         let format = biome
             .invocation(&project, &ToolConfig::default(), Operation::Format, None)

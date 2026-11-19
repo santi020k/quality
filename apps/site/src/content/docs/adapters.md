@@ -52,7 +52,7 @@ GitHub annotation format.
   `quality format` and `quality fix` use `biome format --write` and
   `biome check --write`. `quality format --check` runs `biome format` without
   linting; when `format_args` is customized, it reuses those arguments without
-  `--write`.
+  `--write` or `--fix` and adds `--reporter=github` unless a reporter is set.
 - `oxlint` runs `oxlint --format=github` and applies `oxlint --fix`. It has no
   formatter.
 
