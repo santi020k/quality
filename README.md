@@ -225,6 +225,8 @@ for configuration, result contracts, adoption, and release boundaries.
 | Kotlin | detekt | yes | — |
 | Kotlin | ktlint | yes | yes |
 | JavaScript/TypeScript | ESLint | yes | fix |
+| JavaScript/TypeScript | Biome | yes | yes |
+| JavaScript/TypeScript | Oxlint | yes | fix |
 | Astro | Astro Check | yes | — |
 | JavaScript/TypeScript | Prettier | yes | yes |
 | Content | CSpell | yes | — |
@@ -233,6 +235,12 @@ for configuration, result contracts, adoption, and release boundaries.
 | JavaScript/TypeScript | Knip | yes | — |
 | GitHub Actions | Actionlint | yes | — |
 | Web metadata | `@santi020k/og` | yes | — |
+
+**Pawl integration (beta, in progress):** repositories managed by
+[Pawl](https://pawl.santi020k.com) (`@santi020k/pawl`) leave Biome, Oxlint,
+ESLint, and Prettier to Pawl and its baseline ratchet unless `quality.yml`
+enables those adapters explicitly. A dedicated `pawl` adapter is planned; see
+[Pawl integration](https://quality.santi020k.com/adapters/#pawl-integration-beta).
 
 ## Language-aware presets
 
@@ -326,8 +334,8 @@ custom:
 With `file_mode: append`, changed source paths are appended to the configured
 arguments. Use `project` for analyzers that must always inspect the whole
 project. Supported parsers are `generic`, `codespell`, `eslint-json`,
-`swiftlint-json`, `ktlint-json`, `santi-og-json`, and `typos-json`. Generic
-diagnostics use the familiar format:
+`github-annotations`, `swiftlint-json`, `ktlint-json`, `santi-og-json`, and
+`typos-json`. Generic diagnostics use the familiar format:
 
 ```text
 path/to/file:line:column: warning: Message (rule-id)

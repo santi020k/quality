@@ -16,6 +16,8 @@ pub struct Tool {
     pub install_hint: &'static str,
     detector: fn(&Project) -> bool,
     check_args: &'static [&'static str],
+    /// Verifies formatting only, for tools whose check also lints.
+    format_check_args: Option<&'static [&'static str]>,
     format_args: Option<&'static [&'static str]>,
     fix_args: Option<&'static [&'static str]>,
 }
@@ -86,11 +88,14 @@ impl Tool {
     ) -> Option<Invocation> {
         let defaults = match operation {
             Operation::Check => Some(self.check_args),
-            Operation::CheckFormat => self.format_args.map(|_| self.check_args),
+            Operation::CheckFormat => self
+                .format_args
+                .map(|_| self.format_check_args.unwrap_or(self.check_args)),
             Operation::Format => self.format_args,
             Operation::Fix => self.fix_args.or(self.format_args),
         }?;
         let configured = match operation {
+            Operation::CheckFormat if self.format_check_args.is_some() => &None,
             Operation::Check | Operation::CheckFormat => &config.check_args,
             Operation::Format => &config.format_args,
             Operation::Fix => &config.fix_args,
@@ -147,7 +152,14 @@ impl Tool {
             }
             if matches!(
                 self.id,
-                "eslint" | "prettier" | "astro-check" | "cspell" | "knip" | "santi-og"
+                "eslint"
+                    | "prettier"
+                    | "biome"
+                    | "oxlint"
+                    | "astro-check"
+                    | "cspell"
+                    | "knip"
+                    | "santi-og"
             ) {
                 let local = working_directory
                     .join("node_modules/.bin")
@@ -190,6 +202,7 @@ impl Tool {
                 "ktlint" => DiagnosticParser::KtlintJson,
                 "santi-og" => DiagnosticParser::SantiOgJson,
                 "typos" => DiagnosticParser::TyposJson,
+                "biome" | "oxlint" => DiagnosticParser::GithubAnnotations,
                 _ => DiagnosticParser::Generic,
             },
             required: config.required.unwrap_or(true),
@@ -270,6 +283,38 @@ impl Tool {
                     | "yaml"
                     | "yml"
                     | "graphql"
+            ),
+            "biome" => matches!(
+                extension,
+                "js" | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "mjs"
+                    | "cjs"
+                    | "mts"
+                    | "cts"
+                    | "json"
+                    | "jsonc"
+                    | "css"
+                    | "graphql"
+                    | "gql"
+                    | "html"
+                    | "astro"
+                    | "vue"
+                    | "svelte"
+            ),
+            "oxlint" => matches!(
+                extension,
+                "js" | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "mjs"
+                    | "cjs"
+                    | "mts"
+                    | "cts"
+                    | "astro"
+                    | "vue"
+                    | "svelte"
             ),
             "codespell" | "typos" => true,
             "cspell" => matches!(
@@ -358,6 +403,18 @@ impl Tool {
                     || name.starts_with("prettier.config.")
                     || javascript_workspace_configuration(name)
             }
+            "biome" => {
+                matches!(
+                    name,
+                    "package.json" | "biome.json" | "biome.jsonc" | ".editorconfig"
+                ) || javascript_workspace_configuration(name)
+            }
+            "oxlint" => {
+                name == "package.json"
+                    || name.starts_with(".oxlintrc.")
+                    || name.starts_with("oxlint.config.")
+                    || javascript_workspace_configuration(name)
+            }
             "cspell" => {
                 name == "package.json"
                     || name == "cspell.json"
@@ -418,7 +475,8 @@ impl Tool {
                     );
                 }
             }
-            "swiftformat" | "eslint" | "prettier" | "cspell" | "codespell" | "typos" => {
+            "swiftformat" | "eslint" | "prettier" | "biome" | "oxlint" | "cspell" | "codespell"
+            | "typos" => {
                 args.retain(|arg| arg != ".");
                 args.extend(files.iter().map(|path| file_argument(path)));
             }
@@ -455,6 +513,8 @@ impl Tool {
                 | "ktlint"
                 | "eslint"
                 | "prettier"
+                | "biome"
+                | "oxlint"
                 | "cspell"
                 | "codespell"
                 | "typos"
@@ -667,6 +727,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install the Rust toolchain with the rustfmt component.",
             detector: detects_rust,
             check_args: &["fmt", "--all", "--", "--check"],
+            format_check_args: None,
             format_args: Some(&["fmt", "--all"]),
             fix_args: Some(&["fmt", "--all"]),
         },
@@ -684,6 +745,7 @@ pub fn catalog() -> Vec<Tool> {
                 "-D",
                 "warnings",
             ],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -694,6 +756,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install SwiftLint with Homebrew (`brew install swiftlint`) or a SwiftPM plugin.",
             detector: detects_swiftlint,
             check_args: &["lint", "--quiet", "--reporter", "json"],
+            format_check_args: None,
             format_args: None,
             fix_args: Some(&["--fix"]),
         },
@@ -704,6 +767,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install SwiftFormat with Homebrew (`brew install swiftformat`) or a SwiftPM plugin.",
             detector: detects_swiftformat,
             check_args: &["--lint", "."],
+            format_check_args: None,
             format_args: Some(&["."]),
             fix_args: Some(&["."]),
         },
@@ -714,6 +778,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Add the Gradle wrapper to the Android project; quality will run `./gradlew lint`.",
             detector: detects_android,
             check_args: &["lint"],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -724,6 +789,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Configure the detekt Gradle plugin or install the detekt CLI.",
             detector: detects_detekt,
             check_args: &[],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -734,6 +800,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install ktlint or configure its Gradle plugin.",
             detector: detects_ktlint,
             check_args: &["--relative", "--log-level=none", "--reporter=json"],
+            format_check_args: None,
             format_args: Some(&["--format", "--relative", "--log-level=none"]),
             fix_args: Some(&["--format", "--relative", "--log-level=none"]),
         },
@@ -744,8 +811,20 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install ESLint in the repository (`npm install --save-dev eslint`).",
             detector: detects_eslint,
             check_args: &[".", "--format", "json"],
+            format_check_args: None,
             format_args: None,
             fix_args: Some(&[".", "--fix"]),
+        },
+        Tool {
+            id: "oxlint",
+            name: "Oxlint",
+            executable: "oxlint",
+            install_hint: "Install Oxlint in the repository (`npm install --save-dev oxlint`).",
+            detector: detects_oxlint,
+            check_args: &["--format=github", "--no-error-on-unmatched-pattern"],
+            format_check_args: None,
+            format_args: None,
+            fix_args: Some(&["--fix", "--no-error-on-unmatched-pattern"]),
         },
         Tool {
             id: "astro-check",
@@ -754,6 +833,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install Astro and @astrojs/check in the repository.",
             detector: detects_astro,
             check_args: &["check"],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -764,8 +844,44 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install Prettier in the repository (`npm install --save-dev prettier`).",
             detector: detects_prettier,
             check_args: &[".", "--check"],
+            format_check_args: None,
             format_args: Some(&[".", "--write"]),
             fix_args: Some(&[".", "--write"]),
+        },
+        Tool {
+            id: "biome",
+            name: "Biome",
+            executable: "biome",
+            install_hint: "Install Biome in the repository (`npm install --save-dev --save-exact @biomejs/biome`).",
+            detector: detects_biome,
+            check_args: &[
+                "check",
+                "--reporter=github",
+                "--files-ignore-unknown=true",
+                "--no-errors-on-unmatched",
+                ".",
+            ],
+            format_check_args: Some(&[
+                "format",
+                "--reporter=github",
+                "--files-ignore-unknown=true",
+                "--no-errors-on-unmatched",
+                ".",
+            ]),
+            format_args: Some(&[
+                "format",
+                "--write",
+                "--files-ignore-unknown=true",
+                "--no-errors-on-unmatched",
+                ".",
+            ]),
+            fix_args: Some(&[
+                "check",
+                "--write",
+                "--files-ignore-unknown=true",
+                "--no-errors-on-unmatched",
+                ".",
+            ]),
         },
         Tool {
             id: "cspell",
@@ -774,6 +890,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install CSpell in the repository (`npm install --save-dev cspell`).",
             detector: detects_cspell,
             check_args: &["--no-progress", "."],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -784,6 +901,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install Codespell (`python3 -m pip install codespell`).",
             detector: detects_codespell,
             check_args: &["--quiet-level=2"],
+            format_check_args: None,
             format_args: None,
             fix_args: Some(&["--quiet-level=2", "--write-changes"]),
         },
@@ -794,6 +912,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install Typos with Homebrew (`brew install typos-cli`) or Cargo (`cargo install typos-cli --locked`).",
             detector: detects_typos,
             check_args: &["--format", "json"],
+            format_check_args: None,
             format_args: None,
             fix_args: Some(&["--write-changes"]),
         },
@@ -804,6 +923,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install Knip in the repository (`npm install --save-dev knip`).",
             detector: detects_knip,
             check_args: &[],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -814,6 +934,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install actionlint from its release archive, Homebrew, or `go install`.",
             detector: detects_actionlint,
             check_args: &[],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -824,6 +945,7 @@ pub fn catalog() -> Vec<Tool> {
             install_hint: "Install @santi020k/og in the workspace (`pnpm add --save-dev @santi020k/og`).",
             detector: detects_santi_og,
             check_args: &["check", "--json"],
+            format_check_args: None,
             format_args: None,
             fix_args: None,
         },
@@ -885,7 +1007,7 @@ fn detects_android(project: &Project) -> bool {
 }
 
 fn detects_eslint(project: &Project) -> bool {
-    package_manifest_uses(project, "eslint")
+    !detects_pawl(project) && package_manifest_uses(project, "eslint")
         || [
             "eslint.config.js",
             "eslint.config.mjs",
@@ -905,6 +1027,10 @@ fn detects_eslint(project: &Project) -> bool {
 }
 
 fn detects_prettier(project: &Project) -> bool {
+    !detects_pawl(project) && detects_prettier_configuration(project)
+}
+
+fn detects_prettier_configuration(project: &Project) -> bool {
     package_manifest_uses(project, "prettier")
         || project
             .paths_named("package.json")
@@ -930,6 +1056,63 @@ fn detects_prettier(project: &Project) -> bool {
         ]
         .iter()
         .any(|name| project.has_file(name))
+}
+
+fn detects_biome(project: &Project) -> bool {
+    !detects_pawl(project)
+        && (package_manifest_uses(project, "@biomejs/biome")
+            || package_manifest_uses(project, "biome")
+            || ["biome.json", "biome.jsonc"]
+                .iter()
+                .any(|name| project.has_file(name)))
+}
+
+fn detects_oxlint(project: &Project) -> bool {
+    !detects_pawl(project) && detects_oxlint_configuration(project)
+}
+
+fn detects_oxlint_configuration(project: &Project) -> bool {
+    package_manifest_uses(project, "oxlint")
+        || [
+            ".oxlintrc.json",
+            "oxlint.config.ts",
+            "oxlint.config.mts",
+            "oxlint.config.js",
+            "oxlint.config.mjs",
+            "oxlint.config.cjs",
+        ]
+        .iter()
+        .any(|name| project.has_file(name))
+}
+
+/// Pawl (`@santi020k/pawl`, in beta) runs Biome, Oxlint, ESLint, and Prettier
+/// itself and applies its own baseline ratchet. Its repositories leave those
+/// engines to Pawl unless `quality.yml` enables an adapter explicitly, so the
+/// same files are not checked twice against two different baselines.
+fn detects_pawl(project: &Project) -> bool {
+    package_manifest_uses(project, PAWL_PACKAGE)
+        || package_manifest_uses(project, "pawl")
+        || project
+            .paths_named("package.json")
+            .any(|path| package_json_named(&project.root.join(path), PAWL_PACKAGE))
+        || PAWL_CONFIG_FILES.iter().any(|name| project.has_file(name))
+}
+
+const PAWL_PACKAGE: &str = "@santi020k/pawl";
+
+const PAWL_CONFIG_FILES: [&str; 5] = [
+    "pawl.config.ts",
+    "pawl.config.mts",
+    "pawl.config.js",
+    "pawl.config.mjs",
+    "pawl.config.json",
+];
+
+fn package_json_named(path: &Path, name: &str) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .is_some_and(|manifest| manifest.get("name").and_then(|value| value.as_str()) == Some(name))
 }
 
 fn detects_cspell(project: &Project) -> bool {
@@ -1484,6 +1667,317 @@ mod tests {
                 .unwrap()
                 .args,
             vec!["--write-changes", "README.md"]
+        );
+    }
+
+    fn changed(files: &[&str]) -> ChangeSet {
+        ChangeSet {
+            base: "HEAD".to_owned(),
+            resolved_base: "HEAD".to_owned(),
+            files: files.iter().map(PathBuf::from).collect(),
+            deleted: Default::default(),
+        }
+    }
+
+    fn find(id: &str) -> Tool {
+        catalog().into_iter().find(|tool| tool.id == id).unwrap()
+    }
+
+    #[test]
+    fn detects_biome_and_oxlint_from_dependencies_scripts_and_configs() {
+        let detected = |files: &[(&str, &str)]| {
+            let temp = tempfile::tempdir().unwrap();
+            for (name, contents) in files {
+                std::fs::write(temp.path().join(name), contents).unwrap();
+            }
+            let project = Project::discover(temp.path()).unwrap();
+            catalog()
+                .into_iter()
+                .filter(|tool| tool.detect(&project))
+                .map(|tool| tool.id)
+                .collect::<Vec<_>>()
+        };
+
+        let dependencies = detected(&[(
+            "package.json",
+            r#"{"devDependencies":{"@biomejs/biome":"2.6.8","oxlint":"1.94.0"}}"#,
+        )]);
+        assert!(dependencies.contains(&"biome"));
+        assert!(dependencies.contains(&"oxlint"));
+
+        let scripts = detected(&[(
+            "package.json",
+            r#"{"scripts":{"lint":"oxlint && biome check ."}}"#,
+        )]);
+        assert!(scripts.contains(&"biome"));
+        assert!(scripts.contains(&"oxlint"));
+
+        let configs = detected(&[("biome.jsonc", "{}"), (".oxlintrc.json", "{}")]);
+        assert!(configs.contains(&"biome"));
+        assert!(configs.contains(&"oxlint"));
+
+        let unrelated = detected(&[("package.json", r#"{"scripts":{"test":"node --test"}}"#)]);
+        assert!(!unrelated.contains(&"biome"));
+        assert!(!unrelated.contains(&"oxlint"));
+    }
+
+    #[test]
+    fn biome_and_oxlint_scope_changed_files_to_supported_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("biome.json"), "{}").unwrap();
+        std::fs::write(temp.path().join(".oxlintrc.json"), "{}").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let changes = changed(&["src/app.ts", "styles.css", "README.md"]);
+
+        let biome = find("biome")
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changes),
+            )
+            .unwrap();
+        assert_eq!(
+            biome.args,
+            vec![
+                "check",
+                "--reporter=github",
+                "--files-ignore-unknown=true",
+                "--no-errors-on-unmatched",
+                "src/app.ts",
+                "styles.css"
+            ]
+        );
+        assert!(matches!(biome.parser, DiagnosticParser::GithubAnnotations));
+
+        let oxlint = find("oxlint")
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changes),
+            )
+            .unwrap();
+        assert_eq!(
+            oxlint.args,
+            vec![
+                "--format=github",
+                "--no-error-on-unmatched-pattern",
+                "src/app.ts"
+            ]
+        );
+        assert!(matches!(oxlint.parser, DiagnosticParser::GithubAnnotations));
+
+        let unrelated = changed(&["README.md"]);
+        for id in ["biome", "oxlint"] {
+            assert!(
+                find(id)
+                    .invocation(
+                        &project,
+                        &ToolConfig::default(),
+                        Operation::Check,
+                        Some(&unrelated)
+                    )
+                    .is_none(),
+                "{id} should skip unrelated changes"
+            );
+        }
+    }
+
+    #[test]
+    fn biome_and_oxlint_configuration_changes_recheck_the_project() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("biome.json"), "{}").unwrap();
+        std::fs::write(temp.path().join(".oxlintrc.json"), "{}").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+
+        let biome = find("biome")
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changed(&["biome.json", "src/app.ts"])),
+            )
+            .unwrap();
+        assert_eq!(biome.args.last().map(String::as_str), Some("."));
+
+        let oxlint = find("oxlint")
+            .invocation(
+                &project,
+                &ToolConfig::default(),
+                Operation::Check,
+                Some(&changed(&["oxlint.config.ts"])),
+            )
+            .unwrap();
+        assert_eq!(
+            oxlint.args,
+            vec!["--format=github", "--no-error-on-unmatched-pattern"]
+        );
+    }
+
+    #[test]
+    fn biome_format_check_verifies_formatting_without_linting() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("biome.json"), "{}").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let biome = find("biome");
+        let customized = ToolConfig {
+            check_args: Some(vec!["lint".to_owned(), ".".to_owned()]),
+            ..ToolConfig::default()
+        };
+
+        let format_check = biome
+            .invocation(&project, &customized, Operation::CheckFormat, None)
+            .unwrap();
+        assert_eq!(format_check.args[0], "format");
+        assert!(!format_check.args.contains(&"--write".to_owned()));
+        let format = biome
+            .invocation(&project, &ToolConfig::default(), Operation::Format, None)
+            .unwrap();
+        assert_eq!(&format.args[..2], ["format", "--write"]);
+        let fix = biome
+            .invocation(&project, &ToolConfig::default(), Operation::Fix, None)
+            .unwrap();
+        assert_eq!(&fix.args[..2], ["check", "--write"]);
+        assert!(
+            find("oxlint")
+                .invocation(
+                    &project,
+                    &ToolConfig::default(),
+                    Operation::CheckFormat,
+                    None
+                )
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn javascript_adapters_prefer_repository_local_binaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("node_modules/.bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("biome"), "").unwrap();
+        std::fs::write(temp.path().join("biome.json"), "{}").unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+
+        let biome = find("biome")
+            .invocation(&project, &ToolConfig::default(), Operation::Check, None)
+            .unwrap();
+        assert_eq!(biome.command, bin.join("biome"));
+        let oxlint = find("oxlint")
+            .invocation(
+                &project,
+                &ToolConfig {
+                    enabled: Some(true),
+                    ..ToolConfig::default()
+                },
+                Operation::Check,
+                None,
+            )
+            .unwrap();
+        assert_eq!(oxlint.command, PathBuf::from("oxlint"));
+    }
+
+    #[test]
+    fn pawl_repositories_leave_javascript_engines_to_pawl() {
+        let detected = |files: &[(&str, &str)]| {
+            let temp = tempfile::tempdir().unwrap();
+            for (name, contents) in files {
+                let path = temp.path().join(name);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, contents).unwrap();
+            }
+            let project = Project::discover(temp.path()).unwrap();
+            (
+                detects_pawl(&project),
+                catalog()
+                    .into_iter()
+                    .filter(|tool| tool.detect(&project))
+                    .map(|tool| tool.id)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let engines =
+            r#""@biomejs/biome":"2.6.8","oxlint":"1.94.0","eslint":"10.0.0","prettier":"3.0.0""#;
+
+        for signal in [
+            vec![(
+                "package.json",
+                format!(r#"{{"devDependencies":{{"@santi020k/pawl":"0.1.0",{engines}}}}}"#),
+            )],
+            vec![(
+                "package.json",
+                format!(
+                    r#"{{"scripts":{{"check":"pawl check"}},"devDependencies":{{{engines}}}}}"#
+                ),
+            )],
+            vec![
+                (
+                    "package.json",
+                    format!(r#"{{"devDependencies":{{{engines}}}}}"#),
+                ),
+                ("pawl.config.ts", "export default {}".to_owned()),
+            ],
+            vec![
+                (
+                    "package.json",
+                    format!(r#"{{"devDependencies":{{{engines}}}}}"#),
+                ),
+                (
+                    "packages/pawl/package.json",
+                    r#"{"name":"@santi020k/pawl"}"#.to_owned(),
+                ),
+            ],
+        ] {
+            let files: Vec<_> = signal
+                .iter()
+                .map(|(name, text)| (*name, text.as_str()))
+                .collect();
+            let (pawl, tools) = detected(&files);
+            assert!(pawl, "{files:?} should be recognized as a Pawl repository");
+            for id in ["biome", "oxlint", "eslint", "prettier"] {
+                assert!(
+                    !tools.contains(&id),
+                    "{id} should defer to Pawl for {files:?}"
+                );
+            }
+        }
+
+        let (pawl, tools) = detected(&[(
+            "package.json",
+            &format!(r#"{{"devDependencies":{{{engines}}}}}"#),
+        )]);
+        assert!(!pawl);
+        for id in ["biome", "oxlint", "eslint", "prettier"] {
+            assert!(tools.contains(&id));
+        }
+    }
+
+    #[test]
+    fn explicitly_enabled_adapters_still_run_next_to_pawl() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("package.json"),
+            r#"{"devDependencies":{"@santi020k/pawl":"0.1.0","@biomejs/biome":"2.6.8"}}"#,
+        )
+        .unwrap();
+        let project = Project::discover(temp.path()).unwrap();
+        let biome = find("biome");
+
+        assert!(
+            biome
+                .invocations(&project, &ToolConfig::default(), Operation::Check, None)
+                .is_empty()
+        );
+        let enabled = ToolConfig {
+            enabled: Some(true),
+            ..ToolConfig::default()
+        };
+        assert_eq!(
+            biome
+                .invocations(&project, &enabled, Operation::Check, None)
+                .len(),
+            1
         );
     }
 

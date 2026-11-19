@@ -111,9 +111,9 @@ hooks:
 GitHub Actions `run:` commands that a broader wrapper intentionally includes;
 it changes `quality ci plan` coverage only and never changes what is executed.
 `parser` normalizes failed output with the same `generic`, `codespell`,
-`eslint-json`, `swiftlint-json`, `ktlint-json`, `santi-og-json`, and `typos-json`
-parsers available to repository tasks. The command must emit the format selected
-by the parser. Commands under `covers` must be non-empty single lines. See
+`eslint-json`, `github-annotations`, `swiftlint-json`, `ktlint-json`,
+`santi-og-json`, and `typos-json` parsers available to repository tasks. The
+command must emit the format selected by the parser. Commands under `covers` must be non-empty single lines. See
 [Local CI and PR gates](/local-ci/) for execution and reporting behavior.
 
 ## Validation

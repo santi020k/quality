@@ -158,6 +158,10 @@ quality format --check
 quality format --only prettier
 ```
 
+Enable one formatter per file type. Prettier and the Biome formatter both write
+JavaScript and TypeScript, so enabling both makes `quality format` race; see
+[Choosing a JavaScript linter and formatter](/adapters/#choosing-a-javascript-linter-and-formatter).
+
 ## `quality fix`
 
 Apply safe fixes exposed by configured analyzers:
